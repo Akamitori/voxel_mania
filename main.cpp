@@ -11,22 +11,27 @@
 #include "Camera.h"
 
 
+#define GLM_ENABLE_EXPERIMENTAL
+#include <glm/glm.hpp>
+#include <glm/gtx/io.hpp>
+
+
 const std::string LOCAL_FILE_DIR("data/");
 // Vertex Shader source code
 
-std::string FindFileOrThrow(const std::string &strBasename, const std::string &programid) {
-    std::string strFilename = LOCAL_FILE_DIR + programid + '/' + strBasename;
+std::string FindFileOrThrow(const std::string &strBasename, const std::string &program_id) {
+    std::string strFilename = LOCAL_FILE_DIR + program_id + '/' + strBasename;
     const std::ifstream testFile(strFilename.c_str());
     if (testFile.is_open())
         return strFilename;
 
-    std::cerr << "Could not find the file " + strBasename + " for program with id : " + programid;
+    std::cerr << "Could not find the file " + strBasename + " for program with id : " + program_id;
     throw;
 }
 
 // Function to compile shaders
-unsigned int compileShader(unsigned int type, const std::string source) {
-    unsigned int id = glCreateShader(type);
+unsigned int compileShader(unsigned int type, const std::string &source) {
+    const unsigned int id = glCreateShader(type);
     auto source_c_str = source.c_str();
     glShaderSource(id, 1, &source_c_str, nullptr);
     glCompileShader(id);
@@ -42,8 +47,8 @@ unsigned int compileShader(unsigned int type, const std::string source) {
     return id;
 }
 
-GLuint LoadShader(GLenum eShaderType, const std::string &strShaderFilename, const std::string &programId) {
-    std::string strFilename = FindFileOrThrow(strShaderFilename, programId);
+GLuint LoadShader(const GLenum eShaderType, const std::string &strShaderFilename, const std::string &programId) {
+    const std::string strFilename = FindFileOrThrow(strShaderFilename, programId);
     std::ifstream shaderFile(strFilename.c_str());
     std::stringstream shaderData;
     shaderData << shaderFile.rdbuf();
@@ -85,26 +90,26 @@ unsigned int InitializeProgram(const std::string &program_id) {
     return shaderProgram;
 }
 
-float normalize_coord(float value, float max) {
-    return (2 * value) / max - 1;
+float normalize_coord(const float value, const float max) {
+    return 2 * value / max - 1;
 }
 
 struct AppData {
-    Camera camera;
-    glm::mat4 camera_matrix;
-    glm::mat4 perspective_matrix;
-    glm::mat4 view_projection_matrix;
-    float FOV=45;
-    bool view_dirty;
+    Camera camera{};
+    glm::mat4 camera_matrix{};
+    glm::mat4 perspective_matrix{};
+    glm::mat4 view_projection_matrix{};
+    float FOV = 45;
+    bool view_dirty{};
 };
 
 
-void camera_input_handling(GLFWwindow *window, int key, int, int action, int) {
-    AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+void camera_input_handling(GLFWwindow *window, const int key, int, const int action, int) {
+    auto *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
 
-    bool camera_changed=false;
+    bool camera_changed = false;
     if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-        camera_changed=true;
+        camera_changed = true;
         switch (key) {
             case GLFW_KEY_W: {
                 MoveCameraZ(appData->camera, 1);
@@ -123,24 +128,25 @@ void camera_input_handling(GLFWwindow *window, int key, int, int action, int) {
                 break;
             }
             default: {
-                camera_changed=false;
+                camera_changed = false;
                 break;
             }
         }
     }
 
-    if(camera_changed) {
-        appData->camera_matrix=CameraLookAtMatrix(appData->camera);
-        appData->view_dirty=true;
+    if (camera_changed) {
+        appData->camera_matrix = CameraLookAtMatrix(appData->camera);
+        appData->view_dirty = true;
     }
 }
 
 
-void window_size_callback(GLFWwindow *window, int width, int height) {
-    AppData *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
-    PerspectiveMatrixUpdate(appData->perspective_matrix,appData->FOV,width,height);
-    appData->view_dirty=true;
-    glViewport(0,0,width,height);
+void window_size_callback(GLFWwindow *window, const int width, const int height) {
+    auto *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+    const float new_aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
+    PerspectiveMatrixUpdate(appData->perspective_matrix, appData->FOV, new_aspect_ratio);
+    appData->view_dirty = true;
+    glViewport(0, 0, width, height);
 }
 
 int main() {
@@ -169,6 +175,11 @@ int main() {
         return -1;
     }
 
+    int screenWidth = 800, screenHeight = 600;
+    appData.FOV = 45;
+    appData.perspective_matrix =PerspectiveMatrix(appData.FOV, 0.1f, 100.f, static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
+    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
+    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix;
     glViewport(0, 0, 800, 600);
 
 
@@ -187,37 +198,26 @@ int main() {
 
     // Set up vertex data (triangle)
     float vertices[] = {
-        -0.5f, -0.5f, 0.5f,
-        0.5f, -0.5f, 0.5f,
-        0.0f, 0.5f, 0.5f
+        -0.5f, -0.5f, 0.25f,
+        0.5f, -0.5f, 0.25f,
+        0.0f, 0.5f, 0.25f
     };
 
 
-    int screenWidth = 800, screenHeight = 600;
-    float centerX = screenWidth / 2.0f;
-    float centerY = screenHeight / 2.0f;
+    float centerX = static_cast<float>(screenWidth) / 2.0f;
+    float centerY = static_cast<float>(screenHeight) / 2.0f;
     float cursor[]{
-        normalize_coord(centerX - 10, screenWidth), normalize_coord(centerY, screenHeight),
-        normalize_coord(centerX + 10, screenWidth), normalize_coord(centerY, screenHeight),
+        normalize_coord(centerX - 10, static_cast<float>(screenWidth)), normalize_coord(centerY, static_cast<float>(screenHeight)),
+        normalize_coord(centerX + 10, static_cast<float>(screenWidth)), normalize_coord(centerY, static_cast<float>(screenHeight)),
 
-        normalize_coord(centerX, screenWidth), normalize_coord(centerY - 10, screenHeight),
-        normalize_coord(centerX, screenWidth), normalize_coord(centerY + 10, screenHeight)
+        normalize_coord(centerX, static_cast<float>(screenWidth)), normalize_coord(centerY - 10, static_cast<float>(screenHeight)),
+        normalize_coord(centerX, static_cast<float>(screenWidth)), normalize_coord(centerY + 10, static_cast<float>(screenHeight))
     };
-
-
-    appData.FOV=45;
-    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.0f, 1.f, screenWidth, screenHeight);
-    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-    appData.view_projection_matrix=appData.perspective_matrix* appData.camera_matrix;
-
-
+    
     glUseProgram(shaderProgram);
     glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
 
     glfwSetWindowSizeCallback(window, window_size_callback);
-
-    //normalized_coord = (original_coord - min_coord) / (max_coord - min_coord) * 2 - 1
-
 
     // Create and bind a VAO and VBO
     unsigned int world_vao, world_vbo;
@@ -265,20 +265,20 @@ int main() {
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
         glfwGetWindowSize(window, &screenWidth, &screenHeight);
-       if(appData.view_dirty) {
-           appData.view_projection_matrix=appData.perspective_matrix* appData.camera_matrix;
-           glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
-           appData.view_dirty=false;
-       }
+        if (appData.view_dirty) {
+            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix;
+            glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
+            appData.view_dirty = false;
+        }
         glDrawArrays(GL_TRIANGLES, 0, 3);
         glBindVertexArray(0);
         glUseProgram(0);
 
-        // glUseProgram(cursorProgram);
-        // glBindVertexArray(cursor_vao);
-        // glDrawArrays(GL_LINES, 0, 4);
-        // glBindVertexArray(0);
-        // glUseProgram(0);
+        glUseProgram(cursorProgram);
+        glBindVertexArray(cursor_vao);
+        glDrawArrays(GL_LINES, 0, 4);
+        glBindVertexArray(0);
+        glUseProgram(0);
 
         // Swap buffers and poll events
         glfwSwapBuffers(window);
