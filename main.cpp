@@ -177,9 +177,13 @@ int main() {
 
     int screenWidth = 800, screenHeight = 600;
     appData.FOV = 45;
-    appData.perspective_matrix =PerspectiveMatrix(appData.FOV, 0.1f, 100.f, static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
+    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
+                                                   static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix;
+
+    glm::mat4 triangle_model_view_space=glm::translate(glm::mat4(1),glm::vec3(0,0,1));
+    
+    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * triangle_model_view_space;
     glViewport(0, 0, 800, 600);
 
 
@@ -197,23 +201,26 @@ int main() {
     glUniform4fv(cursor_color_uniform, 1, glm::value_ptr(color));
 
     // Set up vertex data (triangle)
-    float vertices[] = {
-        -0.5f, -0.5f, 0.25f,
-        0.5f, -0.5f, 0.25f,
-        0.0f, 0.5f, 0.25f
+    float triangle_in_local_space[] = {
+        1, 0, 0.f,
+        0.5f, 1, 0.f,
+        0, 0, 0.f
     };
-
-
+    
     float centerX = static_cast<float>(screenWidth) / 2.0f;
     float centerY = static_cast<float>(screenHeight) / 2.0f;
     float cursor[]{
-        normalize_coord(centerX - 10, static_cast<float>(screenWidth)), normalize_coord(centerY, static_cast<float>(screenHeight)),
-        normalize_coord(centerX + 10, static_cast<float>(screenWidth)), normalize_coord(centerY, static_cast<float>(screenHeight)),
+        normalize_coord(centerX - 10, static_cast<float>(screenWidth)),
+        normalize_coord(centerY, static_cast<float>(screenHeight)),
+        normalize_coord(centerX + 10, static_cast<float>(screenWidth)),
+        normalize_coord(centerY, static_cast<float>(screenHeight)),
 
-        normalize_coord(centerX, static_cast<float>(screenWidth)), normalize_coord(centerY - 10, static_cast<float>(screenHeight)),
-        normalize_coord(centerX, static_cast<float>(screenWidth)), normalize_coord(centerY + 10, static_cast<float>(screenHeight))
+        normalize_coord(centerX, static_cast<float>(screenWidth)),
+        normalize_coord(centerY - 10, static_cast<float>(screenHeight)),
+        normalize_coord(centerX, static_cast<float>(screenWidth)),
+        normalize_coord(centerY + 10, static_cast<float>(screenHeight))
     };
-    
+
     glUseProgram(shaderProgram);
     glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
 
@@ -231,7 +238,7 @@ int main() {
 
     // Bind and set VBO
     glBindBuffer(GL_ARRAY_BUFFER, world_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_in_local_space), triangle_in_local_space, GL_STATIC_DRAW);
 
     // Define the vertex attributes (position)
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
@@ -266,7 +273,7 @@ int main() {
         glBindVertexArray(world_vao);
         glfwGetWindowSize(window, &screenWidth, &screenHeight);
         if (appData.view_dirty) {
-            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix;
+            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * triangle_model_view_space;
             glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
             appData.view_dirty = false;
         }
