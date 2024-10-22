@@ -10,17 +10,17 @@
 constexpr float camera_speed = 0.05f;
 
 void MoveCameraZ(Camera &camera, const float modifier) {
-    camera.position += camera.basis_front * modifier * camera_speed;
-    camera.target = camera.position + camera.basis_front;
+    camera.position -= camera.basis_front * modifier * camera_speed;
+    camera.target = camera.position -  camera.basis_front;
 }
 
 void MoveCameraX(Camera &camera, const float modifier) {
     camera.position += camera.basis_right * modifier * camera_speed;
-    camera.target = camera.position + camera.basis_front;
+    camera.target = camera.position - camera.basis_front;
 }
 
 glm::mat4 CameraLookAtMatrix(const Camera &camera) {
-    return glm::lookAt(camera.position, camera.target , camera.basis_up);
+    return glm::lookAt(camera.position, camera.target , -camera.basis_up);
 }
 
 glm::mat4 PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
