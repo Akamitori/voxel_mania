@@ -181,9 +181,17 @@ int main() {
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
 
-    glm::mat4 triangle_model_view_space=glm::translate(glm::mat4(1),glm::vec3(0,0,1));
-    
-    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * triangle_model_view_space;
+    glm::mat4 triangle_model_view_space = glm::translate(glm::mat4(1), glm::vec3(0, 0, 0));
+
+
+    glm::mat4 world_space_matrix(1);
+
+    world_space_matrix[1] = glm::vec4(0, 0, -1, 0);
+    world_space_matrix[2] = glm::vec4(0, 1, 0, 0);
+
+
+    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
+                                     triangle_model_view_space;
     glViewport(0, 0, 800, 600);
 
 
@@ -203,10 +211,11 @@ int main() {
     // Set up vertex data (triangle)
     float triangle_in_local_space[] = {
         1, 0, 0.f,
-        0.5f, 1, 0.f,
+        0.5f, 0, 1,
         0, 0, 0.f
     };
-    
+
+
     float centerX = static_cast<float>(screenWidth) / 2.0f;
     float centerY = static_cast<float>(screenHeight) / 2.0f;
     float cursor[]{
@@ -273,7 +282,8 @@ int main() {
         glBindVertexArray(world_vao);
         glfwGetWindowSize(window, &screenWidth, &screenHeight);
         if (appData.view_dirty) {
-            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * triangle_model_view_space;
+            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
+                                             * triangle_model_view_space;
             glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
             appData.view_dirty = false;
         }

@@ -19,10 +19,10 @@ void PerspectiveMatrixUpdate(glm::mat4 &perspectiveMatrix, float FOV,float aspec
 
 struct Camera {
     glm::vec3 position{0.0f, 0.0f, 3.0f};
-    glm::vec3 basis_front{0,0,-1.f};
+    glm::vec3 basis_front{0,0,1.f};
     glm::vec3 basis_right{1,0,0.f};
-    glm::vec3 basis_up{0.0f, 1.0f,  0.0f};
-    glm::vec3 target = position + basis_front;
+    glm::vec3 basis_up{0.0f, -1.0f,  0.0f};
+    glm::vec3 target = basis_front-position;
     float cameraSpeed=0.5f;
 };
 
