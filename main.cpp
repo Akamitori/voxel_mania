@@ -15,6 +15,8 @@
 #include <glm/glm.hpp>
 #include <glm/gtx/io.hpp>
 
+#include "data/cube.h"
+
 
 const std::string LOCAL_FILE_DIR("data/");
 // Vertex Shader source code
@@ -149,6 +151,33 @@ void window_size_callback(GLFWwindow *window, const int width, const int height)
     glViewport(0, 0, width, height);
 }
 
+void Draw_Cursor(unsigned int cursorProgram, unsigned int cursor_vao) {
+    glUseProgram(cursorProgram);
+    glBindVertexArray(cursor_vao);
+    glDrawArrays(GL_LINES, 0, 8);
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+void InitializeCursorVBO(const std::array<float, 8> &cursor, unsigned int &cursor_vao, unsigned int &cursor_vbo) {
+    glGenVertexArrays(1, &cursor_vao);
+    glGenBuffers(1, &cursor_vbo);
+
+    glBindVertexArray(cursor_vao);
+
+    // Bind and set VBO
+    glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * cursor.size(), cursor.data(), GL_STATIC_DRAW);
+
+    // Define the vertex attributes (position)
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+    glEnableVertexAttribArray(0);
+
+    // Unbind the VAO
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
 int main() {
     // Initialize GLFW
     if (!glfwInit()) {
@@ -181,8 +210,7 @@ int main() {
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
 
-    glm::mat4 triangle_model_view_space = glm::translate(glm::mat4(1), glm::vec3(0, 0, 0));
-
+    glm::mat4 triangle_model_view_space(1);
 
     glm::mat4 world_space_matrix(1);
 
@@ -195,30 +223,33 @@ int main() {
     glViewport(0, 0, 800, 600);
 
 
+    glEnable(GL_CULL_FACE);
+    glCullFace(GL_BACK);
+    glFrontFace(GL_CCW);
+    glEnable(GL_DEPTH_TEST);
+    glDepthMask(GL_TRUE);
+    glDepthFunc(GL_LEQUAL);
+    glDepthRange(0.0f, 1.0f);
+
     // Build and compile shader program
     unsigned int shaderProgram = InitializeProgram("program1");
     unsigned int cursorProgram = InitializeProgram("cursor_program");
 
     GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
     GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
+    GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
 
 
     glm::vec4 color(1, 0, 0, 1);
-
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, glm::value_ptr(color));
 
-    // Set up vertex data (triangle)
-    float triangle_in_local_space[] = {
-        1, 0, 0.f,
-        0.5f, 0, 1,
-        0, 0, 0.f
-    };
 
+    cube my_cube;
 
     float centerX = static_cast<float>(screenWidth) / 2.0f;
     float centerY = static_cast<float>(screenHeight) / 2.0f;
-    float cursor[]{
+    std::array cursor{
         normalize_coord(centerX - 10, static_cast<float>(screenWidth)),
         normalize_coord(centerY, static_cast<float>(screenHeight)),
         normalize_coord(centerX + 10, static_cast<float>(screenWidth)),
@@ -231,71 +262,67 @@ int main() {
     };
 
     glUseProgram(shaderProgram);
+    glm::vec4 r(0.5, 0.5, 0.5, 1);
+    glUniform4fv(voxel_color, 1, glm::value_ptr(r));
     glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
 
     glfwSetWindowSizeCallback(window, window_size_callback);
 
-    // Create and bind a VAO and VBO
-    unsigned int world_vao, world_vbo;
 
+    GLuint world_vao;
     glGenVertexArrays(1, &world_vao);
-    glGenBuffers(1, &world_vbo);
-
-
-    // Bind VAO
     glBindVertexArray(world_vao);
 
-    // Bind and set VBO
-    glBindBuffer(GL_ARRAY_BUFFER, world_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(triangle_in_local_space), triangle_in_local_space, GL_STATIC_DRAW);
+    GLuint cubes_vbo;
+    glGenBuffers(1, &cubes_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, cubes_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(my_cube.vertex_data), my_cube.vertex_data, GL_STATIC_DRAW);
 
-    // Define the vertex attributes (position)
+    glEnableVertexAttribArray(0);
     glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-    glEnableVertexAttribArray(0);
-    // Unbind the VAO
+
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    GLuint cubes_vbe;
+    glGenBuffers(1, &cubes_vbe);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubes_vbe);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(my_cube.vertex_indices), my_cube.vertex_indices, GL_STATIC_DRAW);
+
     glBindVertexArray(0);
 
-
-    unsigned int cursor_vao, cursor_vbo;
-    glGenVertexArrays(1, &cursor_vao);
-    glGenBuffers(1, &cursor_vbo);
-
-    glBindVertexArray(cursor_vao);
-
-    // Bind and set VBO
-    glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(cursor), cursor, GL_STATIC_DRAW);
-
-    // Define the vertex attributes (position)
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
-    glEnableVertexAttribArray(0);
-
-    // Unbind the VAO
-    glBindVertexArray(0);
+    unsigned int cursor_vao;
+    unsigned int cursor_vbo;
+    InitializeCursorVBO(cursor, cursor_vao, cursor_vbo);
 
     // Rendering loop
     while (!glfwWindowShouldClose(window)) {
         // Clear the screen
-        glClear(GL_COLOR_BUFFER_BIT);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClearDepth(1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  
+
 
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
-        glfwGetWindowSize(window, &screenWidth, &screenHeight);
+
+        triangle_model_view_space=glm::rotate(triangle_model_view_space,glm::radians(1.f), glm::vec3(0,0,1));
+        
+        appData.view_dirty=true;
         if (appData.view_dirty) {
             appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
                                              * triangle_model_view_space;
+
             glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
             appData.view_dirty = false;
         }
-        glDrawArrays(GL_TRIANGLES, 0, 3);
+
+        glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, 0);
+
         glBindVertexArray(0);
         glUseProgram(0);
 
-        glUseProgram(cursorProgram);
-        glBindVertexArray(cursor_vao);
-        glDrawArrays(GL_LINES, 0, 4);
-        glBindVertexArray(0);
-        glUseProgram(0);
+        Draw_Cursor(cursorProgram, cursor_vao);
 
         // Swap buffers and poll events
         glfwSwapBuffers(window);
@@ -304,7 +331,7 @@ int main() {
 
     // Cleanup
     glDeleteVertexArrays(1, &world_vao);
-    glDeleteBuffers(1, &world_vbo);
+    glDeleteBuffers(1, &cubes_vbo);
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 

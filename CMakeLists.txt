@@ -11,7 +11,9 @@ find_package(glad)
 
 add_executable(voxel_mania main.cpp
         Camera.cpp
-        Camera.h)
+        Camera.h
+        data/cube.cpp
+        data/cube.h)
 
 target_link_libraries(voxel_mania
         glm::glm
