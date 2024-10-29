@@ -1,6 +1,8 @@
 ﻿#version 330 core
     out vec4 FragColor;
 
+smooth in vec4 theColor;
+
 void main() {
-    FragColor = vec4(1.0, 0.5, 0.2, 1.0); // Orange color
+    FragColor = theColor;
 }
