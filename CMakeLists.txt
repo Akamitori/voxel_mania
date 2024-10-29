@@ -13,7 +13,9 @@ add_executable(voxel_mania main.cpp
         Camera.cpp
         Camera.h
         data/cube.cpp
-        data/cube.h)
+        data/cube.h
+        math_ops.cpp
+        math_ops.h)
 
 target_link_libraries(voxel_mania
         glm::glm

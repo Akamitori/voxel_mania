@@ -121,12 +121,36 @@ void camera_input_handling(GLFWwindow *window, const int key, int, const int act
                 MoveCameraZ(appData->camera, -1);
                 break;
             }
+            case GLFW_KEY_D: {
+                MoveCameraX(appData->camera, 1);
+                break;
+            }
             case GLFW_KEY_A: {
                 MoveCameraX(appData->camera, -1);
                 break;
             }
-            case GLFW_KEY_D: {
-                MoveCameraX(appData->camera, 1);
+            case GLFW_KEY_SPACE: {
+                MoveCameraY(appData->camera,1);
+                break;
+            }
+            case GLFW_KEY_LEFT_SHIFT: {
+                MoveCameraY(appData->camera,-1);
+                break;
+            }
+            case GLFW_KEY_RIGHT: {
+                RotateCamera(appData->camera,1,0);
+                break;
+            }
+            case GLFW_KEY_LEFT: {
+                RotateCamera(appData->camera,-1,0);
+                break;
+            }
+            case GLFW_KEY_UP: {
+                RotateCamera(appData->camera,0,1);
+                break;
+            }
+            case GLFW_KEY_DOWN: {
+                RotateCamera(appData->camera,0,-1);
                 break;
             }
             default: {
@@ -139,6 +163,7 @@ void camera_input_handling(GLFWwindow *window, const int key, int, const int act
     if (camera_changed) {
         appData->camera_matrix = CameraLookAtMatrix(appData->camera);
         appData->view_dirty = true;
+        std::cout<<"camera pos : "<<appData->camera.position<< std::endl;
     }
 }
 
@@ -204,18 +229,24 @@ int main() {
         return -1;
     }
 
-    int screenWidth = 800, screenHeight = 600;
-    appData.FOV = 45;
-    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
-                                                   static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
-    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-
-    glm::mat4 triangle_model_view_space(1);
-
     glm::mat4 world_space_matrix(1);
 
     world_space_matrix[1] = glm::vec4(0, 0, -1, 0);
     world_space_matrix[2] = glm::vec4(0, 1, 0, 0);
+    
+    int screenWidth = 800, screenHeight = 600;
+    appData.FOV = 45;
+    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
+                                                   static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
+    //RotateCamera(appData.camera,0);
+    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
+
+    
+    glm::mat4 triangle_model_view_space(1);
+    triangle_model_view_space=glm::translate(triangle_model_view_space,glm::vec3(2,5,0));
+    triangle_model_view_space=glm::mat4(1);
+    
+    
 
 
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
@@ -306,9 +337,9 @@ int main() {
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
 
-        triangle_model_view_space=glm::rotate(triangle_model_view_space,glm::radians(1.f), glm::vec3(0,0,1));
+        //triangle_model_view_space=glm::rotate(triangle_model_view_space,glm::radians(1.f), glm::vec3(0,0,1));
         
-        appData.view_dirty=true;
+        //appData.view_dirty=true;
         if (appData.view_dirty) {
             appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
                                              * triangle_model_view_space;
