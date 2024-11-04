@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 find_package(glm)
 find_package(glfw3)
-find_package(glad)
+find_package(glew)
 
 # Then, link your executable or library with the corresponding package targets:
 
@@ -20,7 +20,7 @@ add_executable(voxel_mania main.cpp
 target_link_libraries(voxel_mania
         glm::glm
         glfw
-        glad::glad)
+        GLEW::GLEW)
 
 ## copy all data files to the build directory
 # Define the source and destination for the shaders
