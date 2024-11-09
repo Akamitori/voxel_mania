@@ -2,6 +2,6 @@
 # To keep your changes, remove these comment lines, but the plugin won't be able to modify your requirements
 
 requirements:
+  - "glew/2.2.0"
   - "glfw/3.3.8"
   - "glm/1.0.1"
-  - "glad/0.1.36"

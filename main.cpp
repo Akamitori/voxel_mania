@@ -1,5 +1,5 @@
 ﻿#include <fstream>
-#include <glad/glad.h>
+#include <GL/glew.h>
 #include <GLFW/glfw3.h>
 #include <iostream>
 #include <sstream>
@@ -223,9 +223,10 @@ int main() {
     glfwSetWindowUserPointer(window, &appData);
 
     glfwSetKeyCallback(window, camera_input_handling);
-    // Load OpenGL function pointers using GLAD
-    if (!gladLoadGLLoader(reinterpret_cast<GLADloadproc>(glfwGetProcAddress))) {
-        std::cerr << "Failed to initialize GLAD" << std::endl;
+
+    GLenum err=glewInit();
+    if(err!=GLEW_OK) {
+        std::cerr << "glewInitFailed: " << glewGetErrorString(err) <<std::endl;
         return -1;
     }
 
