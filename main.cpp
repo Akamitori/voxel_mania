@@ -1,6 +1,5 @@
 ﻿#include <fstream>
 #include <GL/glew.h>
-#include <GLFW/glfw3.h>
 #include <iostream>
 #include <sstream>
 #include <vector>
@@ -8,14 +7,22 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>  // This is needed for glm::value_ptr
 
-#include "Camera.h"
+#include <SDL3/SDL_keyboard.h>
+#include <SDL3/SDL_init.h>
+
+
 
 
 #define GLM_ENABLE_EXPERIMENTAL
-#include <glm/glm.hpp>
+#include <format>
 #include <glm/gtx/io.hpp>
 
+
+#include "Camera.h"
+#include "AppData.h"
+#include "InputHandling.h"
 #include "data/cube.h"
+
 
 
 const std::string LOCAL_FILE_DIR("data/");
@@ -59,7 +66,7 @@ GLuint LoadShader(const GLenum eShaderType, const std::string &strShaderFilename
     try {
         return compileShader(eShaderType, shaderData.str());
     } catch (std::exception &e) {
-        fprintf(stderr, "%s\n", e.what());
+        std::cerr << e.what() << std::endl;
         throw;
     }
 }
@@ -96,83 +103,10 @@ float normalize_coord(const float value, const float max) {
     return 2 * value / max - 1;
 }
 
-struct AppData {
-    Camera camera{};
-    glm::mat4 camera_matrix{};
-    glm::mat4 perspective_matrix{};
-    glm::mat4 view_projection_matrix{};
-    float FOV = 45;
-    bool view_dirty{};
-};
-
-
-void camera_input_handling(GLFWwindow *window, const int key, int, const int action, int) {
-    auto *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
-
-    bool camera_changed = false;
-    if (action == GLFW_PRESS || action == GLFW_REPEAT) {
-        camera_changed = true;
-        switch (key) {
-            case GLFW_KEY_W: {
-                MoveCameraZ(appData->camera, 1);
-                break;
-            }
-            case GLFW_KEY_S: {
-                MoveCameraZ(appData->camera, -1);
-                break;
-            }
-            case GLFW_KEY_D: {
-                MoveCameraX(appData->camera, 1);
-                break;
-            }
-            case GLFW_KEY_A: {
-                MoveCameraX(appData->camera, -1);
-                break;
-            }
-            case GLFW_KEY_SPACE: {
-                MoveCameraY(appData->camera,1);
-                break;
-            }
-            case GLFW_KEY_LEFT_SHIFT: {
-                MoveCameraY(appData->camera,-1);
-                break;
-            }
-            case GLFW_KEY_RIGHT: {
-                RotateCamera(appData->camera,1,0);
-                break;
-            }
-            case GLFW_KEY_LEFT: {
-                RotateCamera(appData->camera,-1,0);
-                break;
-            }
-            case GLFW_KEY_UP: {
-                RotateCamera(appData->camera,0,1);
-                break;
-            }
-            case GLFW_KEY_DOWN: {
-                RotateCamera(appData->camera,0,-1);
-                break;
-            }
-            default: {
-                camera_changed = false;
-                break;
-            }
-        }
-    }
-
-    if (camera_changed) {
-        appData->camera_matrix = CameraLookAtMatrix(appData->camera);
-        appData->view_dirty = true;
-        std::cout<<"camera pos : "<<appData->camera.position<< std::endl;
-    }
-}
-
-
-void window_size_callback(GLFWwindow *window, const int width, const int height) {
-    auto *appData = static_cast<AppData *>(glfwGetWindowUserPointer(window));
+void handle_window_resize(AppData &app_data, const int width, const int height) {
     const float new_aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
-    PerspectiveMatrixUpdate(appData->perspective_matrix, appData->FOV, new_aspect_ratio);
-    appData->view_dirty = true;
+    PerspectiveMatrixUpdate(app_data.perspective_matrix, app_data.FOV, new_aspect_ratio);
+    app_data.view_dirty = true;
     glViewport(0, 0, width, height);
 }
 
@@ -205,28 +139,45 @@ void InitializeCursorVBO(const std::array<float, 8> &cursor, unsigned int &curso
 
 int main() {
     // Initialize GLFW
-    if (!glfwInit()) {
-        std::cerr << "Failed to initialize GLFW" << std::endl;
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::cerr << SDL_GetError() << std::endl;
         return -1;
     }
 
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+
+    const int screenWidth = 800, screenHeight = 600;
     // Create window
-    GLFWwindow *window = glfwCreateWindow(800, 600, "Hello World - VAO and VBO", nullptr, nullptr);
+    SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", screenWidth, screenHeight,
+                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) {
-        std::cerr << "Failed to create GLFW window" << std::endl;
-        glfwTerminate();
+        std::cerr << "Failed to create SDL window. Error :" << SDL_GetError() << std::endl;
+        SDL_Quit();
         return -1;
     }
-    glfwMakeContextCurrent(window);
 
-    AppData appData;
-    glfwSetWindowUserPointer(window, &appData);
+    SDL_GLContext open_gl_context = SDL_GL_CreateContext(window);
 
-    glfwSetKeyCallback(window, camera_input_handling);
+    if (!open_gl_context) {
+        std::cerr << "Failed to create OpenGL context. Error : " << SDL_GetError() << std::endl;
+        SDL_DestroyWindow(window);
+        SDL_Quit();
+        return -1;
+    }
 
-    GLenum err=glewInit();
-    if(err!=GLEW_OK) {
-        std::cerr << "glewInitFailed: " << glewGetErrorString(err) <<std::endl;
+    // Enable VSync
+    SDL_GL_SetSwapInterval(1);
+    
+    GLenum err = glewInit();
+    if (err != GLEW_OK) {
+        std::cerr << "glewInitFailed: " << glewGetErrorString(err) << std::endl;
+
+        SDL_GL_DestroyContext(open_gl_context);
+        SDL_DestroyWindow(window);
+        SDL_Quit();
         return -1;
     }
 
@@ -235,26 +186,21 @@ int main() {
     world_space_matrix[1] = glm::vec4(0, 0, -1, 0);
     world_space_matrix[2] = glm::vec4(0, 1, 0, 0);
     
-    int screenWidth = 800, screenHeight = 600;
+    AppData appData;
     appData.FOV = 45;
     appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
-    //RotateCamera(appData.camera,0);
-    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
 
+    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
     
     glm::mat4 triangle_model_view_space(1);
-    triangle_model_view_space=glm::translate(triangle_model_view_space,glm::vec3(2,5,0));
-    triangle_model_view_space=glm::mat4(1);
+    triangle_model_view_space = glm::translate(triangle_model_view_space, glm::vec3(2, 5, 0));
+    triangle_model_view_space = glm::mat4(1);
     
-    
-
-
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
     glViewport(0, 0, 800, 600);
-
-
+    
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -275,8 +221,7 @@ int main() {
     glm::vec4 color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, glm::value_ptr(color));
-
-
+    
     cube my_cube;
 
     float centerX = static_cast<float>(screenWidth) / 2.0f;
@@ -297,9 +242,6 @@ int main() {
     glm::vec4 r(0.5, 0.5, 0.5, 1);
     glUniform4fv(voxel_color, 1, glm::value_ptr(r));
     glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
-
-    glfwSetWindowSizeCallback(window, window_size_callback);
-
 
     GLuint world_vao;
     glGenVertexArrays(1, &world_vao);
@@ -327,20 +269,37 @@ int main() {
     unsigned int cursor_vbo;
     InitializeCursorVBO(cursor, cursor_vao, cursor_vbo);
 
+    bool keepRunning = true;
     // Rendering loop
-    while (!glfwWindowShouldClose(window)) {
+    while (keepRunning) {
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+                case SDL_EVENT_WINDOW_RESIZED: {
+                    handle_window_resize(appData, event.window.data1, event.window.data2);
+                    break;
+                }
+                case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
+                    keepRunning = false;
+                    break;
+                }
+                case SDL_EVENT_KEY_DOWN: {
+                    KeyDown(event.key.scancode,appData);   
+                    break;
+                }
+                default: {
+                    break;
+                }
+            }
+        }
         // Clear the screen
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClearDepth(1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);  
-
-
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
-
-        //triangle_model_view_space=glm::rotate(triangle_model_view_space,glm::radians(1.f), glm::vec3(0,0,1));
         
-        //appData.view_dirty=true;
         if (appData.view_dirty) {
             appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
                                              * triangle_model_view_space;
@@ -355,10 +314,8 @@ int main() {
         glUseProgram(0);
 
         Draw_Cursor(cursorProgram, cursor_vao);
-
-        // Swap buffers and poll events
-        glfwSwapBuffers(window);
-        glfwPollEvents();
+        
+        SDL_GL_SwapWindow(window);
     }
 
     // Cleanup
@@ -366,8 +323,9 @@ int main() {
     glDeleteBuffers(1, &cubes_vbo);
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
-
-    // Terminate GLFW
-    glfwTerminate();
+    
+    SDL_DestroyWindow(window);
+    SDL_GL_DestroyContext(open_gl_context);
+    SDL_Quit();
     return 0;
 }
