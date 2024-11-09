@@ -4,12 +4,12 @@
 
 #ifndef MATH_OPS_H
 #define MATH_OPS_H
-//#include <glm/gtc/constants.hpp>
+#include <glm/gtc/constants.hpp>
 
 
 namespace math_ops {
-    constexpr float PI = 3.14; //glm::pi<float>();
-    constexpr float TWOPI = 3.14; //glm::two_pi<float>();
+    constexpr float PI = glm::pi<float>();
+    constexpr float TWOPI =  glm::two_pi<float>();
     constexpr float PI_angle = 180;
 
     float normalize_angles(float angle);
