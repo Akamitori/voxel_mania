@@ -3,5 +3,4 @@
 
 requirements:
   - "glew/2.2.0"
-  - "glfw/3.3.8"
   - "glm/1.0.1"
