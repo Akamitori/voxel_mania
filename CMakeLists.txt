@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.29)
 project(voxel_mania)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CMAKE_CXX_STANDARD 23)
 
 #-----FUNCTIONS----
 function(add_git_submodule module_name)
@@ -30,18 +30,26 @@ find_package(glew)
 
 add_git_submodule(SDL3)
 
-# Then, link your executable or library with the corresponding package targets:
-
 add_executable(voxel_mania main.cpp
         Camera.cpp
         Camera.h
         data/cube.cpp
         data/cube.h
-        math_ops.cpp
-        math_ops.h
         InputHandling.cpp
         InputHandling.h
-        AppData.h)
+        AppData.h
+        math_ops.h
+        math_ops.cpp
+)
+
+
+target_sources(voxel_mania
+        PRIVATE
+        FILE_SET cxx_modules TYPE CXX_MODULES
+        BASE_DIRS ${CMAKE_SOURCE_DIR}
+        FILES 
+            RandomNumberGeneration.ixx
+)
 
 target_link_libraries(voxel_mania
         glm::glm
