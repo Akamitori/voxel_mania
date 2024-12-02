@@ -40,16 +40,10 @@ add_executable(voxel_mania main.cpp
         AppData.h
         math_ops.h
         math_ops.cpp
+        RandomNumberGeneration.cpp
+        RandomNumberGeneration.h
 )
 
-
-target_sources(voxel_mania
-        PRIVATE
-        FILE_SET cxx_modules TYPE CXX_MODULES
-        BASE_DIRS ${CMAKE_SOURCE_DIR}
-        FILES 
-            RandomNumberGeneration.ixx
-)
 
 target_link_libraries(voxel_mania
         glm::glm
