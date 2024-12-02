@@ -42,6 +42,8 @@ add_executable(voxel_mania main.cpp
         math_ops.cpp
         RandomNumberGeneration.cpp
         RandomNumberGeneration.h
+        Perlin.h
+        Perlin.cpp
 )
 
 
