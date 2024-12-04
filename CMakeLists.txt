@@ -3,32 +3,8 @@ project(voxel_mania)
 
 set(CMAKE_CXX_STANDARD 23)
 
-#-----FUNCTIONS----
-function(add_git_submodule module_name)
-    # Construct the path to the submodule
-    set(submodule_path "${CMAKE_SOURCE_DIR}/3rd_party/${module_name}")
-    message("Adding ${submodule_path} to sub_directories")
-    # Add the submodule directory
-    add_subdirectory("${submodule_path}")
-endfunction()
-
-# Ensure all submodules are initialized
-execute_process(
-        COMMAND git submodule update --init --recursive
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        RESULT_VARIABLE result
-)
-
-# Check if the command was successful
-if (NOT result EQUAL 0)
-    message(FATAL_ERROR "Failed to initialize submodules. Please run:
-        git submodule update --init --recursive")
-endif()
-
-find_package(glm)
-find_package(glew)
-
-add_git_submodule(SDL3)
+add_subdirectory(3rd_party)
+find_package(OpenGL REQUIRED)
 
 add_executable(voxel_mania main.cpp
         Camera.cpp
@@ -46,26 +22,12 @@ add_executable(voxel_mania main.cpp
         Perlin.cpp
 )
 
-
 target_link_libraries(voxel_mania
-        glm::glm
-        GLEW::GLEW
+        PUBLIC
+        libglew_shared
+        glm
         SDL3::SDL3
 )
-
-## copy all data files to the build directory
-# Define the source and destination for the shaders
-set(SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/data")
-set(SHADER_DEST_DIR "${CMAKE_BINARY_DIR}/data")
-
-# Copy the shaders to the build directory
-add_custom_target(copy_shaders ALL
-        COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${SHADER_SOURCE_DIR}" "${SHADER_DEST_DIR}"
-        COMMENT "Copying shader programs to build directory"
-)
-
-add_dependencies(voxel_mania copy_shaders)
 
 ##### -------------COPY DLLS           --------------
 # Define the directory to search (e.g., 3rdparty build output directory)
@@ -91,4 +53,16 @@ foreach(LIB ${THIRD_PARTY_LIBS})
     )
 endforeach()
 
-##### -------------COPY DLLS           --------------
+
+##### -------------COPY SHADERS           --------------
+set(SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/data")
+set(SHADER_DEST_DIR "${CMAKE_BINARY_DIR}/data")
+
+# Copy the shaders to the build directory
+add_custom_target(copy_shaders ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_directory
+        "${SHADER_SOURCE_DIR}" "${SHADER_DEST_DIR}"
+        COMMENT "Copying shader programs to build directory"
+)
+
+add_dependencies(voxel_mania copy_shaders)
