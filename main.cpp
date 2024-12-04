@@ -1,5 +1,5 @@
 ﻿#include <fstream>
-#include <GL/glew.h>
+#include "GL/glew.h"
 #include <iostream>
 #include <sstream>
 #include <vector>
