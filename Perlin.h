@@ -5,7 +5,7 @@
 #include "RandomNumberGeneration.h"
 #include "Vector2D.h"
 
-class Perlin {
+struct Perlin {
     std::array<int, 512> permutation{};
     float frequency{};
     int octaves{};

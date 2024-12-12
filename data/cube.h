@@ -24,6 +24,8 @@ struct cube {
         0.5f, -0.5f, 0.5f
     };
 
+    int total_vertices=36;
+
     int vertex_indices[12 * 3]{
         0, 3, 1,
         0, 2, 3,

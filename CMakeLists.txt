@@ -9,8 +9,8 @@ find_package(OpenGL REQUIRED)
 add_executable(voxel_mania main.cpp
         Camera.cpp
         Camera.h
-        data/cube.cpp
         data/cube.h
+        data/tile.h
         InputHandling.cpp
         InputHandling.h
         AppData.h
@@ -20,6 +20,11 @@ add_executable(voxel_mania main.cpp
         RandomNumberGeneration.h
         Perlin.h
         Perlin.cpp
+        TerrainGeneration.h
+        TerrainGeneration.cpp
+        Probabilities.cpp
+        Probabilities.h
+        Vector2D.h
 )
 
 target_link_libraries(voxel_mania

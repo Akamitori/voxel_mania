@@ -4,25 +4,22 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include <glm/glm.hpp>
+
 #include <glm/gtc/type_ptr.hpp>  // This is needed for glm::value_ptr
 
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_init.h>
 
 
-
-
 #define GLM_ENABLE_EXPERIMENTAL
-#include <format>
-#include <glm/gtx/io.hpp>
 
 
 #include "Camera.h"
 #include "AppData.h"
 #include "InputHandling.h"
+#include "Perlin.h"
 #include "data/cube.h"
-
+#include "TerrainGeneration.h"
 
 
 const std::string LOCAL_FILE_DIR("data/");
@@ -170,7 +167,7 @@ int main() {
 
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
-    
+
     GLenum err = glewInit();
     if (err != GLEW_OK) {
         std::cerr << "glewInitFailed: " << glewGetErrorString(err) << std::endl;
@@ -183,24 +180,19 @@ int main() {
 
     glm::mat4 world_space_matrix(1);
 
-    world_space_matrix[1] = glm::vec4(0, 0, -1, 0);
-    world_space_matrix[2] = glm::vec4(0, 1, 0, 0);
-    
+    world_space_matrix[1] = glm::vec4(0, 0, 1, 0);
+    world_space_matrix[2] = glm::vec4(0, -1, 0, 0);
+
     AppData appData;
+    appData.camera.camera_speed = 1;
     appData.FOV = 45;
-    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
+    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100000.f,
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-    
-    glm::mat4 triangle_model_view_space(1);
-    triangle_model_view_space = glm::translate(triangle_model_view_space, glm::vec3(2, 5, 0));
-    triangle_model_view_space = glm::mat4(1);
-    
-    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
-                                     triangle_model_view_space;
+    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix;
     glViewport(0, 0, 800, 600);
-    
+
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -215,13 +207,11 @@ int main() {
 
     GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
     GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
-    GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
-
 
     glm::vec4 color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, glm::value_ptr(color));
-    
+
     cube my_cube;
 
     float centerX = static_cast<float>(screenWidth) / 2.0f;
@@ -239,30 +229,59 @@ int main() {
     };
 
     glUseProgram(shaderProgram);
-    glm::vec4 r(0.5, 0.5, 0.5, 1);
-    glUniform4fv(voxel_color, 1, glm::value_ptr(r));
     glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
 
     GLuint world_vao;
     glGenVertexArrays(1, &world_vao);
     glBindVertexArray(world_vao);
 
+    // mesh
     GLuint cubes_vbo;
     glGenBuffers(1, &cubes_vbo);
     glBindBuffer(GL_ARRAY_BUFFER, cubes_vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(my_cube.vertex_data), my_cube.vertex_data, GL_STATIC_DRAW);
 
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
+    // mesh indices
     GLuint cubes_vbe;
     glGenBuffers(1, &cubes_vbe);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubes_vbe);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(my_cube.vertex_indices), my_cube.vertex_indices, GL_STATIC_DRAW);
 
+
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
+
+    auto n = CreatePerlinFBM(100, 0.005, 8);
+    auto transforms = std::vector<glm::mat4>{};
+    auto colors = std::vector<glm::vec3>{};
+
+    GenerateTerrain(n, 1000, 1000, transforms, colors);
+    
+    //transform vbos;
+    GLuint mesh_tranforms;
+    glGenBuffers(1, &mesh_tranforms);
+    glBindBuffer(GL_ARRAY_BUFFER, mesh_tranforms);
+    glBufferData(GL_ARRAY_BUFFER, transforms.size() * sizeof(glm::mat4), transforms.data(), GL_STATIC_DRAW);
+
+    for (int i = 0; i < 4; i++) {
+        int attr_index = i + 1;
+        glEnableVertexAttribArray(attr_index);
+        glVertexAttribPointer(attr_index, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4),
+                              reinterpret_cast<void *>(sizeof(glm::vec4) * i));
+        glVertexAttribDivisor(attr_index, 1);
+    }
+
+    GLuint colors_vbo;
+    glGenBuffers(1, &colors_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, colors_vbo);
+    glBufferData(GL_ARRAY_BUFFER, colors.size() * sizeof(glm::vec3), colors.data(),GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(5);
+    glVertexAttribPointer(5, 3, GL_FLOAT, GL_FALSE, sizeof(glm::vec3), nullptr);
+    glVertexAttribDivisor(5, 1);
+
+
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindVertexArray(0);
 
     unsigned int cursor_vao;
@@ -270,6 +289,8 @@ int main() {
     InitializeCursorVBO(cursor, cursor_vao, cursor_vbo);
 
     bool keepRunning = true;
+
+    long x = 0;
     // Rendering loop
     while (keepRunning) {
         SDL_Event event;
@@ -284,8 +305,12 @@ int main() {
                     break;
                 }
                 case SDL_EVENT_KEY_DOWN: {
-                    KeyDown(event.key.scancode,appData);   
+                    std::cout<<"key is" << event.key.scancode << std::endl;
+                    KeyDown(event.key.scancode, appData);
                     break;
+                }
+                case SDL_EVENT_KEY_UP: {
+                    std::cout<< event.key.scancode << std::endl;
                 }
                 default: {
                     break;
@@ -296,25 +321,23 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClearDepth(1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
+
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
-        
+
         if (appData.view_dirty) {
-            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
-                                             * triangle_model_view_space;
+            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix;
 
             glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
             appData.view_dirty = false;
         }
-
-        glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, 0);
-
+        
+        glDrawElementsInstanced(GL_TRIANGLES, my_cube.total_vertices, GL_UNSIGNED_INT, 0, transforms.size());
         glBindVertexArray(0);
         glUseProgram(0);
 
         Draw_Cursor(cursorProgram, cursor_vao);
-        
+
         SDL_GL_SwapWindow(window);
     }
 
@@ -323,7 +346,7 @@ int main() {
     glDeleteBuffers(1, &cubes_vbo);
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
-    
+
     SDL_DestroyWindow(window);
     SDL_GL_DestroyContext(open_gl_context);
     SDL_Quit();
