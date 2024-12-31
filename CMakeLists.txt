@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 23)
 set(BINARY_DIRECTORY ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our build")
 set(BINARY_DIRECTORY_LIBS ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our libs")
 
-add_subdirectory(3rd_party)
+add_subdirectory(libraries)
 
 find_package(OpenGL REQUIRED)
 

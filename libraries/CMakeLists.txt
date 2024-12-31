@@ -1,0 +1,2 @@
+﻿add_subdirectory(math)
+add_subdirectory(3rd_party)
