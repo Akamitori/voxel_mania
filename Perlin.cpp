@@ -43,10 +43,10 @@ double Noise2D(const Perlin &p, float x, float y) {
     const int valueBottomRight = p.permutation[p.permutation[X + 1] + Y];
     const int valueBottomLeft = p.permutation[p.permutation[X] + Y];
 
-    const double dotTopRight = Dot(&topRight, &p.GradientVectors[valueTopRight % p.GradientVectors.size()]);
-    const double dotTopLeft = Dot(&topLeft, &p.GradientVectors[valueTopLeft % p.GradientVectors.size()]);
-    const double dotBottomRight = Dot(&bottomRight, &p.GradientVectors[valueBottomRight % p.GradientVectors.size()]);
-    const double dotBottomLeft = Dot(&bottomLeft, &p.GradientVectors[valueBottomLeft % p.GradientVectors.size()]);
+    const double dotTopRight = dot(&topRight, &p.GradientVectors[valueTopRight % p.GradientVectors.size()]);
+    const double dotTopLeft = dot(&topLeft, &p.GradientVectors[valueTopLeft % p.GradientVectors.size()]);
+    const double dotBottomRight = dot(&bottomRight, &p.GradientVectors[valueBottomRight % p.GradientVectors.size()]);
+    const double dotBottomLeft = dot(&bottomLeft, &p.GradientVectors[valueBottomLeft % p.GradientVectors.size()]);
 
     const double u = fade(xf);
     const double v = fade(yf);
