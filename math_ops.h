@@ -2,15 +2,6 @@
 #define MATH_OPS_H
 
 namespace math_ops {
-    constexpr float PI = 3.14159265358979323846264338327950288;
-    constexpr float TWOPI = 6.28318530717958647692528676655900576;
-    constexpr float PI_angle = 180;
-
-    float normalize_angles(float angle);
-
-    float normalize_radians(float angle_in_radians);
-
-
     bool is_equal(float a, float b, float EPSILON = 0.000001f);
 
     bool is_equal(double a, double b, double EPSILON = 0.000001f);

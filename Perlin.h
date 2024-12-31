@@ -3,7 +3,7 @@
 #include <array>
 
 #include "RandomNumberGeneration.h"
-#include "Vector2D.h"
+#include "libraries/math/Vector2D.h"
 
 class Perlin {
     std::array<int, 512> permutation{};
@@ -38,18 +38,18 @@ class Perlin {
     friend Perlin CreatePerlin(unsigned int seed, float frequency);
     friend Perlin CreatePerlinFBM(unsigned int seed, float frequency, int octaves);
 
-    friend double Noise2D(const Perlin &p, double x, double y);
+    friend double Noise2D(const Perlin &p, float x, float y);
 
     friend void CalculatePermutation(Perlin &p);
 
-    friend double FBMNoise2D(const Perlin &p, double x, double y);
+    friend double FBMNoise2D(const Perlin &p, float x, float y);
 };
 
 Perlin CreatePerlin(unsigned int seed, float frequency);
 Perlin CreatePerlinFBM(unsigned int seed, float frequency, int octaves);
 
-double Noise2D(const Perlin &p, double x, double y);
-double FBMNoise2D(const Perlin &p, double x, double y);
+double Noise2D(const Perlin &p, float x, float y);
+double FBMNoise2D(const Perlin &p, float x, float y);
 
 
 #ifndef NDEBUG

@@ -23,7 +23,6 @@ add_executable(voxel_mania main.cpp
         RandomNumberGeneration.h
         Perlin.h
         Perlin.cpp
-        Vector2D.h
 )
 
 target_link_libraries(voxel_mania
@@ -31,6 +30,8 @@ target_link_libraries(voxel_mania
         libglew_shared
         glm
         SDL3::SDL3
+        LinearAlgebra
+        Trigonometry
 )
 
 
