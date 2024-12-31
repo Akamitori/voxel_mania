@@ -5,23 +5,6 @@
 #include "math_ops.h"
 
 #include <cmath>
-#include <glm/trigonometric.hpp>
-
-float math_ops::normalize_angles(float angle) {
-    return glm::degrees(math_ops::normalize_radians(glm::radians(angle)));
-}
-
-float math_ops::normalize_radians(float angle_in_radians) {
-    if (fabs(angle_in_radians) > PI) {
-        angle_in_radians += PI;
-
-        angle_in_radians -= floor(angle_in_radians / TWOPI) * TWOPI;
-
-        angle_in_radians -= PI;
-    }
-
-    return angle_in_radians;
-}
 
 // TODO revisit this function
 // source : https://randomascii.wordpress.com/2012/09/09/game-developer-magazine-floating-point/
