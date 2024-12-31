@@ -5,6 +5,11 @@ execute_process(
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         RESULT_VARIABLE result
 )
+# Check if the command was successful
+if (NOT result EQUAL 0)
+    message(FATAL_ERROR "Failed to initialize submodules. Please run:
+        git submodule update --init --recursive")
+endif ()
 
 add_subdirectory(SDL3)
 add_subdirectory(glm)
@@ -14,10 +19,7 @@ set(glew-cmake_BUILD_STATIC OFF CACHE BOOL "Build the static glew library")
 set(ONLY_LIBS ON CACHE BOOL "Do not build executables")
 add_subdirectory(glew)
 
-
-
-# Check if the command was successful
-if (NOT result EQUAL 0)
-    message(FATAL_ERROR "Failed to initialize submodules. Please run:
-        git submodule update --init --recursive")
-endif()
+install(TARGETS SDL3-shared glm libglew_shared
+        RUNTIME DESTINATION ${BINARY_DIRECTORY}  # DLLs
+        LIBRARY DESTINATION ${BINARY_DIRECTORY_LIBS}  # .so/.dylib
+)
