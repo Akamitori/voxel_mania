@@ -11,6 +11,7 @@
 
 
 #include "math_ops.h"
+#include "libraries/math/Trigonometry.h"
 
 
 //TODO unify those functions after I move to SDL2
@@ -40,12 +41,12 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
 
     if (azimuth_modifier != 0) {
         camera.azimuth += static_cast<float>(azimuth_modifier) * camera.rotation_speed_y;
-        camera.azimuth = math_ops::normalize_radians(camera.azimuth);
+        camera.azimuth = normalize_radians(camera.azimuth);
     }
 
     if (elevation_modifier != 0) {
         camera.elevation += static_cast<float>(elevation_modifier) * camera.rotation_speed_x;
-        camera.elevation = math_ops::normalize_radians(camera.elevation);
+        camera.elevation = normalize_radians(camera.elevation);
         camera.elevation = std::clamp(camera.elevation, -camera.max_elevation_rotation, camera.max_elevation_rotation);
     }
 

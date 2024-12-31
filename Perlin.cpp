@@ -20,7 +20,7 @@ Perlin CreatePerlinFBM(unsigned int seed, float frequency, int octaves) {
 }
 
 
-double Noise2D(const Perlin &p, double x, double y) {
+double Noise2D(const Perlin &p, float x, float y) {
     x *= p.frequency;
     y *= p.frequency;
 
@@ -30,12 +30,12 @@ double Noise2D(const Perlin &p, double x, double y) {
     const int X = x_int_part & 255;
     const int Y = y_int_part & 255;
 
-    const double xf = x - x_int_part;
-    const double yf = y - y_int_part;
+    const float xf = x - static_cast<float>(x_int_part);
+    const float yf = y - static_cast<float>(y_int_part);
 
-    const Vector2D topRight{xf - 1.0, yf - 1.0};
-    const Vector2D topLeft{xf, yf - 1.0};
-    const Vector2D bottomRight{xf - 1.0, yf};
+    const Vector2D topRight{xf - 1.0f, yf - 1.0f};
+    const Vector2D topLeft{xf, yf - 1.0f};
+    const Vector2D bottomRight{xf - 1.0f, yf};
     const Vector2D bottomLeft{xf, yf};
 
     const int valueTopRight = p.permutation[p.permutation[X + 1] + Y + 1];
@@ -43,10 +43,10 @@ double Noise2D(const Perlin &p, double x, double y) {
     const int valueBottomRight = p.permutation[p.permutation[X + 1] + Y];
     const int valueBottomLeft = p.permutation[p.permutation[X] + Y];
 
-    const double dotTopRight = Dot(topRight, p.GradientVectors[valueTopRight % p.GradientVectors.size()]);
-    const double dotTopLeft = Dot(topLeft, p.GradientVectors[valueTopLeft % p.GradientVectors.size()]);
-    const double dotBottomRight = Dot(bottomRight, p.GradientVectors[valueBottomRight % p.GradientVectors.size()]);
-    const double dotBottomLeft = Dot(bottomLeft, p.GradientVectors[valueBottomLeft % p.GradientVectors.size()]);
+    const double dotTopRight = Dot(&topRight, &p.GradientVectors[valueTopRight % p.GradientVectors.size()]);
+    const double dotTopLeft = Dot(&topLeft, &p.GradientVectors[valueTopLeft % p.GradientVectors.size()]);
+    const double dotBottomRight = Dot(&bottomRight, &p.GradientVectors[valueBottomRight % p.GradientVectors.size()]);
+    const double dotBottomLeft = Dot(&bottomLeft, &p.GradientVectors[valueBottomLeft % p.GradientVectors.size()]);
 
     const double u = fade(xf);
     const double v = fade(yf);
@@ -57,7 +57,7 @@ double Noise2D(const Perlin &p, double x, double y) {
     );
 }
 
-double FBMNoise2D(const Perlin &p, double x, double y) {
+double FBMNoise2D(const Perlin &p, float x, float y) {
     double result = 0;
     double amplitude = 1.0;
 
