@@ -1,7 +1,7 @@
 ﻿#ifndef TRIGONOMETRY_H
 #define TRIGONOMETRY_H
 
-#include "../export.h"
+#include "export.h"
 
 const float PI = 3.14159265358979323846264338327950288;
 const float TWOPI = 6.28318530717958647692528676655900576;
