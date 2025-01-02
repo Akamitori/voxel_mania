@@ -11,7 +11,7 @@
 
 
 #include "math_ops.h"
-#include "libraries/math/Trigonometry.h"
+#include "Trigonometry.h"
 
 
 //TODO unify those functions after I move to SDL2
@@ -27,10 +27,18 @@ void MoveCameraY(Camera &camera, float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
 }
 
-
 std::ostream &operator<<(std::ostream &lhs, const glm::vec3 &vector) {
     lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
     return lhs;
+}
+
+std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
+    lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
+    return lhs;
+}
+
+glm::vec3 from_vector3D(const Vector3D &vec) {
+    return glm::vec3{vec.x, vec.y, vec.z};
 }
 
 void RotateCamera(Camera &camera, const short azimuth_modifier, const short elevation_modifier) {
@@ -57,22 +65,25 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
         return;
     }
 
-    float cos_azi = glm::cos(camera.azimuth);
-    float sin_azi = glm::sin(camera.azimuth);
+    const float cos_azi = cos(camera.azimuth);
+    const float sin_azi = sin(camera.azimuth);
 
-    float cos_elev = glm::cos(camera.elevation);
-    float sin_elev = glm::sin(camera.elevation);
+    const float cos_elev = cos(camera.elevation);
+    const float sin_elev = sin(camera.elevation);
 
-    camera.forward = glm::normalize(
-        cos_elev * (cos_azi * camera.basis_forward + sin_azi * camera.basis_right) + sin_elev * camera.basis_up);
-
-    camera.right = glm::normalize(glm::cross(camera.forward, camera.basis_up));
-    camera.up = glm::normalize(glm::cross(camera.right, camera.forward));
+    camera.forward = normalize(
+        (camera.basis_forward * cos_azi + camera.basis_right * sin_azi) * cos_elev + camera.basis_up * sin_elev
+    );
+    camera.right = normalize(cross(camera.forward, camera.basis_up));
+    camera.up = normalize(cross(camera.right, camera.forward));
 }
 
 glm::mat4 CameraLookAtMatrix(const Camera &camera) {
-    const glm::vec3 camera_target = camera.position + camera.forward;
-    return glm::lookAt(camera.position, camera_target, camera.up);
+    const Vector3D camera_target = camera.position + camera.forward;
+    auto cam_pos_glm = from_vector3D(camera.position);
+    auto camera_target_glm = from_vector3D(camera_target);
+    auto camera_up_glm = from_vector3D(camera.up);
+    return glm::lookAt(cam_pos_glm, camera_target_glm, camera_up_glm);
 }
 
 glm::mat4 PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {

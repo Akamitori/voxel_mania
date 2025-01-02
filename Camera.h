@@ -4,11 +4,9 @@
 
 #ifndef CAMERA_H
 #define CAMERA_H
+#include <Vector3D.h>
 #include <glm/glm.hpp>
 #include <glm/ext/matrix_transform.hpp>
-
-#include "math_ops.h"
-
 
 struct Camera;
 
@@ -28,13 +26,13 @@ void RotateCamera(Camera & camera, short azimuth_modifier, short elevation_modif
 
 
 struct Camera {
-    const glm::vec3 basis_forward{0, 0, 1.f};
-    const glm::vec3 basis_right{1, 0, 0.f};
-    const glm::vec3 basis_up{0.0f, -1.0f, 0.0f};
-    glm::vec3 position{0.0f, 0.0f, -4.0f};
-    glm::vec3 forward{basis_forward};
-    glm::vec3 right{basis_right};
-    glm::vec3 up{basis_up};
+    const Vector3D basis_forward{0, 0, 1.f};
+    const Vector3D basis_right{1, 0, 0.f};
+    const Vector3D basis_up{0.0f, -1.0f, 0.0f};
+    Vector3D position{0.0f, 0.0f, -4.0f};
+    Vector3D forward{basis_forward};
+    Vector3D right{basis_right};
+    Vector3D up{basis_up};
 
     float camera_speed{0.05f};
     float azimuth = 0;
