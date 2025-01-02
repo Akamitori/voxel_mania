@@ -6,6 +6,8 @@ set(CMAKE_CXX_STANDARD 23)
 set(BINARY_DIRECTORY ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our build")
 set(BINARY_DIRECTORY_LIBS ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our libs")
 
+include(cmake_scripts/compiler_flags.cmake)
+
 add_subdirectory(libraries)
 
 find_package(OpenGL REQUIRED)
@@ -48,14 +50,8 @@ add_custom_target(copy_shaders ALL
 
 add_dependencies(voxel_mania copy_shaders)
 
-# Define a function for the install step
-function(run_install_step)
-    add_custom_command(
-            TARGET voxel_mania POST_BUILD
-            COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR}
-            COMMENT "Running the install step after all builds are complete"
-    )
-endfunction()
-
-# Run the install step as a function
-run_install_step()
+add_custom_command(
+        TARGET voxel_mania POST_BUILD
+        COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR}
+        COMMENT "Running the install step after all builds are complete"
+)
