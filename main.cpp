@@ -1,28 +1,19 @@
 ﻿#include <fstream>
-#include "GL/glew.h"
 #include <iostream>
 #include <sstream>
 #include <vector>
 #include <algorithm>
-#include <glm/glm.hpp>
-#include <glm/gtc/type_ptr.hpp>  // This is needed for glm::value_ptr
+#include <format>
 
+#include <GL/glew.h>
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_init.h>
-
-
-
-
-#define GLM_ENABLE_EXPERIMENTAL
-#include <format>
-#include <glm/gtx/io.hpp>
-
 
 #include "Camera.h"
 #include "AppData.h"
 #include "InputHandling.h"
 #include "data/cube.h"
-
+#include "Matrix4D.h"
 
 
 const std::string LOCAL_FILE_DIR("data/");
@@ -149,7 +140,7 @@ int main() {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 
-    const int screenWidth = 800, screenHeight = 600;
+    constexpr int screenWidth = 800, screenHeight = 600;
     // Create window
     SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", screenWidth, screenHeight,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
@@ -170,7 +161,7 @@ int main() {
 
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
-    
+
     GLenum err = glewInit();
     if (err != GLEW_OK) {
         std::cerr << "glewInitFailed: " << glewGetErrorString(err) << std::endl;
@@ -181,26 +172,25 @@ int main() {
         return -1;
     }
 
-    glm::mat4 world_space_matrix(1);
+    Matrix4D world_space_matrix(1);
 
-    world_space_matrix[1] = glm::vec4(0, 0, -1, 0);
-    world_space_matrix[2] = glm::vec4(0, 1, 0, 0);
-    
+    world_space_matrix[1] = Vector4D(0, 0, -1, 0);
+    world_space_matrix[2] = Vector4D(0, 1, 0, 0);
+
     AppData appData;
+    appData.view_dirty = true;
     appData.FOV = 45;
     appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-    
-    glm::mat4 triangle_model_view_space(1);
-    triangle_model_view_space = glm::translate(triangle_model_view_space, glm::vec3(2, 5, 0));
-    triangle_model_view_space = glm::mat4(1);
-    
+
+
+    Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
     glViewport(0, 0, 800, 600);
-    
+
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -218,10 +208,10 @@ int main() {
     GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
 
 
-    glm::vec4 color(1, 0, 0, 1);
+    Vector4D color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
-    glUniform4fv(cursor_color_uniform, 1, glm::value_ptr(color));
-    
+    glUniform4fv(cursor_color_uniform, 1, &color.x);
+
     cube my_cube;
 
     float centerX = static_cast<float>(screenWidth) / 2.0f;
@@ -239,9 +229,9 @@ int main() {
     };
 
     glUseProgram(shaderProgram);
-    glm::vec4 r(0.5, 0.5, 0.5, 1);
-    glUniform4fv(voxel_color, 1, glm::value_ptr(r));
-    glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
+    constexpr Vector4D r(0.5, 0.5, 0.5, 1);
+    glUniform4fv(voxel_color, 1, &r.x);
+    glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
 
     GLuint world_vao;
     glGenVertexArrays(1, &world_vao);
@@ -284,7 +274,7 @@ int main() {
                     break;
                 }
                 case SDL_EVENT_KEY_DOWN: {
-                    KeyDown(event.key.scancode,appData);   
+                    KeyDown(event.key.scancode, appData);
                     break;
                 }
                 default: {
@@ -296,15 +286,15 @@ int main() {
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
         glClearDepth(1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        
+
         glUseProgram(shaderProgram);
         glBindVertexArray(world_vao);
-        
+
         if (appData.view_dirty) {
             appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
                                              * triangle_model_view_space;
 
-            glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, glm::value_ptr(appData.view_projection_matrix));
+            glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
             appData.view_dirty = false;
         }
 
@@ -314,7 +304,7 @@ int main() {
         glUseProgram(0);
 
         Draw_Cursor(cursorProgram, cursor_vao);
-        
+
         SDL_GL_SwapWindow(window);
     }
 
@@ -323,7 +313,7 @@ int main() {
     glDeleteBuffers(1, &cubes_vbo);
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
-    
+
     SDL_DestroyWindow(window);
     SDL_GL_DestroyContext(open_gl_context);
     SDL_Quit();

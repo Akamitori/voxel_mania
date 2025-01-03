@@ -1,17 +1,16 @@
 ﻿//
 // Created by PETROS on 15/10/2024.
 //
-
 #include "Camera.h"
 
+
 #include <algorithm>
+#include <cassert>
 #include <iostream>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/trigonometric.hpp>
 
-
+#include "Matrix4D.h"
 #include "math_ops.h"
-#include "Trigonometry.h"
+#include "Transformations.h"
 
 
 //TODO unify those functions after I move to SDL2
@@ -27,24 +26,18 @@ void MoveCameraY(Camera &camera, float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
 }
 
-std::ostream &operator<<(std::ostream &lhs, const glm::vec3 &vector) {
-    lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
-    return lhs;
-}
+
 
 std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
     lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
     return lhs;
 }
 
-glm::vec3 from_vector3D(const Vector3D &vec) {
-    return glm::vec3{vec.x, vec.y, vec.z};
-}
 
 void RotateCamera(Camera &camera, const short azimuth_modifier, const short elevation_modifier) {
     assert(("Rotation invoked without any rotation taking place", azimuth_modifier != 0 || elevation_modifier != 0));
     assert(
-        ("Elevation is 90 degrees which is not covered", !math_ops::is_equal(camera.max_elevation_rotation, glm::radians
+        ("Elevation is 90 degrees which is not covered", !math_ops::is_equal(camera.max_elevation_rotation, DegreeToRadians
             (90.f))));
 
     if (azimuth_modifier != 0) {
@@ -78,18 +71,17 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
     camera.up = normalize(cross(camera.right, camera.forward));
 }
 
-glm::mat4 CameraLookAtMatrix(const Camera &camera) {
+
+
+Matrix4D CameraLookAtMatrix(const Camera &camera) {
     const Vector3D camera_target = camera.position + camera.forward;
-    auto cam_pos_glm = from_vector3D(camera.position);
-    auto camera_target_glm = from_vector3D(camera_target);
-    auto camera_up_glm = from_vector3D(camera.up);
-    return glm::lookAt(cam_pos_glm, camera_target_glm, camera_up_glm);
+    return look_at(camera.position,camera_target,camera.up);
 }
 
-glm::mat4 PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
-    glm::mat4 perspectiveMatrix(0);
+Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
+    Matrix4D perspectiveMatrix(0);
 
-    const float tan_fov_2 = glm::tan(glm::radians(FOV / 2));
+    const float tan_fov_2 = tan(DegreeToRadians(FOV / 2));
     const float tan_fov_2_invert = 1 / tan_fov_2;
     const float aspect_inverse = 1 / aspect;
 
@@ -99,12 +91,13 @@ glm::mat4 PerspectiveMatrix(const float FOV, const float z_near, const float z_f
     perspectiveMatrix[2].z = -(z_far + z_near) * z_diff;
     perspectiveMatrix[2].w = -1;
     perspectiveMatrix[3].z = -2 * z_near * z_far * z_diff;
+  
     return perspectiveMatrix;
 }
 
-void PerspectiveMatrixUpdate(glm::mat4 &perspectiveMatrix, float FOV, float aspect) {
+void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, const float FOV, const float aspect) {
     const float aspect_inverse = 1 / aspect;
-    const float tan_fov_2_invert = 1.f / glm::tan(glm::radians(FOV / 2));
+    const float tan_fov_2_invert = 1.f / tan(DegreeToRadians(FOV / 2));
     perspectiveMatrix[0].x = tan_fov_2_invert * aspect_inverse;
     perspectiveMatrix[1].y = tan_fov_2_invert;
 }

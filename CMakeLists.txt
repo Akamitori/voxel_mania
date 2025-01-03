@@ -30,7 +30,6 @@ add_executable(voxel_mania main.cpp
 target_link_libraries(voxel_mania
         PUBLIC
         libglew_shared
-        glm
         SDL3::SDL3
         LinearAlgebra
         Trigonometry

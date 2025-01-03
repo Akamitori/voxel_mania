@@ -5,13 +5,14 @@
 #ifndef APPDATA_H
 #define APPDATA_H
 
+#include "Matrix4D.h"
 #include "Camera.h"
 
 struct AppData {
     Camera camera{};
-    glm::mat4 camera_matrix{};
-    glm::mat4 perspective_matrix{};
-    glm::mat4 view_projection_matrix{};
+    Matrix4D camera_matrix{};
+    Matrix4D perspective_matrix{};
+    Matrix4D view_projection_matrix{};
     float FOV = 45;
     bool view_dirty{};
 };
