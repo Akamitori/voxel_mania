@@ -2,8 +2,8 @@
 
 #include <cmath>
 
-float dot(const Vector3D *a, const Vector3D *b) {
-    return a->x * b->x + a->x * b->x + a->z * b->z;
+float dot(const Vector3D &a, const Vector3D &b) {
+    return a.x * b.x + a.y * b.y + a.z * b.z;
 }
 
 float magnitude(const Vector3D &v) {
@@ -15,9 +15,9 @@ Vector3D normalize(const Vector3D &v) {
 }
 
 Vector3D cross(const Vector3D &a, const Vector3D &b) {
-    return (Vector3D(a.y * b.z - a.z * b.y,
-                     a.z * b.x - a.x * b.z,
-                     a.x * b.y - a.y * b.x));
+    return Vector3D(a.y * b.z - a.z * b.y,
+                    a.z * b.x - a.x * b.z,
+                    a.x * b.y - a.y * b.x);
 }
 
 Vector3D &operator *=(Vector3D &v, float s) {

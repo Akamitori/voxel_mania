@@ -9,7 +9,7 @@ struct EXPORTED Vector3D {
     float z;
 };
 
-EXPORTED float dot(const Vector3D *a, const Vector3D *b);
+EXPORTED float dot(const Vector3D &a, const Vector3D &b);
 
 EXPORTED float magnitude(const Vector3D &v);
 
