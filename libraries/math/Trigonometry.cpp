@@ -1,23 +1,28 @@
 ﻿#include "Trigonometry.h"
 #include <cmath>
 
-float DegreeToRadians(float degrees) {
+
+constexpr float DegreeToRadians(float degrees) {
     return TO_RADIANS_MULTIPLIER * degrees;
 }
 
-float RadiansToDegrees(float radians) {
+constexpr float RadiansToDegrees(float radians) {
     return TO_DEGREES_MULTIPLIER * radians;
 }
 
-float normalize_angle(float angle) {
+constexpr float normalize_angle(float angle) {
     return RadiansToDegrees(normalize_radians(DegreeToRadians(angle)));
 }
 
-float normalize_radians(float radians) {
-    if (fabs(radians) > PI) {
+constexpr float fabs_const(float value) {
+    return (value < 0.0f) ? -value : value;
+}
+
+constexpr float normalize_radians(float radians) {
+    if (fabs_const(radians) > PI) {
         radians += PI;
 
-        radians -= floor(radians / TWOPI) * TWOPI;
+        radians -= std::floor(radians / TWOPI) * TWOPI;
 
         radians -= PI;
     }
