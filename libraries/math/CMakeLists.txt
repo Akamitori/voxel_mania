@@ -7,6 +7,7 @@ add_and_export_library(LinearAlgebra TYPE SHARED FILES
         Matrix3D.cpp 
         Matrix4D.cpp
         Transformations.cpp
+        Plane.cpp
 )
 add_and_export_library(Trigonometry TYPE SHARED FILES Trigonometry.cpp)
 
