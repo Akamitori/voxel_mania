@@ -4,6 +4,7 @@
 #include <vector>
 #include <algorithm>
 #include <format>
+#include <Transformations.h>
 
 #include <GL/glew.h>
 #include <SDL3/SDL_keyboard.h>
@@ -174,8 +175,9 @@ int main() {
 
     Matrix4D world_space_matrix(1);
 
-    world_space_matrix[1] = Vector4D(0, 0, -1, 0);
-    world_space_matrix[2] = Vector4D(0, 1, 0, 0);
+    world_space_matrix[1] = Vector4D(0, 0, 1, 0);
+    world_space_matrix[2] = Vector4D(0, -1, 0, 0);
+    world_space_matrix = translate(world_space_matrix, Vector3D(0, 4, 0));
 
     AppData appData;
     appData.view_dirty = true;
@@ -184,7 +186,6 @@ int main() {
                                                    static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-
 
     Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
@@ -198,6 +199,7 @@ int main() {
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LEQUAL);
     glDepthRange(0.0f, 1.0f);
+
 
     // Build and compile shader program
     unsigned int shaderProgram = InitializeProgram("program1");

@@ -12,32 +12,33 @@
 #include "math_ops.h"
 #include "Transformations.h"
 
+std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
+    lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
+    return lhs;
+}
 
 //TODO unify those functions after I move to SDL2
 void MoveCameraZ(Camera &camera, const float modifier) {
     camera.position += camera.forward * modifier * camera.camera_speed;
+    std::cout << camera.position << std::endl;
 }
 
 void MoveCameraX(Camera &camera, const float modifier) {
     camera.position += camera.right * modifier * camera.camera_speed;
+    std::cout << camera.position << std::endl;
 }
 
 void MoveCameraY(Camera &camera, float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
-}
-
-
-
-std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
-    lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
-    return lhs;
+    std::cout << camera.position << std::endl;
 }
 
 
 void RotateCamera(Camera &camera, const short azimuth_modifier, const short elevation_modifier) {
     assert(("Rotation invoked without any rotation taking place", azimuth_modifier != 0 || elevation_modifier != 0));
     assert(
-        ("Elevation is 90 degrees which is not covered", !math_ops::is_equal(camera.max_elevation_rotation, DegreeToRadians
+        ("Elevation is 90 degrees which is not covered", !math_ops::is_equal(camera.max_elevation_rotation,
+            DegreeToRadians
             (90.f))));
 
     if (azimuth_modifier != 0) {
@@ -72,26 +73,22 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
 }
 
 
-
 Matrix4D CameraLookAtMatrix(const Camera &camera) {
     const Vector3D camera_target = camera.position + camera.forward;
-    return look_at(camera.position,camera_target,camera.up);
+    return look_at(camera.position, camera_target, camera.up);
 }
 
 Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
     Matrix4D perspectiveMatrix(0);
 
-    const float tan_fov_2 = tan(DegreeToRadians(FOV / 2));
-    const float tan_fov_2_invert = 1 / tan_fov_2;
-    const float aspect_inverse = 1 / aspect;
+    const float tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
 
     const float z_diff = 1 / (z_far - z_near);
-    perspectiveMatrix[0].x = tan_fov_2_invert * aspect_inverse;
+    perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
     perspectiveMatrix[1].y = tan_fov_2_invert;
     perspectiveMatrix[2].z = -(z_far + z_near) * z_diff;
     perspectiveMatrix[2].w = -1;
     perspectiveMatrix[3].z = -2 * z_near * z_far * z_diff;
-  
     return perspectiveMatrix;
 }
 
