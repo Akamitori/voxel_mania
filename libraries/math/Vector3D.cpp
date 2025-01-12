@@ -10,6 +10,10 @@ float magnitude(const Vector3D &v) {
     return (sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
 }
 
+float magnitude_squared(const Vector3D &v) {
+    return v.x * v.x + v.y * v.y + v.z * v.z;
+}
+
 Vector3D normalize(const Vector3D &v) {
     return (v / magnitude(v));
 }
@@ -20,7 +24,15 @@ Vector3D cross(const Vector3D &a, const Vector3D &b) {
                     a.x * b.y - a.y * b.x);
 }
 
-Vector3D &operator *=(Vector3D &v, float s) {
+float distance_between_point_and_line(
+    const Vector3D &point,
+    const Vector3D &point_line,
+    const Vector3D &direction_line) {
+    const Vector3D a = cross(point - point_line, direction_line);
+    return std::sqrt(dot(a, a) / dot(direction_line, direction_line));
+}
+
+Vector3D &operator *=(Vector3D &v, const float s) {
     v.x *= s;
     v.y *= s;
     v.z *= s;
@@ -49,7 +61,7 @@ Vector3D &operator -=(Vector3D &v1, const Vector3D &v2) {
     return v1;
 }
 
-Vector3D operator *(const Vector3D &v, float s) {
+Vector3D operator *(const Vector3D &v, const float s) {
     return (Vector3D(v.x * s, v.y * s, v.z * s));
 }
 
