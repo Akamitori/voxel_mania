@@ -3,18 +3,19 @@
 
 #include "export.h"
 
-struct Vector4D
-{
-    float		x, y, z, w;
+struct Vector4D {
+    float x, y, z, w;
 };
 
-EXPORTED Vector4D& operator *=(Vector4D& v,float s);
+EXPORTED float dot(const Vector4D &v1, const Vector4D &v2);
 
-EXPORTED Vector4D& operator /=(Vector4D& v,float s);
+EXPORTED Vector4D &operator *=(Vector4D &v, float s);
 
-EXPORTED Vector4D& operator +=(Vector4D& v1, const Vector4D& v2);
+EXPORTED Vector4D &operator /=(Vector4D &v, float s);
 
-EXPORTED Vector4D& operator -=(Vector4D& v1,const Vector4D& v2);
+EXPORTED Vector4D &operator +=(Vector4D &v1, const Vector4D &v2);
+
+EXPORTED Vector4D &operator -=(Vector4D &v1, const Vector4D &v2);
 
 EXPORTED Vector4D operator *(const Vector4D &v, float s);
 
