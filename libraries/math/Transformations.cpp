@@ -133,11 +133,12 @@ Vector3D transform_point(const Matrix4D &m, const Vector3D &p) {
     const Vector4D column_vector_0 = m[0];
     const Vector4D column_vector_1 = m[1];
     const Vector4D column_vector_2 = m[2];
+    const Vector4D column_vector_3 = m[3];
 
     return Vector3D{
-        column_vector_0.x * p.x + column_vector_1.x * p.y + column_vector_2.x * p.z + column_vector_0.w,
-        column_vector_0.y * p.x + column_vector_1.y * p.y + column_vector_2.y * p.z + column_vector_1.w,
-        column_vector_0.z * p.x + column_vector_1.z * p.y + column_vector_2.z * p.z + column_vector_2.w
+        column_vector_0.x * p.x + column_vector_1.x * p.y + column_vector_2.x * p.z + column_vector_3.x,
+        column_vector_0.y * p.x + column_vector_1.y * p.y + column_vector_2.y * p.z + column_vector_3.y,
+        column_vector_0.z * p.x + column_vector_1.z * p.y + column_vector_2.z * p.z + column_vector_3.z
     };
 }
 
