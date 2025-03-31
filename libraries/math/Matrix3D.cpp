@@ -25,7 +25,7 @@ const Vector3D &Matrix3D::operator[](const int index) const {
     return column_vectors[index];
 }
 
-Vector3D &Matrix3D::operator[](int index) {
+Vector3D &Matrix3D::operator[](const int index) {
     return column_vectors[index];
 }
 
@@ -47,10 +47,12 @@ Matrix3D operator *(const Matrix3D& A, const Matrix3D& B) {
 }
 
 Matrix3D& Matrix3D::operator=(const Matrix3D &b) {
-    this->column_vectors[0]=b.column_vectors[0];
-    this->column_vectors[1]=b.column_vectors[1];
-    this->column_vectors[2]=b.column_vectors[2];
-    return (*this);
+    if (&b!=this) {
+        this->column_vectors[0]=b.column_vectors[0];
+        this->column_vectors[1]=b.column_vectors[1];
+        this->column_vectors[2]=b.column_vectors[2]; 
+    }
+    return *this;
 }
 
 Matrix3D inverse(const Matrix3D &M) {
@@ -62,7 +64,7 @@ Matrix3D inverse(const Matrix3D &M) {
     const Vector3D r1 = cross(c, a);
     const Vector3D r2 = cross(a, b);
 
-    float invDet = 1.0F / dot(r2, c);
+    const float invDet = 1.0F / dot(r2, c);
 
     return {
         r0.x * invDet, r0.y * invDet, r0.z * invDet,

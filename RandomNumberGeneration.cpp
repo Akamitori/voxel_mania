@@ -9,7 +9,7 @@ RandomNumberGeneration CreateRandomEngine(const unsigned int seed) {
 
 int RandomIntInclusive(RandomNumberGeneration &randomEngine, const int min, const int max) {
     if (randomEngine.min_i != min || randomEngine.max_i != max) {
-        randomEngine.d_int = std::uniform_int_distribution<>{min, max};
+        randomEngine.d_int = std::uniform_int_distribution{min, max};
         randomEngine.min_i = min;
         randomEngine.max_i = max;
     }

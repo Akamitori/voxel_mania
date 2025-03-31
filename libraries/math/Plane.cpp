@@ -4,10 +4,10 @@
 Plane::Plane(): normal{}, w{} {
 }
 
-Plane::Plane(float nx, float ny, float nz, float d) : normal{nx, ny, nz}, w{d} {
+Plane::Plane(const float nx, const float ny, const float nz, const float d) : normal{nx, ny, nz}, w{d} {
 }
 
-Plane::Plane(const Vector3D &n, float d) : normal{n}, w{d} {
+Plane::Plane(const Vector3D &n, const float d) : normal{n}, w{d} {
 }
 
 float dot_vector(const Plane &plane, const Vector3D &v) {

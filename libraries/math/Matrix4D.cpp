@@ -10,10 +10,10 @@ Matrix4D::Matrix4D(const Vector4D &a, const Vector4D &b, const Vector4D &c, cons
 }
 
 Matrix4D::Matrix4D(
-    float n00, float n01, float n02, float n03,
-    float n10, float n11, float n12, float n13,
-    float n20, float n21, float n22, float n23,
-    float n30, float n31, float n32, float n33)
+    const float n00, const float n01, const float n02, const float n03,
+    const float n10, const float n11, const float n12, const float n13,
+    const float n20, const float n21, const float n22, const float n23,
+    const float n30, const float n31, const float n32, const float n33)
     : column_vectors{
         Vector4D{n00, n10, n20, n30},
         Vector4D{n01, n11, n21, n31},
@@ -22,7 +22,7 @@ Matrix4D::Matrix4D(
     } {
 }
 
-Matrix4D::Matrix4D(float a)
+Matrix4D::Matrix4D(const float a)
     : column_vectors{
         Vector4D{a, 0, 0, 0},
         Vector4D{0, a, 0, 0},
@@ -31,8 +31,7 @@ Matrix4D::Matrix4D(float a)
     } {
 }
 
-Matrix4D::Matrix4D(const Matrix4D &m) :Matrix4D(m[0],m[1],m[2],m[3]) {
-    
+Matrix4D::Matrix4D(const Matrix4D &m) : Matrix4D(m[0], m[1], m[2], m[3]) {
 }
 
 
@@ -40,15 +39,17 @@ const Vector4D &Matrix4D::operator[](const int index) const {
     return column_vectors[index];
 }
 
-Matrix4D& Matrix4D::operator=(const Matrix4D &b) {
-    this->column_vectors[0]=b.column_vectors[0];
-    this->column_vectors[1]=b.column_vectors[1];
-    this->column_vectors[2]=b.column_vectors[2];
-    this->column_vectors[3]=b.column_vectors[3];
-    return (*this);
+Matrix4D &Matrix4D::operator=(const Matrix4D &b) {
+    if (this != &b) {
+        this->column_vectors[0] = b.column_vectors[0];
+        this->column_vectors[1] = b.column_vectors[1];
+        this->column_vectors[2] = b.column_vectors[2];
+        this->column_vectors[3] = b.column_vectors[3];
+    }
+    return *this;
 }
 
-Vector4D &Matrix4D::operator[](int index) {
+Vector4D &Matrix4D::operator[](const int index) {
     return column_vectors[index];
 }
 
@@ -110,5 +111,3 @@ Matrix4D operator *(const Matrix4D &A, const Matrix4D &B) {
         A[0].w * B[3].x + A[1].w * B[3].y + A[2].w * B[3].z + A[3].w * B[3].w
     };
 }
-
-
