@@ -28,7 +28,7 @@ void MoveCameraX(Camera &camera, const float modifier) {
     std::cout << camera.position << std::endl;
 }
 
-void MoveCameraY(Camera &camera, float modifier) {
+void MoveCameraY(Camera &camera, const float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
     std::cout << camera.position << std::endl;
 }

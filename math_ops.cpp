@@ -18,10 +18,10 @@ bool math_ops::is_equal(const double a, const double b, const double EPSILON) {
     return std::abs(a - b) <= EPSILON;
 }
 
-float math_ops::lerp(float value, float start, float end) {
+float math_ops::lerp(const float value, const float start, const float end) {
     return start + value * (end - start);
 }
 
-double math_ops::lerp(double value, double start, double end) {
+double math_ops::lerp(const double value, const double start, const double end) {
     return start + value * (end - start);
 }

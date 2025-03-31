@@ -2,23 +2,15 @@
 #include <cmath>
 
 
-constexpr float DegreeToRadians(float degrees) {
+float DegreeToRadians(const float degrees) {
     return TO_RADIANS_MULTIPLIER * degrees;
 }
 
-constexpr float RadiansToDegrees(float radians) {
+float RadiansToDegrees(const float radians) {
     return TO_DEGREES_MULTIPLIER * radians;
 }
 
-constexpr float normalize_angle(float angle) {
-    return RadiansToDegrees(normalize_radians(DegreeToRadians(angle)));
-}
-
-constexpr float fabs_const(float value) {
-    return (value < 0.0f) ? -value : value;
-}
-
-constexpr float normalize_radians(float radians) {
+float normalize_radians(float radians) {
     if (fabs_const(radians) > PI) {
         radians += PI;
 
@@ -28,4 +20,12 @@ constexpr float normalize_radians(float radians) {
     }
 
     return radians;
+}
+
+float normalize_angle(const float angle) {
+    return RadiansToDegrees(normalize_radians(DegreeToRadians(angle)));
+}
+
+float fabs_const(const float value) {
+    return value < 0.0f ? -value : value;
 }

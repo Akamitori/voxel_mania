@@ -16,7 +16,6 @@
 #include "data/cube.h"
 #include "Matrix4D.h"
 
-
 const std::string LOCAL_FILE_DIR("data/");
 // Vertex Shader source code
 
@@ -31,9 +30,9 @@ std::string FindFileOrThrow(const std::string &strBasename, const std::string &p
 }
 
 // Function to compile shaders
-unsigned int compileShader(unsigned int type, const std::string &source) {
+unsigned int compileShader(const unsigned int type, const std::string &source) {
     const unsigned int id = glCreateShader(type);
-    auto source_c_str = source.c_str();
+    const auto source_c_str = source.c_str();
     glShaderSource(id, 1, &source_c_str, nullptr);
     glCompileShader(id);
 
@@ -102,7 +101,7 @@ void handle_window_resize(AppData &app_data, const int width, const int height) 
     glViewport(0, 0, width, height);
 }
 
-void Draw_Cursor(unsigned int cursorProgram, unsigned int cursor_vao) {
+void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao) {
     glUseProgram(cursorProgram);
     glBindVertexArray(cursor_vao);
     glDrawArrays(GL_LINES, 0, 8);
@@ -151,7 +150,7 @@ int main() {
         return -1;
     }
 
-    SDL_GLContext open_gl_context = SDL_GL_CreateContext(window);
+    const SDL_GLContext open_gl_context = SDL_GL_CreateContext(window);
 
     if (!open_gl_context) {
         std::cerr << "Failed to create OpenGL context. Error : " << SDL_GetError() << std::endl;
@@ -163,8 +162,7 @@ int main() {
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
 
-    GLenum err = glewInit();
-    if (err != GLEW_OK) {
+    if (const GLenum err = glewInit(); err != GLEW_OK) {
         std::cerr << "glewInitFailed: " << glewGetErrorString(err) << std::endl;
 
         SDL_GL_DestroyContext(open_gl_context);
@@ -187,11 +185,11 @@ int main() {
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
 
-    Matrix4D triangle_model_view_space(1);
+    const Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
     glViewport(0, 0, 800, 600);
-
+    
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -202,23 +200,22 @@ int main() {
 
 
     // Build and compile shader program
-    unsigned int shaderProgram = InitializeProgram("program1");
-    unsigned int cursorProgram = InitializeProgram("cursor_program");
+    const unsigned int shaderProgram = InitializeProgram("program1");
+    const unsigned int cursorProgram = InitializeProgram("cursor_program");
 
-    GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
-    GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
-    GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
-
-
-    Vector4D color(1, 0, 0, 1);
+    const GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
+    const GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
+    const GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
+    
+    constexpr Vector4D color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, &color.x);
 
-    cube my_cube;
+    const cube my_cube;
 
-    float centerX = static_cast<float>(screenWidth) / 2.0f;
-    float centerY = static_cast<float>(screenHeight) / 2.0f;
-    std::array cursor{
+    constexpr float centerX = static_cast<float>(screenWidth) / 2.0f;
+    constexpr float centerY = static_cast<float>(screenHeight) / 2.0f;
+    const std::array cursor{
         normalize_coord(centerX - 10, static_cast<float>(screenWidth)),
         normalize_coord(centerY, static_cast<float>(screenHeight)),
         normalize_coord(centerX + 10, static_cast<float>(screenWidth)),
@@ -300,7 +297,7 @@ int main() {
             appData.view_dirty = false;
         }
 
-        glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, 0);
+        glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, nullptr);
 
         glBindVertexArray(0);
         glUseProgram(0);

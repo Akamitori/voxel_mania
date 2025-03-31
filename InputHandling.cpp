@@ -6,7 +6,7 @@
 #include "AppData.h"
 #include "Camera.h"
 
-void KeyDown(SDL_Scancode key, AppData& appData) {
+void KeyDown(const SDL_Scancode key, AppData& appData) {
     bool camera_changed = true;
 
     switch (key) {

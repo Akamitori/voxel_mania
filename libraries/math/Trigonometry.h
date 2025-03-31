@@ -17,4 +17,6 @@ EXPORTED constexpr float normalize_radians(float radians);
 
 EXPORTED constexpr float normalize_angle(float angle);
 
+EXPORTED constexpr float fabs_const(float value); 
+
 #endif //TRIGONOMETRY_H
