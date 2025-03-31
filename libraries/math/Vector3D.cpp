@@ -7,7 +7,7 @@ float dot(const Vector3D &a, const Vector3D &b) {
 }
 
 float magnitude(const Vector3D &v) {
-    return (sqrt(v.x * v.x + v.y * v.y + v.z * v.z));
+    return sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
 }
 
 float magnitude_squared(const Vector3D &v) {
@@ -15,7 +15,7 @@ float magnitude_squared(const Vector3D &v) {
 }
 
 Vector3D normalize(const Vector3D &v) {
-    return (v / magnitude(v));
+    return v / magnitude(v);
 }
 
 Vector3D cross(const Vector3D &a, const Vector3D &b) {
@@ -62,22 +62,22 @@ Vector3D &operator -=(Vector3D &v1, const Vector3D &v2) {
 }
 
 Vector3D operator *(const Vector3D &v, const float s) {
-    return (Vector3D(v.x * s, v.y * s, v.z * s));
+    return Vector3D(v.x * s, v.y * s, v.z * s);
 }
 
 Vector3D operator /(const Vector3D &v, float s) {
     s = 1.0F / s;
-    return (Vector3D(v.x * s, v.y * s, v.z * s));
+    return Vector3D(v.x * s, v.y * s, v.z * s);
 }
 
 Vector3D operator -(const Vector3D &v) {
-    return (Vector3D(-v.x, -v.y, -v.z));
+    return Vector3D(-v.x, -v.y, -v.z);
 }
 
 Vector3D operator +(const Vector3D &a, const Vector3D &b) {
-    return (Vector3D(a.x + b.x, a.y + b.y, a.z + b.z));
+    return Vector3D(a.x + b.x, a.y + b.y, a.z + b.z);
 }
 
 Vector3D operator -(const Vector3D &a, const Vector3D &b) {
-    return (Vector3D(a.x - b.x, a.y - b.y, a.z - b.z));
+    return Vector3D(a.x - b.x, a.y - b.y, a.z - b.z);
 }

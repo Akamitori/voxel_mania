@@ -2,15 +2,15 @@
 // Created by PETROS on 09/11/2024.
 //
 
-#ifndef INPUTHANDLING_H
-#define INPUTHANDLING_H
+#ifndef INPUT_HANDLING_H
+#define INPUT_HANDLING_H
 #include <SDL3/SDL_scancode.h>
 
 
-class AppData;
+struct AppData;
 
 
 void KeyDown(SDL_Scancode key, AppData& appData);
 
 
-#endif //INPUTHANDLING_H
+#endif //INPUT_HANDLING_H

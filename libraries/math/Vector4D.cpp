@@ -7,7 +7,7 @@ float dot(const Vector4D &v1, const Vector4D &v2) {
            v1.w * v2.w;
 }
 
-Vector4D &operator *=(Vector4D &v, float s) {
+Vector4D &operator *=(Vector4D &v, const float s) {
     v.x *= s;
     v.y *= s;
     v.z *= s;
@@ -40,10 +40,10 @@ Vector4D &operator -=(Vector4D &v1, const Vector4D &v2) {
     return v1;
 }
 
-Vector4D operator *(const Vector4D &v, float s) {
-    return (Vector4D(v.x * s, v.y * s, v.z * s, v.w * s));
+Vector4D operator *(const Vector4D &v, const float s) {
+    return Vector4D(v.x * s, v.y * s, v.z * s, v.w * s);
 }
 
 Vector4D operator +(const Vector4D &a, const Vector4D &b) {
-    return (Vector4D(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w));
+    return Vector4D(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }

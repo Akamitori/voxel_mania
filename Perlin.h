@@ -27,11 +27,11 @@ class Perlin {
         }
     };
 
-    explicit Perlin(unsigned int seed, float frequency) : frequency{frequency}, rng{CreateRandomEngine(seed)} {
+    explicit Perlin(const unsigned int seed, const float frequency) : frequency{frequency}, rng{CreateRandomEngine(seed)} {
         CalculatePermutation(*this);
     }
 
-    explicit Perlin(unsigned int seed, float frequency, int octaves) : frequency{frequency}, octaves(octaves), rng{CreateRandomEngine(seed)} {
+    explicit Perlin(const unsigned int seed, const float frequency, const int octaves) : frequency{frequency}, octaves(octaves), rng{CreateRandomEngine(seed)} {
         CalculatePermutation(*this);
     }
 

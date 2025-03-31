@@ -6,7 +6,7 @@
 #include "math_ops.h"
 
 
-double fade(double t) {
+double fade(const double t) {
     return ((6 * t - 15) * t + 10) * t * t * t;
 }
 
@@ -15,7 +15,7 @@ Perlin CreatePerlin(const unsigned int seed, const float frequency) {
     return Perlin{seed, frequency};
 }
 
-Perlin CreatePerlinFBM(unsigned int seed, float frequency, int octaves) {
+Perlin CreatePerlinFBM(const unsigned int seed, const float frequency, const int octaves) {
     return Perlin{seed, frequency, octaves};
 }
 
@@ -57,15 +57,15 @@ double Noise2D(const Perlin &p, float x, float y) {
     );
 }
 
-double FBMNoise2D(const Perlin &p, float x, float y) {
+double FBMNoise2D(const Perlin &p, const float x, const float y) {
     double result = 0;
     double amplitude = 1.0;
 
     // TODO revisit this is we need thread safety as well and copying turns out to be too expensive
     // this is safe since since the mutation is reverted by the end of the call
-    auto &p_mut=const_cast<Perlin&>(p);
-    float original_frequency = p_mut.frequency;
-    
+    auto &p_mut = const_cast<Perlin &>(p);
+    const float original_frequency = p_mut.frequency;
+
     assert(("Octaves should be higher than 0",p_mut.octaves>0));
 
     for (int octaves = 0; octaves < p_mut.octaves; octaves++) {
@@ -88,8 +88,8 @@ void CalculatePermutation(Perlin &p) {
     }
 
     for (int i = permutation.size() - 1; i > 0; i--) {
-        int random_i = RandomIntInclusive(p.rng, 0, i);
-        int temp = permutation[random_i];
+        const int random_i = RandomIntInclusive(p.rng, 0, i);
+        const int temp = permutation[random_i];
         permutation[random_i] = permutation[i];
         permutation[i] = temp;
     }
@@ -104,15 +104,16 @@ void CalculatePermutation(Perlin &p) {
 
 #include <fstream>
 #include <iostream>
-void Write_noise_to_file(std::ofstream& file, double noise) {
+
+void Write_noise_to_file(std::ofstream &file, const double noise) {
     int intensity = static_cast<int>((noise + 1.0f) * 127.5f); // Map [-1, 1] to [0, 255]
-    intensity = intensity < 0 ? 0 : (intensity > 255 ? 255 : intensity);
+    intensity = intensity < 0 ? 0 : intensity > 255 ? 255 : intensity;
 
     file << intensity << " " << intensity << " " << intensity << " ";
 }
 
 // Generate a grayscale image from Perlin noise and save it as a PPM file
-void CreatePerlinNoiseImage(const Perlin &p, const std::string &filename, int width, int height) {
+void CreatePerlinNoiseImage(const Perlin &p, const std::string &filename, const int width, const int height) {
     std::ofstream file(filename + ".ppm", std::ios::binary);
     std::ofstream file2(filename + "_2.ppm", std::ios::binary);
     if (!file) {
@@ -128,13 +129,13 @@ void CreatePerlinNoiseImage(const Perlin &p, const std::string &filename, int wi
     file2 << "P3\n"; // P2 format for grayscale
     file2 << width << " " << height << "\n"; // Image dimensions
     file2 << "255\n"; // Max grayscale value
-    
+
     // Generate Perlin noise and write pixel values
     for (int j = 0; j < height; ++j) {
         for (int i = 0; i < width; ++i) {
             // Map noise value to RGB
             Write_noise_to_file(file, Noise2D(p, i, j));
-            Write_noise_to_file(file2, FBMNoise2D(const_cast<Perlin&>(p),i,j));
+            Write_noise_to_file(file2, FBMNoise2D(p, i, j));
         }
         file << "\n";
         file2 << "\n";
