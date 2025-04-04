@@ -16,6 +16,11 @@
 #include "data/cube.h"
 #include "Matrix4D.h"
 
+#include <imgui.h>
+#include <imgui_impl_sdl3.h>
+#include <imgui_impl_opengl3.h>
+
+
 const std::string LOCAL_FILE_DIR("data/");
 // Vertex Shader source code
 
@@ -109,7 +114,7 @@ void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao
     glUseProgram(0);
 }
 
-void InitializeCursorVBO(const std::array<float, 8> &cursor, unsigned int &cursor_vao, unsigned int &cursor_vbo) {
+void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &cursor_vao, unsigned int &cursor_vbo) {
     glGenVertexArrays(1, &cursor_vao);
     glGenBuffers(1, &cursor_vbo);
 
@@ -120,7 +125,7 @@ void InitializeCursorVBO(const std::array<float, 8> &cursor, unsigned int &curso
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * cursor.size(), cursor.data(), GL_STATIC_DRAW);
 
     // Define the vertex attributes (position)
-    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), nullptr);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
     glEnableVertexAttribArray(0);
 
     // Unbind the VAO
@@ -171,6 +176,32 @@ int main() {
         return -1;
     }
 
+    // Setup Dear ImGui context
+    IMGUI_CHECKVERSION();
+    ImGui::CreateContext();
+    ImGuiIO& io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // so we can dock things to windows
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // so our ui can exist outside the window
+    //io.ConfigViewportsNoAutoMerge = true;
+    //io.ConfigViewportsNoTaskBarIcon = true;
+
+    // Setup Dear ImGui style
+    ImGui::StyleColorsDark();
+    //ImGui::StyleColorsLight();
+
+    // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
+    ImGuiStyle& style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+    {
+        style.WindowRounding = 0.0f;
+        style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+    }
+    
+    ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
+    ImGui_ImplOpenGL3_Init();
+
     Matrix4D world_space_matrix(1);
     world_space_matrix = translate(world_space_matrix, Vector3D(0, 4, 0));
 
@@ -217,13 +248,19 @@ int main() {
     const std::array cursor{
         normalize_coord(centerX - 10, static_cast<float>(screenWidth)),
         normalize_coord(centerY, static_cast<float>(screenHeight)),
+        -1.0f,
+        
         normalize_coord(centerX + 10, static_cast<float>(screenWidth)),
         normalize_coord(centerY, static_cast<float>(screenHeight)),
+        -1.0f,
 
         normalize_coord(centerX, static_cast<float>(screenWidth)),
         normalize_coord(centerY - 10, static_cast<float>(screenHeight)),
+        -1.0f,
+        
         normalize_coord(centerX, static_cast<float>(screenWidth)),
-        normalize_coord(centerY + 10, static_cast<float>(screenHeight))
+        normalize_coord(centerY + 10, static_cast<float>(screenHeight)),
+        -1.0f,
     };
 
     glUseProgram(shaderProgram);
@@ -279,6 +316,8 @@ int main() {
                     break;
                 }
             }
+
+            ImGui_ImplSDL3_ProcessEvent(&event); // Forward your event to backend
         }
         // Clear the screen
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
@@ -303,6 +342,31 @@ int main() {
 
         Draw_Cursor(cursorProgram, cursor_vao);
 
+        // (Where your code calls SDL_PollEvent())
+        
+
+        // (After event loop)
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL3_NewFrame();
+        ImGui::NewFrame();
+        ImGui::ShowDemoWindow(); // Show demo window! :)
+
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        // Update and Render additional Platform Windows
+        // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+        //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+        }
+
         SDL_GL_SwapWindow(window);
     }
 
@@ -315,5 +379,10 @@ int main() {
     SDL_DestroyWindow(window);
     SDL_GL_DestroyContext(open_gl_context);
     SDL_Quit();
+
+    ImGui_ImplOpenGL3_Shutdown();
+    ImGui_ImplSDL3_Shutdown();
+    ImGui::DestroyContext();
+    
     return 0;
 }

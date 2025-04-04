@@ -35,8 +35,10 @@
 
 
     # Install the library
-    install(TARGETS ${libraryName}
-            RUNTIME DESTINATION ${BINARY_DIRECTORY}       # DLLs
-            LIBRARY DESTINATION ${BINARY_DIRECTORY_LIBS}  # .so/.dylib
-    )
+    if(NOT library_type STREQUAL "STATIC")
+        install(TARGETS ${libraryName}
+                RUNTIME DESTINATION ${BINARY_DIRECTORY}       # DLLs
+                LIBRARY DESTINATION ${BINARY_DIRECTORY_LIBS}  # .so/.dylib
+        )
+    endif ()
 endfunction()
