@@ -6,7 +6,7 @@
 #include "AppData.h"
 #include "Camera.h"
 
-void KeyDown(const SDL_Scancode key, AppData& appData) {
+void KeyDown(const SDL_Scancode key, AppData &appData) {
     bool camera_changed = true;
 
     switch (key) {
@@ -27,11 +27,11 @@ void KeyDown(const SDL_Scancode key, AppData& appData) {
             break;
         }
         case SDL_SCANCODE_SPACE: {
-            MoveCameraY(appData.camera, 1);
+            MoveCameraY(appData.camera, -1);
             break;
         }
         case SDL_SCANCODE_LSHIFT: {
-            MoveCameraY(appData.camera, -1);
+            MoveCameraY(appData.camera, 1);
             break;
         }
         case SDL_SCANCODE_RIGHT: {
@@ -43,11 +43,11 @@ void KeyDown(const SDL_Scancode key, AppData& appData) {
             break;
         }
         case SDL_SCANCODE_UP: {
-            RotateCamera(appData.camera, 0, 1);
+            RotateCamera(appData.camera, 0, -1);
             break;
         }
         case SDL_SCANCODE_DOWN: {
-            RotateCamera(appData.camera, 0, -1);
+            RotateCamera(appData.camera, 0, 1);
             break;
         }
         default: {

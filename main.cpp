@@ -172,9 +172,6 @@ int main() {
     }
 
     Matrix4D world_space_matrix(1);
-
-    world_space_matrix[1] = Vector4D(0, 0, 1, 0);
-    world_space_matrix[2] = Vector4D(0, -1, 0, 0);
     world_space_matrix = translate(world_space_matrix, Vector3D(0, 4, 0));
 
     AppData appData;
@@ -185,11 +182,11 @@ int main() {
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
 
-    const Matrix4D triangle_model_view_space(1);
+    Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
     glViewport(0, 0, 800, 600);
-    
+
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
     glFrontFace(GL_CCW);
@@ -197,6 +194,8 @@ int main() {
     glDepthMask(GL_TRUE);
     glDepthFunc(GL_LEQUAL);
     glDepthRange(0.0f, 1.0f);
+
+    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
 
 
     // Build and compile shader program
@@ -206,12 +205,12 @@ int main() {
     const GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
     const GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
     const GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
-    
+
     constexpr Vector4D color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, &color.x);
 
-    const cube my_cube;
+    constexpr cube my_cube;
 
     constexpr float centerX = static_cast<float>(screenWidth) / 2.0f;
     constexpr float centerY = static_cast<float>(screenHeight) / 2.0f;
