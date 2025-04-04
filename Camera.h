@@ -23,12 +23,12 @@ Matrix4D PerspectiveMatrix(float FOV, float z_near, float z_far, float aspect);
 
 void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, float FOV, float aspect);
 
-void RotateCamera(Camera & camera, short azimuth_modifier, short elevation_modifier);
+void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
 
 struct Camera {
-    const Vector3D basis_forward{0, 0, 1.f};
     const Vector3D basis_right{1, 0, 0.f};
-    const Vector3D basis_up{0.0f, -1.0f, 0.0f};
+    const Vector3D basis_forward{0, 1, 0};
+    const Vector3D basis_up{0.0f, 0, -1.0f};
     Vector3D position{0.0f, 0, 0.0f};
     Vector3D forward{basis_forward};
     Vector3D right{basis_right};

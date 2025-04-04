@@ -96,27 +96,6 @@ Matrix4D translate(const Matrix4D &m, const Vector3D &v) {
     return result;
 }
 
-Matrix4D look_at(const Vector3D &eye, const Vector3D &center, const Vector3D &up) {
-    const Vector3D f(normalize(center - eye));
-    const Vector3D s(normalize(cross(f, up)));
-    const Vector3D u(cross(s, f));
-
-    Matrix4D result(1);
-    result[0].x = s.x;
-    result[1].x = s.y;
-    result[2].x = s.z;
-    result[0].y = u.x;
-    result[1].y = u.y;
-    result[2].y = u.z;
-    result[0].z = -f.x;
-    result[1].z = -f.y;
-    result[2].z = -f.z;
-    result[3].x = -dot(s, eye);
-    result[3].y = -dot(u, eye);
-    result[3].z = dot(f, eye);
-    return result;
-}
-
 Vector3D transform_vector(const Matrix4D &m, const Vector3D &v) {
     const Vector4D column_vector_0 = m[0];
     const Vector4D column_vector_1 = m[1];
