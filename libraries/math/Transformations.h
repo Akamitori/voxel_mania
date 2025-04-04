@@ -25,8 +25,6 @@ EXPORTED Matrix4D scale_matrix4D(const Matrix4D &m, const Vector3D &v);
 
 EXPORTED Matrix4D translate(const Matrix4D &m, const Vector3D &v);
 
-EXPORTED Matrix4D look_at(const Vector3D &eye, const Vector3D &center, const Vector3D &up);
-
 EXPORTED Vector3D transform_vector(const Matrix4D &m, const Vector3D &v);
 EXPORTED Vector3D transform_point(const Matrix4D &m, const Vector3D &p);
 EXPORTED Plane transform_plane(const Matrix4D &H, const Plane &f);
