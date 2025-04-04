@@ -4,3 +4,7 @@
 [submodule "libraries/3rd_party/SDL3"]
 	path = libraries/3rd_party/SDL3
 	url = https://github.com/libsdl-org/SDL
+[submodule "libraries/3rd_party/imgui"]
+	path = libraries/3rd_party/imgui
+	url = https://github.com/ocornut/imgui
+	branch = docking
