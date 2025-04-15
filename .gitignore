@@ -1045,3 +1045,6 @@ dkms.conf
 *.dis
 
 .idea/
+
+# folder for 3rd party dll/lib installations for git submodules
+.third_party/
