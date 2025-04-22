@@ -29,7 +29,7 @@ struct Camera {
     const Vector3D basis_right{1, 0, 0.f};
     const Vector3D basis_forward{0, 1, 0};
     const Vector3D basis_up{0.0f, 0, -1.0f};
-    Vector3D position{0.0f, 0, 0.0f};
+    Vector3D position{0.0f, -4, 0.0f};
     Vector3D forward{basis_forward};
     Vector3D right{basis_right};
     Vector3D up{basis_up};
