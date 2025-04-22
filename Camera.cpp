@@ -2,8 +2,6 @@
 // Created by PETROS on 15/10/2024.
 //
 #include "Camera.h"
-
-
 #include <algorithm>
 #include <cassert>
 #include <iostream>
@@ -81,13 +79,13 @@ Matrix4D CameraLookAtMatrix(const Camera &camera) {
 
     const Vector3D f = normalize(center - eye); // Forward vector (in world space)
     const Vector3D s = normalize(cross(camera.up, f)); // Right
-    const Vector3D u = cross(s, f);
+    const Vector3D u = cross(f, s);
 
     Matrix4D mat{
-        {s.x, u.x, -f.x, 0},
-        {s.y, u.y, -f.y, 0},
-        {s.z, u.z, -f.z, 0},
-        {-dot(s, eye), -dot(u, eye), dot(f, eye), 1}
+        {s.x, u.x, f.x, 0},
+        {s.y, u.y, f.y, 0},
+        {s.z, u.z, f.z, 0},
+        {-dot(s, eye), -dot(u, eye), -dot(f, eye), 1}
     };
     return mat;
 }
@@ -99,9 +97,9 @@ Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_fa
 
     const float z_diff = 1 / (z_near - z_far);
     perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
-    perspectiveMatrix[1].y = tan_fov_2_invert;
-    perspectiveMatrix[2].z = -(z_far + z_near) * z_diff;
-    perspectiveMatrix[2].w = -1;
+    perspectiveMatrix[1].y = -tan_fov_2_invert;
+    perspectiveMatrix[2].z = (z_far + z_near) * z_diff;
+    perspectiveMatrix[2].w = 1;
     perspectiveMatrix[3].z = -2 * z_near * z_far * z_diff;
     return perspectiveMatrix;
 }
@@ -110,5 +108,5 @@ void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, const float FOV, const
     const float aspect_inverse = 1 / aspect;
     const float tan_fov_2_invert = 1.f / tan(DegreeToRadians(FOV / 2));
     perspectiveMatrix[0].x = tan_fov_2_invert * aspect_inverse;
-    perspectiveMatrix[1].y = tan_fov_2_invert;
+    perspectiveMatrix[1].y = -tan_fov_2_invert;
 }
