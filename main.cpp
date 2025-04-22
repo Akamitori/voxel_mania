@@ -22,6 +22,7 @@
 
 
 const std::string LOCAL_FILE_DIR("data/");
+constexpr int screenWidth = 800, screenHeight = 600;
 // Vertex Shader source code
 
 std::string FindFileOrThrow(const std::string &strBasename, const std::string &program_id) {
@@ -100,10 +101,12 @@ float normalize_coord(const float value, const float max) {
 }
 
 void handle_window_resize(AppData &app_data, const int width, const int height) {
+    glViewport(0, 0, width, height);
     const float new_aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
     PerspectiveMatrixUpdate(app_data.perspective_matrix, app_data.FOV, new_aspect_ratio);
     app_data.view_dirty = true;
-    glViewport(0, 0, width, height);
+    app_data.screen_height = height;
+    app_data.screen_width = width;
 }
 
 void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao) {
@@ -145,7 +148,6 @@ int main() {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
 
-    constexpr int screenWidth = 800, screenHeight = 600;
     // Create window
     SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", screenWidth, screenHeight,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
@@ -179,11 +181,11 @@ int main() {
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
-    ImGuiIO& io = ImGui::GetIO();
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
-    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
-    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // so we can dock things to windows
-    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // so our ui can exist outside the window
+    ImGuiIO &io = ImGui::GetIO();
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+    io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+    io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // so we can dock things to windows
+    io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // so our ui can exist outside the window
     //io.ConfigViewportsNoAutoMerge = true;
     //io.ConfigViewportsNoTaskBarIcon = true;
 
@@ -192,31 +194,33 @@ int main() {
     //ImGui::StyleColorsLight();
 
     // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-    ImGuiStyle& style = ImGui::GetStyle();
-    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-    {
+    ImGuiStyle &style = ImGui::GetStyle();
+    if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
         style.WindowRounding = 0.0f;
         style.Colors[ImGuiCol_WindowBg].w = 1.0f;
     }
-    
+
     ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
     ImGui_ImplOpenGL3_Init();
 
     Matrix4D world_space_matrix(1);
-    world_space_matrix = translate(world_space_matrix, Vector3D(0, 4, 0));
 
     AppData appData;
+    appData.screen_width = 800;
+    appData.screen_height = 600;
     appData.view_dirty = true;
     appData.FOV = 45;
     appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
-                                                   static_cast<float>(screenWidth) / static_cast<float>(screenHeight));
+                                                   static_cast<float>(appData.screen_width) / static_cast<float>(appData.screen_height));
+    
 
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
+    appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
 
     Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
-    glViewport(0, 0, 800, 600);
+    glViewport(0, 0, appData.screen_width, appData.screen_height);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -243,23 +247,23 @@ int main() {
 
     constexpr cube my_cube;
 
-    constexpr float centerX = static_cast<float>(screenWidth) / 2.0f;
-    constexpr float centerY = static_cast<float>(screenHeight) / 2.0f;
+    constexpr float centerX = static_cast<float>(appData.screen_width) / 2.0f;
+    constexpr float centerY = static_cast<float>(appData.screen_height) / 2.0f;
     const std::array cursor{
-        normalize_coord(centerX - 10, static_cast<float>(screenWidth)),
-        normalize_coord(centerY, static_cast<float>(screenHeight)),
-        -1.0f,
-        
-        normalize_coord(centerX + 10, static_cast<float>(screenWidth)),
-        normalize_coord(centerY, static_cast<float>(screenHeight)),
+        normalize_coord(centerX - 10, static_cast<float>(appData.screen_width)),
+        normalize_coord(centerY, static_cast<float>(appData.screen_height)),
         -1.0f,
 
-        normalize_coord(centerX, static_cast<float>(screenWidth)),
-        normalize_coord(centerY - 10, static_cast<float>(screenHeight)),
+        normalize_coord(centerX + 10, static_cast<float>(appData.screen_width)),
+        normalize_coord(centerY, static_cast<float>(appData.screen_height)),
         -1.0f,
-        
-        normalize_coord(centerX, static_cast<float>(screenWidth)),
-        normalize_coord(centerY + 10, static_cast<float>(screenHeight)),
+
+        normalize_coord(centerX, static_cast<float>(appData.screen_width)),
+        normalize_coord(centerY - 10, static_cast<float>(appData.screen_height)),
+        -1.0f,
+
+        normalize_coord(centerX, static_cast<float>(appData.screen_width)),
+        normalize_coord(centerY + 10, static_cast<float>(appData.screen_height)),
         -1.0f,
     };
 
@@ -343,7 +347,7 @@ int main() {
         Draw_Cursor(cursorProgram, cursor_vao);
 
         // (Where your code calls SDL_PollEvent())
-        
+
 
         // (After event loop)
         // Start the Dear ImGui frame
@@ -358,9 +362,8 @@ int main() {
         // Update and Render additional Platform Windows
         // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
         //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
             SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
@@ -383,6 +386,6 @@ int main() {
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();
     ImGui::DestroyContext();
-    
+
     return 0;
 }
