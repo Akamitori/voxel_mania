@@ -247,8 +247,8 @@ int main() {
 
     constexpr cube my_cube;
 
-    constexpr float centerX = static_cast<float>(appData.screen_width) / 2.0f;
-    constexpr float centerY = static_cast<float>(appData.screen_height) / 2.0f;
+    const float centerX = static_cast<float>(appData.screen_width) / 2.0f;
+    const float centerY = static_cast<float>(appData.screen_height) / 2.0f;
     const std::array cursor{
         normalize_coord(centerX - 10, static_cast<float>(appData.screen_width)),
         normalize_coord(centerY, static_cast<float>(appData.screen_height)),
