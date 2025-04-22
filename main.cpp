@@ -3,6 +3,8 @@
 #include <sstream>
 #include <vector>
 #include <algorithm>
+#include <Bounding.h>
+#include <Clipping.h>
 #include <format>
 #include <Transformations.h>
 
@@ -20,9 +22,8 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 
-
 const std::string LOCAL_FILE_DIR("data/");
-constexpr int screenWidth = 800, screenHeight = 600;
+constexpr int initial_screen_width = 800, initial_screen_height = 600;
 // Vertex Shader source code
 
 std::string FindFileOrThrow(const std::string &strBasename, const std::string &program_id) {
@@ -136,6 +137,34 @@ void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &curs
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
+                                                       const Matrix4D &triangle_model_view_space,
+                                                       const cube &my_cube) {
+    Vector3D vertex_data[8];
+
+    build_frustum_polyhedron(
+        inverse(appData.camera_matrix),
+        1 / tan(DegreeToRadians(appData.FOV) * 0.5f),
+        static_cast<float>(appData.screen_width) / static_cast<float>(appData.screen_height),
+        appData.z_near, appData.z_far, &appData.frustum_polyhedron);
+
+    for (int i = 0, j = 0; i < 8 && j < 24; i++, j += 3) {
+        auto point = Vector3D{
+            my_cube.vertex_data[j],
+            my_cube.vertex_data[j + 1],
+            my_cube.vertex_data[j + 2]
+        };
+
+        // get the cube to global space
+        vertex_data[i] = transform_point(world_space_matrix, transform_point(triangle_model_view_space, point));
+    }
+
+    // check if the cube is contained in the frustum
+    auto a = calculate_axis_aligned_bounding_box(8, vertex_data);
+    auto result = AxisAlignedBoxVisible(6, appData.frustum_polyhedron.plane, a);
+    std::cout << "Box contained : " << result << std::endl;
+}
+
 int main() {
     // Initialize GLFW
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -149,7 +178,7 @@ int main() {
 
 
     // Create window
-    SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", screenWidth, screenHeight,
+    SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", initial_screen_width, initial_screen_height,
                                           SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
     if (!window) {
         std::cerr << "Failed to create SDL window. Error :" << SDL_GetError() << std::endl;
@@ -203,6 +232,7 @@ int main() {
     ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
     ImGui_ImplOpenGL3_Init();
 
+    // left in just for the theory. in practice we don't need it ;)
     Matrix4D world_space_matrix(1);
 
     AppData appData;
@@ -210,13 +240,16 @@ int main() {
     appData.screen_height = 600;
     appData.view_dirty = true;
     appData.FOV = 45;
-    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, 0.1f, 100.f,
-                                                   static_cast<float>(appData.screen_width) / static_cast<float>(appData.screen_height));
+    appData.z_near = 0.1;
+    appData.z_far = 100;
+    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, appData.z_near, appData.z_far,
+                                                   static_cast<float>(appData.screen_width) / static_cast<float>(appData
+                                                       .screen_height));
     
-
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
     appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
 
+    // TODO move triangle_model_view_space out of the view projection matrix at some point
     Matrix4D triangle_model_view_space(1);
     appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
                                      triangle_model_view_space;
@@ -231,21 +264,18 @@ int main() {
     glDepthRange(0.0f, 1.0f);
 
     //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-
-
+    
     // Build and compile shader program
-    const unsigned int shaderProgram = InitializeProgram("program1");
+    const unsigned int world_geometry_program = InitializeProgram("program1");
     const unsigned int cursorProgram = InitializeProgram("cursor_program");
 
-    const GLint perspectiveMatrixUnif = glGetUniformLocation(shaderProgram, "perspectiveMatrix");
+    const GLint world_perspectiveMatrixUnif = glGetUniformLocation(world_geometry_program, "perspectiveMatrix");
     const GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
-    const GLint voxel_color = glGetUniformLocation(shaderProgram, "voxel_color");
+    const GLint voxel_color = glGetUniformLocation(world_geometry_program, "voxel_color");
 
-    constexpr Vector4D color(1, 0, 0, 1);
+    Vector4D cursor_color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
-    glUniform4fv(cursor_color_uniform, 1, &color.x);
-
-    constexpr cube my_cube;
+    glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
 
     const float centerX = static_cast<float>(appData.screen_width) / 2.0f;
     const float centerY = static_cast<float>(appData.screen_height) / 2.0f;
@@ -267,10 +297,12 @@ int main() {
         -1.0f,
     };
 
-    glUseProgram(shaderProgram);
+
+    cube my_cube{};
+
+    glUseProgram(world_geometry_program);
     constexpr Vector4D r(0.5, 0.5, 0.5, 1);
     glUniform4fv(voxel_color, 1, &r.x);
-    glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
 
     GLuint world_vao;
     glGenVertexArrays(1, &world_vao);
@@ -328,17 +360,22 @@ int main() {
         glClearDepth(1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-        glUseProgram(shaderProgram);
-        glBindVertexArray(world_vao);
 
         if (appData.view_dirty) {
-            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix
-                                             * triangle_model_view_space;
+            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
+                                             triangle_model_view_space;
 
-            glUniformMatrix4fv(perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
+            glUseProgram(world_geometry_program);
+            glBindVertexArray(world_vao);
+            glUniformMatrix4fv(world_perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
             appData.view_dirty = false;
+
+            calculate_frustum_planes_and_check_for_visibility(world_space_matrix, appData, triangle_model_view_space,
+                                                              my_cube);
         }
 
+        glUseProgram(world_geometry_program);
+        glBindVertexArray(world_vao);
         glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, nullptr);
 
         glBindVertexArray(0);
@@ -354,7 +391,21 @@ int main() {
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
-        ImGui::ShowDemoWindow(); // Show demo window! :)
+
+        IM_ASSERT(ImGui::GetCurrentContext() != NULL && "Missing Dear ImGui context. Refer to examples app!");
+
+        // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
+        IMGUI_CHECKVERSION();
+
+        Vector4D &t = triangle_model_view_space.column_vectors[3];
+        float *p_as_float3 = reinterpret_cast<float *>(&t);
+
+
+        if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
+        ) {
+            appData.view_dirty = true;
+        }
+        // Show demo window! :)
 
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
