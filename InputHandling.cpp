@@ -58,6 +58,7 @@ void KeyDown(const SDL_Scancode key, AppData &appData) {
 
     if (camera_changed) {
         appData.camera_matrix = CameraLookAtMatrix(appData.camera);
+        appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
         appData.view_dirty = true;
     }
 }
