@@ -1,6 +1,8 @@
-﻿#include "Clipping.h"
+﻿
+#include "Clipping.h"
 #include "Transformations.h"
 #include "Bounding.h"
+#include "Vector3D.h"
 
 #include <algorithm>
 #include <Matrix4D.h>
