@@ -4,7 +4,6 @@
 #include <cstdint>
 
 #include "export.h"
-#include "Vector3D.h"
 #include "Plane.h"
 
 

@@ -5,7 +5,6 @@
 #ifndef CAMERA_H
 #define CAMERA_H
 
-#include <Trigonometry.h>
 #include "Vector3D.h"
 
 struct Camera;
@@ -39,7 +38,8 @@ struct Camera {
     float elevation = 0;
     float rotation_speed_y{0.05};
     float rotation_speed_x{0.05};
-    const float max_elevation_rotation{DegreeToRadians(45.f)};
+    // 45 degrees to radians= 0.785398163f
+    const float max_elevation_rotation{0.785398163f};
 };
 
 

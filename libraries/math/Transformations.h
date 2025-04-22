@@ -3,8 +3,6 @@
 
 #include "export.h"
 
-#include <Vector3D.h>
-
 struct Matrix3D;
 struct Matrix4D;
 
