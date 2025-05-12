@@ -110,6 +110,28 @@ Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_fa
     return perspectiveMatrix;
 }
 
+Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f) {
+    float w_inv = 1.f / (r - l);
+    float h_inv = 1.f / (b - t);
+    float d_inv = 1.f / (f - n);
+
+    Matrix4D ortho_matrix(0);
+
+    ortho_matrix[0].x = 2 * w_inv;
+
+    ortho_matrix[1].y = -2.f * h_inv; // flip y because we need to
+    ortho_matrix[2].z = d_inv;
+
+
+    ortho_matrix[3].x = -(r + l) * w_inv;
+    ortho_matrix[3].y = -(b + t) * h_inv; // flip y cause we need to 
+    ortho_matrix[3].z = -n * d_inv;
+    ortho_matrix[3].w = 1;
+
+    return ortho_matrix;
+}
+
+
 void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, const float FOV, const float aspect) {
     const float aspect_inverse = 1 / aspect;
     const float tan_fov_2_invert = 1.f / tan(DegreeToRadians(FOV / 2));
