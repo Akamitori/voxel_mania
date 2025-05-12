@@ -22,6 +22,8 @@
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 
+#include "Trigonometry.h"
+
 const std::string LOCAL_FILE_DIR("data/");
 constexpr int initial_screen_width = 800, initial_screen_height = 600;
 // Vertex Shader source code
@@ -245,7 +247,7 @@ int main() {
     appData.perspective_matrix = PerspectiveMatrix(appData.FOV, appData.z_near, appData.z_far,
                                                    static_cast<float>(appData.screen_width) / static_cast<float>(appData
                                                        .screen_height));
-    
+
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
     appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
 
@@ -260,11 +262,22 @@ int main() {
     glFrontFace(GL_CCW);
     glEnable(GL_DEPTH_TEST);
     glDepthMask(GL_TRUE);
-    glDepthFunc(GL_LEQUAL);
+
+    // we should map values that are further away to the lower part of [0,1] for better precision
+    // this is because [0,1/2] has better precision from [1/2,1] due to the nature of floating point numbers
+    // in practice -> higher values => closer to the camera
+    glDepthFunc(GL_GEQUAL);
     glDepthRange(0.0f, 1.0f);
 
+    // open gl should expect depth values from [0,1]
+    // for the above depth mapping to work properly on the projection level
+    glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
+
+    //glDisable(GL_DEPTH_TEST);
+
+
     //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-    
+
     // Build and compile shader program
     const unsigned int world_geometry_program = InitializeProgram("program1");
     const unsigned int cursorProgram = InitializeProgram("cursor_program");
@@ -357,7 +370,9 @@ int main() {
         }
         // Clear the screen
         glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-        glClearDepth(1.0f);
+
+        // set the clear value to the value assosiated with the "furthest" object
+        glClearDepth(0.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 
