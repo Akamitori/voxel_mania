@@ -248,6 +248,8 @@ int main() {
                                                    static_cast<float>(appData.screen_width) / static_cast<float>(appData
                                                        .screen_height));
 
+    appData.ortho_projection_matrix = MakeOrthoProjection(-10, 10, 0, 10, -20, 20);
+
     appData.camera_matrix = CameraLookAtMatrix(appData.camera);
     appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
 

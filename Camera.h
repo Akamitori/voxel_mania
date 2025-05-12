@@ -20,6 +20,8 @@ Matrix4D CameraLookAtMatrix(const Camera &camera);
 
 Matrix4D PerspectiveMatrix(float FOV, float z_near, float z_far, float aspect);
 
+Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f);
+
 void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, float FOV, float aspect);
 
 void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
