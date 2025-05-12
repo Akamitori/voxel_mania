@@ -14,6 +14,7 @@ struct AppData {
     Matrix4D camera_matrix{};
     Matrix4D look_at_matrix_inverse{};
     Matrix4D perspective_matrix{};
+    Matrix4D ortho_projection_matrix{};
     Matrix4D view_projection_matrix{};
     float FOV = 45;
     float z_near=0.1;
