@@ -3,6 +3,7 @@
 
 #include "Bounding.h"
 
+#include <algorithm>
 #include <cfloat>
 #include <Plane.h>
 #include <Vector2D.h>

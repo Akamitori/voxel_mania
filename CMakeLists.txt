@@ -3,19 +3,15 @@ project(voxel_mania)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(BINARY_DIRECTORY ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our build")
-set(BINARY_DIRECTORY_LIBS ${CMAKE_BINARY_DIR} CACHE PATH "The target destination of our libs")
-
-include(cmake_scripts/compiler_flags.cmake)
-
 add_subdirectory(libraries)
-
 find_package(OpenGL REQUIRED)
 
-add_executable(voxel_mania main.cpp
+add_executable(voxel_mania
+        main.cpp
         Camera.cpp
         Camera.h
         data/cube.h
+        data/triangle.h
         InputHandling.cpp
         InputHandling.h
         AppData.h
@@ -27,31 +23,56 @@ add_executable(voxel_mania main.cpp
         Perlin.cpp
 )
 
-target_link_libraries(voxel_mania
-        PRIVATE
+target_link_libraries(voxel_mania PRIVATE
         libglew_shared
         SDL3::SDL3
         LinearAlgebra
         Trigonometry
         DearImGui
+        OpenGL::GL
 )
 
-
-##### -------------COPY SHADERS           --------------
-set(SHADER_SOURCE_DIR "${CMAKE_SOURCE_DIR}/data")
-set(SHADER_DEST_DIR "${BINARY_DIRECTORY}/data")
-
-# Copy the shaders to the build directory
+# Copy shaders
 add_custom_target(copy_shaders ALL
         COMMAND ${CMAKE_COMMAND} -E copy_directory
-        "${SHADER_SOURCE_DIR}" "${SHADER_DEST_DIR}"
-        COMMENT "Copying shader programs to build directory"
+        "${CMAKE_SOURCE_DIR}/data" "$<TARGET_FILE_DIR:voxel_mania>/data"
+        COMMENT "Copying shaders"
 )
-
 add_dependencies(voxel_mania copy_shaders)
 
-add_custom_command(
-        TARGET voxel_mania POST_BUILD
-        COMMAND ${CMAKE_COMMAND} --install ${CMAKE_BINARY_DIR}
-        COMMENT "Running the install step after all builds are complete"
+## Copy shared libraries to exe directory (cross-platform)
+#add_custom_command(TARGET voxel_mania POST_BUILD
+#        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#        $<TARGET_FILE:SDL3::SDL3>
+#        $<TARGET_FILE:libglew_shared>
+#        $<TARGET_FILE:LinearAlgebra>
+#        $<TARGET_FILE:Trigonometry>
+#        $<TARGET_FILE_DIR:voxel_mania>
+#        COMMENT "Copying shared libraries to executable directory"
+#)
+
+# Automatically copy all runtime shared libraries (cross-platform)
+add_custom_command(TARGET voxel_mania POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+        $<TARGET_RUNTIME_DLLS:voxel_mania>
+        $<TARGET_FILE_DIR:voxel_mania>
+        COMMAND_EXPAND_LISTS
+        COMMENT "Copying runtime shared libraries"
 )
+
+# Install executable
+install(TARGETS voxel_mania RUNTIME DESTINATION . COMPONENT Application)
+
+# Install ALL runtime dependencies automatically (same as POST_BUILD)
+install(FILES $<TARGET_RUNTIME_DLLS:voxel_mania> DESTINATION . COMPONENT Application)
+
+# Install data folder  
+install(DIRECTORY "${CMAKE_SOURCE_DIR}/data/" DESTINATION data COMPONENT Application)
+
+# Clean up GLEW's mess
+install(CODE "
+    file(REMOVE_RECURSE \"\${CMAKE_INSTALL_PREFIX}/lib\")
+    file(REMOVE_RECURSE \"\${CMAKE_INSTALL_PREFIX}/include\")
+    file(REMOVE_RECURSE \"\${CMAKE_INSTALL_PREFIX}/cmake\")
+")
+

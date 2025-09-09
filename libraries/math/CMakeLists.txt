@@ -12,4 +12,3 @@ add_and_export_library(LinearAlgebra TYPE SHARED FILES
         Bounding.cpp
 )
 add_and_export_library(Trigonometry TYPE SHARED FILES Trigonometry.cpp)
-
