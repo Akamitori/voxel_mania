@@ -1,36 +1,32 @@
-﻿# Ensure all submodules are initialized
-message(STATUS "Initializing git submodules...")
+﻿# Initialize git submodules
+find_package(Git REQUIRED)
 execute_process(
-        COMMAND git submodule update --init --recursive
+        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        RESULT_VARIABLE result
+        RESULT_VARIABLE git_result
 )
-if (NOT result EQUAL 0)
-    message(FATAL_ERROR "Failed to initialize submodules. Please run:\n    git submodule update --init --recursive")
-endif ()
+if(NOT git_result EQUAL 0)
+    message(FATAL_ERROR "Failed to initialize git submodules")
+endif()
 
-include(external_lib_import.cmake)
+include(${CMAKE_SOURCE_DIR}/cmake_scripts/external_lib_import.cmake)
 
+# SDL3 with incremental building
 import_external_library(SDL3
         SHARED
         SOURCE_DIR "${CMAKE_SOURCE_DIR}/libraries/3rd_party/SDL3"
-        INSTALL_SUBDIR "SDL3"
-        LIB_FILENAME "SDL3.lib"         # Import library (used at link time)
-        DLL_FILENAME "SDL3.dll"         # Runtime DLL (used at runtime)
+        CMAKE_ARGS -DSDL_SHARED=ON -DSDL_STATIC=OFF
 )
 
 
-## -----glew specific flags----
-set(glew-cmake_BUILD_SHARED ON CACHE BOOL "Build the shared glew library")
-set(glew-cmake_BUILD_STATIC OFF CACHE BOOL "Build the static glew library")
-set(ONLY_LIBS ON CACHE BOOL "Do not build executables")
+# GLEW - fast build, use add_subdirectory
+set(glew-cmake_BUILD_SHARED ON CACHE BOOL "Build shared GLEW")
+set(glew-cmake_BUILD_STATIC OFF CACHE BOOL "Don't build static GLEW")
+set(ONLY_LIBS ON CACHE BOOL "GLEW libs only")
+
+set(CMAKE_CURRENT_SOURCE_DIR "not_main" CACHE INTERNAL "" FORCE)
 add_subdirectory(glew)
-## -----glew specific flags----
 
-install(TARGETS libglew_shared
-        RUNTIME DESTINATION ${BINARY_DIRECTORY}  # DLLs
-        LIBRARY DESTINATION ${BINARY_DIRECTORY_LIBS}  # .so/.dylib
-)
 
-## run the imgui build
+# Other libraries
 include(imgui_build.cmake)
