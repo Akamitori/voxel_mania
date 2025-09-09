@@ -1,44 +1,42 @@
 ﻿function(add_and_export_library libraryName)
-    cmake_parse_arguments(
-            LIBRARY_ARGS
+    cmake_parse_arguments(LIB
             ""              # No options
-            "TYPE"          # Single value arguments
+            "TYPE"          # Single value arguments  
             "FILES"         # Multi-value arguments
             ${ARGN}
     )
 
-    set(library_type ${LIBRARY_ARGS_TYPE})
-    if(NOT library_type)
-        message(WARNING "No library type was provided for ${libraryName}. Defaulting to STATIC.")
-        set(library_type STATIC)
-    endif()
+    # Validate inputs
+    if (NOT LIB_FILES)
+        message(FATAL_ERROR "No files provided for ${libraryName}")
+    endif ()
 
-    if(NOT LIBRARY_ARGS_FILES)
-        message(FATAL_ERROR "No files provided for ${libraryName}.")
-    endif()
+    if (NOT LIB_TYPE)
+        set(LIB_TYPE STATIC)
+        message(STATUS "${libraryName}: No type specified, defaulting to STATIC")
+    endif ()
 
     # Create the library
-    add_library(${libraryName} ${library_type} ${LIBRARY_ARGS_FILES})
-    # Link with the export header containing the export symbol macro
+    add_library(${libraryName} ${LIB_TYPE} ${LIB_FILES})
+
+    # Set up include directories and export header
+    target_include_directories(${libraryName} PUBLIC
+            $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
+            $<INSTALL_INTERFACE:include>
+    )
     target_link_libraries(${libraryName} PUBLIC ExportHeader)
-    # Link its include directory
-    target_include_directories(${libraryName} PUBLIC .)
 
-
-    # Add compile definitions if DLL_EXPORT is needed
-    if (NEEDS_DLL_EXPORT)
-        message(STATUS "DLL_EXPORT defined for ${libraryName}.")
+    # Handle DLL exports for shared libraries on Windows
+    if (LIB_TYPE STREQUAL "SHARED" AND WIN32)
         target_compile_definitions(${libraryName} PRIVATE WIN_EXPORT)
-    else()
-        message(STATUS "DLL_EXPORT not needed for ${libraryName}.")
-    endif()
-
-
-    # Install the library
-    if(NOT library_type STREQUAL "STATIC")
-        install(TARGETS ${libraryName}
-                RUNTIME DESTINATION ${BINARY_DIRECTORY}       # DLLs
-                LIBRARY DESTINATION ${BINARY_DIRECTORY_LIBS}  # .so/.dylib
-        )
+        message(STATUS "${libraryName}: Added WIN_EXPORT for shared library")
     endif ()
+
+    # Optional: Set up proper target properties for better IDE support
+    set_target_properties(${libraryName} PROPERTIES
+            CXX_VISIBILITY_PRESET hidden
+            VISIBILITY_INLINES_HIDDEN YES
+            POSITION_INDEPENDENT_CODE ON
+    )
+
 endfunction()
