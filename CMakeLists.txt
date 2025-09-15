@@ -4,14 +4,12 @@ project(voxel_mania)
 set(CMAKE_CXX_STANDARD 23)
 
 add_subdirectory(libraries)
+add_subdirectory(primitive_mesh_data)
 find_package(OpenGL REQUIRED)
 
 add_executable(voxel_mania
         main.cpp
         Camera.cpp
-        Camera.h
-        data/cube.h
-        data/triangle.h
         InputHandling.cpp
         InputHandling.h
         AppData.h
@@ -21,7 +19,10 @@ add_executable(voxel_mania
         RandomNumberGeneration.h
         Perlin.h
         Perlin.cpp
+        Renderer/Renderer.cpp
 )
+
+target_link_libraries(voxel_mania PUBLIC primitive_mesh_data)
 
 target_link_libraries(voxel_mania PRIVATE
         libglew_shared
@@ -31,6 +32,7 @@ target_link_libraries(voxel_mania PRIVATE
         DearImGui
         OpenGL::GL
         OpenGlHelpers
+        stb_image
 )
 
 # Copy shaders
@@ -40,17 +42,6 @@ add_custom_target(copy_shaders ALL
         COMMENT "Copying shaders"
 )
 add_dependencies(voxel_mania copy_shaders)
-
-## Copy shared libraries to exe directory (cross-platform)
-#add_custom_command(TARGET voxel_mania POST_BUILD
-#        COMMAND ${CMAKE_COMMAND} -E copy_if_different
-#        $<TARGET_FILE:SDL3::SDL3>
-#        $<TARGET_FILE:libglew_shared>
-#        $<TARGET_FILE:LinearAlgebra>
-#        $<TARGET_FILE:Trigonometry>
-#        $<TARGET_FILE_DIR:voxel_mania>
-#        COMMENT "Copying shared libraries to executable directory"
-#)
 
 # Automatically copy all runtime shared libraries (cross-platform)
 add_custom_command(TARGET voxel_mania POST_BUILD
