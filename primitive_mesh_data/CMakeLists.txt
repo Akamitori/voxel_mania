@@ -1,0 +1,2 @@
+﻿add_library(primitive_mesh_data INTERFACE)
+target_include_directories(primitive_mesh_data INTERFACE .)

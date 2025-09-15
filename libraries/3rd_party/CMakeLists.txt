@@ -30,3 +30,4 @@ add_subdirectory(glew)
 
 # Other libraries
 include(imgui_build.cmake)
+add_subdirectory(stb_image)
