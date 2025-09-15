@@ -7,10 +7,10 @@
 #include <SDL3/SDL_scancode.h>
 
 
-struct AppData;
+struct Camera;
 
 
-void KeyDown(SDL_Scancode key, AppData& appData);
+void KeyDown(SDL_Scancode key, Camera& camera);
 
 
 #endif //INPUT_HANDLING_H

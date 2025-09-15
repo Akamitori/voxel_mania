@@ -6,12 +6,10 @@ function(import_external_library LIB_NAME)
     set(multiValueArgs CMAKE_ARGS)
     cmake_parse_arguments(IMPORT "${options}" "${oneValueArgs}" "${multiValueArgs}" ${ARGN})
 
-    # Validate required args
     if(NOT IMPORT_SOURCE_DIR)
         message(FATAL_ERROR "${LIB_NAME}: SOURCE_DIR is required")
     endif()
 
-    # Set defaults
     if(NOT IMPORT_TARGET_NAME)
         set(IMPORT_TARGET_NAME "${LIB_NAME}::${LIB_NAME}")
     endif()
@@ -34,11 +32,11 @@ function(import_external_library LIB_NAME)
         endif()
     else() # SHARED
         if(WIN32)
-            set(LIB_FILENAME "${LIB_NAME}.lib")  # Import library
-            set(DLL_FILENAME "${LIB_NAME}.dll")  # Runtime library
+            set(LIB_FILENAME "${LIB_NAME}.lib")
+            set(DLL_FILENAME "${LIB_NAME}.dll")
         elseif(APPLE)
             set(LIB_FILENAME "lib${LIB_NAME}.dylib")
-        else() # Linux
+        else()
             set(LIB_FILENAME "lib${LIB_NAME}.so")
         endif()
     endif()
@@ -48,10 +46,10 @@ function(import_external_library LIB_NAME)
     set(LIB_FILE "${INSTALL_PREFIX}/lib/${LIB_FILENAME}")
     set(INCLUDE_DIR "${INSTALL_PREFIX}/include")
 
-    # Ensure directories exist (CMake needs them to exist for INTERFACE_INCLUDE_DIRECTORIES)
+    # Ensure directories exist
     file(MAKE_DIRECTORY "${INSTALL_PREFIX}/lib" "${INCLUDE_DIR}" "${INSTALL_PREFIX}/bin")
 
-    # Check if we need to build using git commit hash
+    # Check git commit hash
     execute_process(
             COMMAND git rev-parse HEAD
             WORKING_DIRECTORY "${IMPORT_SOURCE_DIR}"
@@ -64,10 +62,11 @@ function(import_external_library LIB_NAME)
         message(FATAL_ERROR "[${LIB_NAME}] Failed to get git commit hash")
     endif()
 
-    # Simple fingerprint: commit hash + build type + platform
+    # Fingerprint
     set(CURRENT_FINGERPRINT "${GIT_COMMIT_HASH}_${CMAKE_BUILD_TYPE}_${CMAKE_SYSTEM_NAME}")
     set(FINGERPRINT_FILE "${INSTALL_PREFIX}/.build_fingerprint")
 
+    # Determine if build is needed
     set(NEEDS_BUILD FALSE)
     if(NOT EXISTS "${LIB_FILE}")
         set(NEEDS_BUILD TRUE)
@@ -79,35 +78,14 @@ function(import_external_library LIB_NAME)
             set(NEEDS_BUILD TRUE)
             message(STATUS "[${LIB_NAME}] Commit/platform changed, will rebuild")
         else()
-            message(STATUS "[${LIB_NAME}] Up to date (${GIT_COMMIT_HASH})")
+            message(STATUS "[${LIB_NAME}] ✓ Up to date (${GIT_COMMIT_HASH})")
         endif()
     else()
         set(NEEDS_BUILD TRUE)
         message(STATUS "[${LIB_NAME}] First build")
     endif()
 
-    # Build if needed
-    if(NEEDS_BUILD)
-        ExternalProject_Add(${LIB_NAME}_build
-                SOURCE_DIR "${IMPORT_SOURCE_DIR}"
-                CMAKE_ARGS
-                -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
-                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-                ${IMPORT_CMAKE_ARGS}
-                BUILD_BYPRODUCTS "${LIB_FILE}"
-        )
-
-        # Update fingerprint after successful build
-        ExternalProject_Add_Step(${LIB_NAME}_build update_fingerprint
-                COMMAND ${CMAKE_COMMAND} -E echo "${CURRENT_FINGERPRINT}" > "${FINGERPRINT_FILE}"
-                DEPENDEES install
-                COMMENT "Updating build fingerprint"
-        )
-
-        set(BUILD_TARGET ${LIB_NAME}_build)
-    endif()
-
-    # Create imported target
+    # Create imported target FIRST (before ExternalProject)
     add_library(${IMPORT_TARGET_NAME} ${LIB_TYPE} IMPORTED GLOBAL)
     set_target_properties(${IMPORT_TARGET_NAME} PROPERTIES
             INTERFACE_INCLUDE_DIRECTORIES "${INCLUDE_DIR}"
@@ -118,25 +96,41 @@ function(import_external_library LIB_NAME)
                 IMPORTED_LOCATION "${LIB_FILE}"
         )
     else()
-        # Shared library - platform specific handling
         if(WIN32)
-            # Windows: separate import lib and DLL
             set(DLL_FILE "${INSTALL_PREFIX}/bin/${DLL_FILENAME}")
             set_target_properties(${IMPORT_TARGET_NAME} PROPERTIES
                     IMPORTED_IMPLIB "${LIB_FILE}"
                     IMPORTED_LOCATION "${DLL_FILE}"
             )
         else()
-            # Linux/macOS: single shared library file
             set_target_properties(${IMPORT_TARGET_NAME} PROPERTIES
                     IMPORTED_LOCATION "${LIB_FILE}"
             )
         endif()
     endif()
 
-    # Add dependency if we're building
+    # Only create ExternalProject if we need to build
     if(NEEDS_BUILD)
-        add_dependencies(${IMPORT_TARGET_NAME} ${BUILD_TARGET})
+        ExternalProject_Add(${LIB_NAME}_build
+                SOURCE_DIR "${IMPORT_SOURCE_DIR}"
+                CMAKE_ARGS
+                -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
+                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                ${IMPORT_CMAKE_ARGS}
+                BUILD_BYPRODUCTS "${LIB_FILE}"
+                UPDATE_COMMAND ""        # Skip update checks
+                DOWNLOAD_COMMAND ""      # Skip download checks
+        )
+
+        # Update fingerprint after successful build
+        ExternalProject_Add_Step(${LIB_NAME}_build update_fingerprint
+                COMMAND ${CMAKE_COMMAND} -E echo "${CURRENT_FINGERPRINT}" > "${FINGERPRINT_FILE}"
+                DEPENDEES install
+                COMMENT "Updating build fingerprint for ${LIB_NAME}"
+        )
+
+        # Add dependency
+        add_dependencies(${IMPORT_TARGET_NAME} ${LIB_NAME}_build)
     endif()
 
 endfunction()
