@@ -7,9 +7,9 @@
 #include <array>
 
 
-
 struct cube {
-    float vertex_data[8 * 3]{
+    static constexpr int vertices_count = 8 * 3;
+    static constexpr float vertex_data[vertices_count]{
         -0.5f, 0.5f, -0.5f,
 
         -0.5f, -0.5f, -0.5f,
@@ -24,7 +24,8 @@ struct cube {
         0.5f, -0.5f, 0.5f
     };
 
-    int vertex_indices[12 * 3]{
+    static constexpr int indices_count = 12 * 3;
+    static constexpr int vertex_indices[indices_count]{
         0, 3, 1,
         0, 2, 3,
 
