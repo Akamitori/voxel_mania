@@ -30,6 +30,7 @@ target_link_libraries(voxel_mania PRIVATE
         Trigonometry
         DearImGui
         OpenGL::GL
+        OpenGlHelpers
 )
 
 # Copy shaders
