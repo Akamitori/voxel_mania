@@ -1,7 +1,5 @@
 ﻿#include <fstream>
 #include <iostream>
-#include <sstream>
-#include <vector>
 #include <algorithm>
 #include <Bounding.h>
 #include <Clipping.h>
@@ -15,7 +13,7 @@
 #include "Camera.h"
 #include "AppData.h"
 #include "InputHandling.h"
-#include "data/cube.h"
+#include "primitive_mesh_data/cube.h"
 #include "Matrix4D.h"
 
 #include <imgui.h>
