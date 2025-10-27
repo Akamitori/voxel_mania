@@ -19,7 +19,7 @@ void main() {
     mat4 model_matrix=mat4(1.0);
     model_matrix[3]=vec4(position, 1);
 
-    vec4 final_pos=perspective_projection_matrix*look_at_matrix*model_matrix * vec4(aPos, 1.0);
+    vec4 final_pos=perspective_projection_matrix*look_at_matrix*model_matrix* vec4(aPos, 1.0);
 
     gl_Position = final_pos;
 

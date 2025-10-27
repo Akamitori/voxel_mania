@@ -8,7 +8,6 @@
 
 #include "Matrix4D.h"
 #include "math_ops.h"
-#include "Transformations.h"
 #include <Trigonometry.h>
 
 std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
