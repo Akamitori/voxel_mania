@@ -1,44 +1,25 @@
 ﻿#include <fstream>
-#include <iostream>
-#include <algorithm>
-#include <Bounding.h>
-#include <Clipping.h>
+#include <array>
 #include <format>
-#include <Transformations.h>
 
 #include <GL/glew.h>
-#include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_init.h>
 
-#include "Camera.h"
-#include "AppData.h"
 #include "InputHandling.h"
-#include "primitive_mesh_data/cube.h"
+#include "cube.h"
 #include "Matrix4D.h"
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
 
-#include "Trigonometry.h"
 #include "OpenGlHelpers/ShaderLoader.h"
+#include "Renderer/Renderer.h"
 
 
-constexpr int initial_screen_width = 800, initial_screen_height = 600;
 // Vertex Shader source code
-
-
 float normalize_coord(const float value, const float max) {
     return 2 * value / max - 1;
-}
-
-void handle_window_resize(AppData &app_data, const int width, const int height) {
-    glViewport(0, 0, width, height);
-    const float new_aspect_ratio = static_cast<float>(width) / static_cast<float>(height);
-    PerspectiveMatrixUpdate(app_data.perspective_matrix, app_data.FOV, new_aspect_ratio);
-    app_data.view_dirty = true;
-    app_data.screen_height = height;
-    app_data.screen_width = width;
 }
 
 void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao) {
@@ -68,75 +49,88 @@ void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &curs
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
-void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
-                                                       const Matrix4D &triangle_model_view_space,
-                                                       const cube &my_cube) {
-    Vector3D vertex_data[8];
+// void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
+//                                                        const Matrix4D &triangle_model_view_space,
+//                                                        const cube &my_cube) {
+//     Vector3D vertex_data[8];
+//
+//     build_frustum_polyhedron(
+//         inverse(appData.camera_matrix),
+//         1 / tan(DegreeToRadians(appData.FOV) * 0.5f),
+//         static_cast<float>(initial_screen_width) / static_cast<float>(initial_screen_height),
+//         appData.z_near, appData.z_far, &appData.frustum_polyhedron);
+//
+//     for (int i = 0, j = 0; i < 8 && j < 24; i++, j += 3) {
+//         auto point = Vector3D{
+//             my_cube.vertex_data[j],
+//             my_cube.vertex_data[j + 1],
+//             my_cube.vertex_data[j + 2]
+//         };
+//
+//         // get the cube to global space
+//         vertex_data[i] = transform_point(world_space_matrix, transform_point(triangle_model_view_space, point));
+//     }
+//
+//     // check if the cube is contained in the frustum
+//     auto a = calculate_axis_aligned_bounding_box(8, vertex_data);
+//     auto result = AxisAlignedBoxVisible(6, appData.frustum_polyhedron.plane, a);
+//     std::cout << "Box contained : " << result << std::endl;
+// }
 
-    build_frustum_polyhedron(
-        inverse(appData.camera_matrix),
-        1 / tan(DegreeToRadians(appData.FOV) * 0.5f),
-        static_cast<float>(appData.screen_width) / static_cast<float>(appData.screen_height),
-        appData.z_near, appData.z_far, &appData.frustum_polyhedron);
+// draw this model at this position
+//
 
-    for (int i = 0, j = 0; i < 8 && j < 24; i++, j += 3) {
-        auto point = Vector3D{
-            my_cube.vertex_data[j],
-            my_cube.vertex_data[j + 1],
-            my_cube.vertex_data[j + 2]
-        };
+struct model_instance {
+    int mesh_id{};
+    Vector3D pos{};
+    Vector3D color{};
+};
 
-        // get the cube to global space
-        vertex_data[i] = transform_point(world_space_matrix, transform_point(triangle_model_view_space, point));
-    }
-
-    // check if the cube is contained in the frustum
-    auto a = calculate_axis_aligned_bounding_box(8, vertex_data);
-    auto result = AxisAlignedBoxVisible(6, appData.frustum_polyhedron.plane, a);
-    std::cout << "Box contained : " << result << std::endl;
+int RegisterCubeMesh3Part(int mesh_id) {
+    return Renderer_RegisterTexturedMesh(
+        mesh_id,
+        cube::vertex_data_uv_3_part_texture,
+        cube::vertices_count_uv,
+        cube::vertex_indices_uvs,
+        cube::vertex_indices_count_uv
+    );
 }
 
+int RegisterCubeMesh1Part(int mesh_id) {
+    return Renderer_RegisterTexturedMesh(
+        mesh_id,
+        cube::vertex_data_uv_1_part_texture,
+        cube::vertices_count_uv,
+        cube::vertex_indices_uvs,
+        cube::vertex_indices_count_uv
+    );
+}
+
+
 int main() {
-    // Initialize GLFW
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
-        std::cerr << SDL_GetError() << std::endl;
-        return -1;
-    }
+    constexpr int initial_screen_width = 800, initial_screen_height = 600;
+    Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
 
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
+    const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
+    const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png");
 
+    // if our problem is wrapping cubes and data like that
+    // we can probably have the API acknowledge that
+    const int cubeId_1 = RegisterCubeMesh3Part(
+        grassTextureId
+    );
 
-    // Create window
-    SDL_Window *window = SDL_CreateWindow("Hello World - VAO and VBO", initial_screen_width, initial_screen_height,
-                                          SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
-    if (!window) {
-        std::cerr << "Failed to create SDL window. Error :" << SDL_GetError() << std::endl;
-        SDL_Quit();
-        return -1;
-    }
+    const int cubeId_2 = Renderer_RegisterTextured_Cross_Mesh(
+        mushroomTextureId ,
+        0.5f
+    );
 
-    const SDL_GLContext open_gl_context = SDL_GL_CreateContext(window);
+    const int cubeId_3 = Renderer_RegisterTextured_Cross_Mesh(
+        mushroomTextureId ,
+        1
+    );
 
-    if (!open_gl_context) {
-        std::cerr << "Failed to create OpenGL context. Error : " << SDL_GetError() << std::endl;
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return -1;
-    }
-
-    // Enable VSync
-    SDL_GL_SetSwapInterval(1);
-
-    if (const GLenum err = glewInit(); err != GLEW_OK) {
-        std::cerr << "glewInitFailed: " << glewGetErrorString(err) << std::endl;
-
-        SDL_GL_DestroyContext(open_gl_context);
-        SDL_DestroyWindow(window);
-        SDL_Quit();
-        return -1;
-    }
 
     // Setup Dear ImGui context
     IMGUI_CHECKVERSION();
@@ -163,116 +157,47 @@ int main() {
     ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
     ImGui_ImplOpenGL3_Init();
 
-    // left in just for the theory. in practice we don't need it ;)
-    Matrix4D world_space_matrix(1);
-
-    AppData appData;
-    appData.screen_width = 800;
-    appData.screen_height = 600;
-    appData.view_dirty = true;
-    appData.FOV = 45;
-    appData.z_near = 0.1;
-    appData.z_far = 100;
-    appData.perspective_matrix = PerspectiveMatrix(appData.FOV, appData.z_near, appData.z_far,
-                                                   static_cast<float>(appData.screen_width) / static_cast<float>(appData
-                                                       .screen_height));
-
-    appData.ortho_projection_matrix = MakeOrthoProjection(-10, 10, 0, 10, -20, 20);
-
-    appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-    appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
-
-    // TODO move triangle_model_view_space out of the view projection matrix at some point
-    Matrix4D triangle_model_view_space(1);
-    appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
-                                     triangle_model_view_space;
-    glViewport(0, 0, appData.screen_width, appData.screen_height);
-
-    glEnable(GL_CULL_FACE);
-    glCullFace(GL_BACK);
-    glFrontFace(GL_CCW);
-    glEnable(GL_DEPTH_TEST);
-    glDepthMask(GL_TRUE);
-
-    // we should map values that are further away to the lower part of [0,1] for better precision
-    // this is because [0,1/2] has better precision from [1/2,1] due to the nature of floating point numbers
-    // in practice -> higher values => closer to the camera
-    glDepthFunc(GL_GEQUAL);
-    glDepthRange(0.0f, 1.0f);
-
-    // open gl should expect depth values from [0,1]
-    // for the above depth mapping to work properly on the projection level
-    glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
-
-    //glDisable(GL_DEPTH_TEST);
-
-
-    //glPolygonMode(GL_FRONT_AND_BACK,GL_LINE);
-
-    // Build and compile shader program
-    const unsigned int world_geometry_program = InitializeProgram("program1");
     const unsigned int cursorProgram = InitializeProgram("cursor_program");
-
-    const GLint world_perspectiveMatrixUnif = glGetUniformLocation(world_geometry_program, "perspectiveMatrix");
     const GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
-    const GLint voxel_color = glGetUniformLocation(world_geometry_program, "voxel_color");
 
-    Vector4D cursor_color(1, 0, 0, 1);
+
+    constexpr Vector4D cursor_color(1, 0, 0, 1);
     glUseProgram(cursorProgram);
     glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
 
-    const float centerX = static_cast<float>(appData.screen_width) / 2.0f;
-    const float centerY = static_cast<float>(appData.screen_height) / 2.0f;
+    constexpr float centerX = static_cast<float>(initial_screen_width) / 2.0f;
+    constexpr float centerY = static_cast<float>(initial_screen_height) / 2.0f;
     const std::array cursor{
-        normalize_coord(centerX - 10, static_cast<float>(appData.screen_width)),
-        normalize_coord(centerY, static_cast<float>(appData.screen_height)),
+        normalize_coord(centerX - 10, static_cast<float>(initial_screen_width)),
+        normalize_coord(centerY, static_cast<float>(initial_screen_height)),
         1.0f,
 
-        normalize_coord(centerX + 10, static_cast<float>(appData.screen_width)),
-        normalize_coord(centerY, static_cast<float>(appData.screen_height)),
+        normalize_coord(centerX + 10, static_cast<float>(initial_screen_width)),
+        normalize_coord(centerY, static_cast<float>(initial_screen_height)),
         1.0f,
 
-        normalize_coord(centerX, static_cast<float>(appData.screen_width)),
-        normalize_coord(centerY - 10, static_cast<float>(appData.screen_height)),
+        normalize_coord(centerX, static_cast<float>(initial_screen_width)),
+        normalize_coord(centerY - 10, static_cast<float>(initial_screen_height)),
         1.0f,
 
-        normalize_coord(centerX, static_cast<float>(appData.screen_width)),
-        normalize_coord(centerY + 10, static_cast<float>(appData.screen_height)),
+        normalize_coord(centerX, static_cast<float>(initial_screen_width)),
+        normalize_coord(centerY + 10, static_cast<float>(initial_screen_height)),
         1.0f,
     };
 
 
-    cube my_cube{};
-
-    glUseProgram(world_geometry_program);
-    constexpr Vector4D r(0.5, 0.5, 0.5, 1);
-    glUniform4fv(voxel_color, 1, &r.x);
-
-    GLuint world_vao;
-    glGenVertexArrays(1, &world_vao);
-    glBindVertexArray(world_vao);
-
-    GLuint cubes_vbo;
-    glGenBuffers(1, &cubes_vbo);
-    glBindBuffer(GL_ARRAY_BUFFER, cubes_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(my_cube.vertex_data), my_cube.vertex_data, GL_STATIC_DRAW);
-
-    glEnableVertexAttribArray(0);
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), nullptr);
-
-
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-    GLuint cubes_vbe;
-    glGenBuffers(1, &cubes_vbe);
-    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, cubes_vbe);
-    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(my_cube.vertex_indices), my_cube.vertex_indices, GL_STATIC_DRAW);
-
-    glBindVertexArray(0);
-
     unsigned int cursor_vao;
     unsigned int cursor_vbo;
     InitializeCursorVBO(cursor, cursor_vao, cursor_vbo);
+
+    Renderer_FinalizeMeshLoading();
+
+    model_instance models[]{
+        cubeId_2, Vector3D{0, 0, 0}, Vector3D{1, 0, 0},
+        cubeId_3, Vector3D{1, 0, 0}, Vector3D{1, 0, 0},
+        cubeId_1, Vector3D{0, 0, -1}, Vector3D{1, 0, 0},
+        
+    };
 
     bool keepRunning = true;
     // Rendering loop
@@ -281,7 +206,7 @@ int main() {
         while (SDL_PollEvent(&event)) {
             switch (event.type) {
                 case SDL_EVENT_WINDOW_RESIZED: {
-                    handle_window_resize(appData, event.window.data1, event.window.data2);
+                    Renderer_ResolutionChanged(event.window.data1, event.window.data2);
                     break;
                 }
                 case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
@@ -289,7 +214,7 @@ int main() {
                     break;
                 }
                 case SDL_EVENT_KEY_DOWN: {
-                    KeyDown(event.key.scancode, appData);
+                    KeyDown(event.key.scancode, *SceneCamera);
                     break;
                 }
                 default: {
@@ -299,58 +224,33 @@ int main() {
 
             ImGui_ImplSDL3_ProcessEvent(&event); // Forward your event to backend
         }
-        // Clear the screen
-        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
 
-        // set the clear value to the value assosiated with the "furthest" object
-        glClearDepth(0.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        Renderer_FrameStart();
 
-
-        if (appData.view_dirty) {
-            appData.view_projection_matrix = appData.perspective_matrix * appData.camera_matrix * world_space_matrix *
-                                             triangle_model_view_space;
-
-            glUseProgram(world_geometry_program);
-            glBindVertexArray(world_vao);
-            glUniformMatrix4fv(world_perspectiveMatrixUnif, 1,GL_FALSE, &appData.view_projection_matrix[0].x);
-            appData.view_dirty = false;
-
-            calculate_frustum_planes_and_check_for_visibility(world_space_matrix, appData, triangle_model_view_space,
-                                                              my_cube);
+        for (const auto &[mesh_id, pos, color]: models) {
+            Renderer_Draw(mesh_id, pos, color);
         }
 
-        glUseProgram(world_geometry_program);
-        glBindVertexArray(world_vao);
-        glDrawElements(GL_TRIANGLES, 36,GL_UNSIGNED_INT, nullptr);
-
-        glBindVertexArray(0);
-        glUseProgram(0);
 
         Draw_Cursor(cursorProgram, cursor_vao);
 
-        // (Where your code calls SDL_PollEvent())
-
-
-        // (After event loop)
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
         ImGui::NewFrame();
 
-        IM_ASSERT(ImGui::GetCurrentContext() != NULL && "Missing Dear ImGui context. Refer to examples app!");
+        IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
 
         // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
         IMGUI_CHECKVERSION();
 
-        Vector4D &t = triangle_model_view_space.column_vectors[3];
-        float *p_as_float3 = reinterpret_cast<float *>(&t);
-
-
-        if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
-        ) {
-            appData.view_dirty = true;
-        }
+        // float *p_as_float3 = reinterpret_cast<float *>(&t);
+        //
+        //
+        // if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
+        // ) {
+        //     appData.view_dirty = true;
+        // }
         // Show demo window! :)
 
         ImGui::Render();
@@ -361,24 +261,20 @@ int main() {
         //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
             SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
-            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+            const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
             ImGui::UpdatePlatformWindows();
             ImGui::RenderPlatformWindowsDefault();
             SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
         }
 
-        SDL_GL_SwapWindow(window);
+
+        Renderer_FrameEnd();
     }
 
-    // Cleanup
-    glDeleteVertexArrays(1, &world_vao);
-    glDeleteBuffers(1, &cubes_vbo);
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 
-    SDL_DestroyWindow(window);
-    SDL_GL_DestroyContext(open_gl_context);
-    SDL_Quit();
+    Renderer_Destroy();
 
     ImGui_ImplOpenGL3_Shutdown();
     ImGui_ImplSDL3_Shutdown();

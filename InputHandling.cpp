@@ -3,51 +3,53 @@
 //
 
 #include "InputHandling.h"
-#include "AppData.h"
 #include "Camera.h"
+#include "Renderer/Renderer.h"
 
-void KeyDown(const SDL_Scancode key, AppData &appData) {
+//TODO we can probably remove the camera and request it from the renderer directly
+//TODO we could also probably have a camera attached to a separate object with transform hierarchies but lets ignore that for now
+void KeyDown(const SDL_Scancode key, Camera &camera) {
     bool camera_changed = true;
 
     switch (key) {
         case SDL_SCANCODE_W: {
-            MoveCameraZ(appData.camera, 1);
+            MoveCameraZ(camera, 1);
             break;
         }
         case SDL_SCANCODE_S: {
-            MoveCameraZ(appData.camera, -1);
+            MoveCameraZ(camera, -1);
             break;
         }
         case SDL_SCANCODE_D: {
-            MoveCameraX(appData.camera, 1);
+            MoveCameraX(camera, 1);
             break;
         }
         case SDL_SCANCODE_A: {
-            MoveCameraX(appData.camera, -1);
+            MoveCameraX(camera, -1);
             break;
         }
         case SDL_SCANCODE_SPACE: {
-            MoveCameraY(appData.camera, -1);
+            MoveCameraY(camera, -1);
             break;
         }
         case SDL_SCANCODE_LSHIFT: {
-            MoveCameraY(appData.camera, 1);
+            MoveCameraY(camera, 1);
             break;
         }
         case SDL_SCANCODE_RIGHT: {
-            RotateCamera(appData.camera, 1, 0);
+            RotateCamera(camera, 1, 0);
             break;
         }
         case SDL_SCANCODE_LEFT: {
-            RotateCamera(appData.camera, -1, 0);
+            RotateCamera(camera, -1, 0);
             break;
         }
         case SDL_SCANCODE_UP: {
-            RotateCamera(appData.camera, 0, -1);
+            RotateCamera(camera, 0, -1);
             break;
         }
         case SDL_SCANCODE_DOWN: {
-            RotateCamera(appData.camera, 0, 1);
+            RotateCamera(camera, 0, 1);
             break;
         }
         default: {
@@ -56,9 +58,10 @@ void KeyDown(const SDL_Scancode key, AppData &appData) {
         }
     }
 
+
+    
+
     if (camera_changed) {
-        appData.camera_matrix = CameraLookAtMatrix(appData.camera);
-        appData.look_at_matrix_inverse = inverse(appData.camera_matrix);
-        appData.view_dirty = true;
+        Renderer_CameraUpdate();
     }
 }
