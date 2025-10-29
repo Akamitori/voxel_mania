@@ -46,7 +46,7 @@ void Renderer_FrameStart();
 
 void Renderer_FrameEnd();
 
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color);
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color);
 
 void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 

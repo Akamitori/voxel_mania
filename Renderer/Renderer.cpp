@@ -26,16 +26,18 @@ unsigned int ViewMatrices_binding_point = 0;
 unsigned int defaultTexture;
 
 void OpenGLGlobalSetup() {
-    world_geometry_program = InitializeProgram("program1");
+    world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
 
 
     unsigned char whitePixel[4] = {255, 255, 255, 255};
     glGenTextures(1, &defaultTexture);
     glBindTexture(GL_TEXTURE_2D, defaultTexture);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, whitePixel);
+    
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, whitePixel);
 }
 
 
@@ -392,7 +394,7 @@ void Renderer_FinalizeMeshLoading() {
 }
 
 // TODO we can probably work with a Matrix4D eventually
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color) {
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color) {
     Mesh mesh = Meshes[mesh_id];
     unsigned int program_to_use = mesh.program_id;
     glUseProgram(program_to_use);
@@ -400,7 +402,7 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color) {
     // this means all programs need this uniform
     GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
     GLint position_id = glGetUniformLocation(program_to_use, "position");
-
+    GLint light_color_id = glGetUniformLocation(program_to_use, "light_color");
     GLuint texture_to_bind = mesh.texture_id == -1 ? defaultTexture : textures[mesh.texture_id].texture_id;
 
 
@@ -411,6 +413,7 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color) {
 
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
+    glUniform3fv(light_color_id, 1, &light_color.x);
     glDrawElements(GL_TRIANGLES, mesh.index_count,GL_UNSIGNED_INT, nullptr);
 }
 

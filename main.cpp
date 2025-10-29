@@ -84,6 +84,7 @@ struct model_instance {
     int mesh_id{};
     Vector3D pos{};
     Vector3D color{};
+    Vector3D light_color{};
 };
 
 int RegisterCubeMesh3Part(int mesh_id) {
@@ -122,13 +123,27 @@ int main() {
     );
 
     const int cubeId_2 = Renderer_RegisterTextured_Cross_Mesh(
-        mushroomTextureId ,
+        mushroomTextureId,
         0.5f
     );
 
     const int cubeId_3 = Renderer_RegisterTextured_Cross_Mesh(
-        mushroomTextureId ,
+        mushroomTextureId,
         1
+    );
+
+    const int light_source = Renderer_RegisterPrimitiveMeshData(
+        cube::vertex_data,
+        cube::vertices_count,
+        cube::vertex_indices,
+        cube::indices_count
+    );
+
+    const int object_to_draw_light_on = Renderer_RegisterPrimitiveMeshData(
+        cube::vertex_data,
+        cube::vertices_count,
+        cube::vertex_indices,
+        cube::indices_count
     );
 
 
@@ -192,11 +207,11 @@ int main() {
 
     Renderer_FinalizeMeshLoading();
 
+    Vector3D light_color = {1, 1, 1};
+
     model_instance models[]{
-        cubeId_2, Vector3D{0, 0, 0}, Vector3D{1, 0, 0},
-        cubeId_3, Vector3D{1, 0, 0}, Vector3D{1, 0, 0},
-        cubeId_1, Vector3D{0, 0, -1}, Vector3D{1, 0, 0},
-        
+        light_source, Vector3D{1.2, 2, 1}, light_color, {1, 1, 1},
+        object_to_draw_light_on, Vector3D{0, 0, 0}, Vector3D{1, 0.5, 0.31f}, light_color
     };
 
     bool keepRunning = true;
@@ -227,8 +242,8 @@ int main() {
 
         Renderer_FrameStart();
 
-        for (const auto &[mesh_id, pos, color]: models) {
-            Renderer_Draw(mesh_id, pos, color);
+        for (const auto &[mesh_id, pos, color, light_color_v]: models) {
+            Renderer_Draw(mesh_id, pos, color, light_color_v);
         }
 
 
