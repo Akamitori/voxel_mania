@@ -3,6 +3,22 @@ project(voxel_mania)
 
 set(CMAKE_CXX_STANDARD 23)
 
+if((CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo") AND MSVC)
+    if(EXISTS "C:/rad_linker/radlink.exe")
+        set(CMAKE_LINKER "C:/rad_linker/radlink.exe")
+        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MANIFEST:NO")
+        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO")
+        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /MANIFEST:NO")
+        add_link_options(/INCREMENTAL:NO)
+        message(STATUS "Using RAD Linker for ${CMAKE_BUILD_TYPE} builds")
+    else()
+        message(WARNING "RAD Linker not found at C:/rad_linker/radlink.exe, using default MSVC linker")
+    endif()
+endif()
+
+
+
+
 add_subdirectory(libraries)
 add_subdirectory(primitive_mesh_data)
 find_package(OpenGL REQUIRED)
@@ -44,6 +60,7 @@ add_custom_target(copy_shaders ALL
 add_dependencies(voxel_mania copy_shaders)
 
 # Automatically copy all runtime shared libraries (cross-platform)
+if(WIN32)
 add_custom_command(TARGET voxel_mania POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
         $<TARGET_RUNTIME_DLLS:voxel_mania>
@@ -51,6 +68,7 @@ add_custom_command(TARGET voxel_mania POST_BUILD
         COMMAND_EXPAND_LISTS
         COMMENT "Copying runtime shared libraries"
 )
+endif()
 
 # Install executable
 install(TARGETS voxel_mania RUNTIME DESTINATION . COMPONENT Application)
