@@ -1047,4 +1047,4 @@ dkms.conf
 .idea/
 
 # folder for 3rd party dll/lib installations for git submodules
-.third_party/
+.prebuild_libs/

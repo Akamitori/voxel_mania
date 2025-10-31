@@ -14,7 +14,6 @@ include(${CMAKE_SOURCE_DIR}/cmake_scripts/external_lib_import.cmake)
 # SDL3 with incremental building
 import_external_library(SDL3
         SHARED
-        SOURCE_DIR "${CMAKE_SOURCE_DIR}/libraries/3rd_party/SDL3"
         CMAKE_ARGS -DSDL_SHARED=ON -DSDL_STATIC=OFF
 )
 
