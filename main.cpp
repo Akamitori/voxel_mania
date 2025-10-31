@@ -214,6 +214,8 @@ int main() {
         object_to_draw_light_on, Vector3D{0, 0, 0}, Vector3D{1, 0.5, 0.31f}, light_color
     };
 
+    int y=10;
+
     bool keepRunning = true;
     // Rendering loop
     while (keepRunning) {
