@@ -29,8 +29,10 @@
     # Handle DLL exports for shared libraries on Windows
     if (LIB_TYPE STREQUAL "SHARED" AND WIN32)
         target_compile_definitions(${libraryName} PRIVATE WIN_EXPORT)
-        message(STATUS "${libraryName}: Added WIN_EXPORT for shared library")
-    endif ()
+    # Handle DLL exports for static libraries on Windows
+    elseif(LIB_TYPE STREQUAL "STATIC" AND WIN32)
+        target_compile_definitions(${libraryName} PUBLIC WIN_STATIC)
+    endif()
 
     # Optional: Set up proper target properties for better IDE support
     set_target_properties(${libraryName} PROPERTIES
