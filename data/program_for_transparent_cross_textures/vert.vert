@@ -1,7 +1,8 @@
 ﻿#version 330 core
 
 layout (location = 0) in vec3 aPos;
-layout (location = 1) in vec2 aTexCoord;
+layout (location = 1) in vec3 aNormal;
+layout (location = 2) in vec2 aTexCoord;
 
 uniform vec3 position;
 
@@ -11,6 +12,7 @@ layout (std140) uniform ViewMatrices{
 };
 
 out vec2 TexCoord;
+out vec3 Normal;
 
 void main() {
 
@@ -20,6 +22,7 @@ void main() {
     vec4 final_pos=perspective_projection_matrix*look_at_matrix*model_matrix* vec4(aPos, 1.0);
 
     gl_Position = final_pos;
-    
+
+    Normal = aNormal;
     TexCoord = aTexCoord;
 }

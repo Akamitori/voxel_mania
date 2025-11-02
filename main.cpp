@@ -118,19 +118,18 @@ int main() {
 
     // if our problem is wrapping cubes and data like that
     // we can probably have the API acknowledge that
-    const int cubeId_1 = RegisterCubeMesh3Part(
+    const int grass_cube_id = RegisterCubeMesh3Part(
         grassTextureId
     );
 
-    const int cubeId_2 = Renderer_RegisterTextured_Cross_Mesh(
+    const int wood_cube_id= RegisterCubeMesh1Part(woodTextureId);
+    
+    const int mushroom_cube_id = Renderer_RegisterTextured_Cross_Mesh(
         mushroomTextureId,
         0.5f
     );
 
-    const int cubeId_3 = Renderer_RegisterTextured_Cross_Mesh(
-        mushroomTextureId,
-        1
-    );
+    
 
     const int light_source = Renderer_RegisterPrimitiveMeshData(
         cube::vertex_data,
@@ -145,6 +144,8 @@ int main() {
         cube::vertex_indices,
         cube::indices_count
     );
+
+    //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
 
     // Setup Dear ImGui context
@@ -211,7 +212,7 @@ int main() {
 
     model_instance models[]{
         light_source, Vector3D{1.2, 2, 1}, light_color, {1, 1, 1},
-        object_to_draw_light_on, Vector3D{0, 0, 0}, Vector3D{1, 0.5, 0.31f}, light_color
+        grass_cube_id, Vector3D{0, 0, 0}, Vector3D{1, 0.5, 0.31f}, light_color
     };
 
     int y=10;

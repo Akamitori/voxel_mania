@@ -33,7 +33,7 @@ void OpenGLGlobalSetup() {
     unsigned char whitePixel[4] = {255, 255, 255, 255};
     glGenTextures(1, &defaultTexture);
     glBindTexture(GL_TEXTURE_2D, defaultTexture);
-    
+
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -184,20 +184,81 @@ int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t verti
 
     // the idea is to add a bunch of UVs at the end
     const size_t actual_vertex_count = vertice_count / 3;
-    constexpr size_t float_per_vertex = 5;
+    constexpr size_t float_per_vertex = 8;
     const size_t totalFloats = actual_vertex_count * float_per_vertex;
-    m.vertices = new float[totalFloats];
+    m.vertices = new float[totalFloats]{};
     m.vertice_count = totalFloats;
     m.texture_id = -1;
 
+
+    // sets uvs and vertices
     for (size_t v = 0; v < actual_vertex_count; ++v) {
         m.vertices[v * float_per_vertex + 0] = vertices[v * 3 + 0];
         m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
         m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
 
-        m.vertices[v * float_per_vertex + 3] = 1;
-        m.vertices[v * float_per_vertex + 4] = 1;
+        m.vertices[v * float_per_vertex + 6] = 1;
+        m.vertices[v * float_per_vertex + 7] = 1;
     }
+
+    // accumulate normals
+    constexpr int vertices_per_triangle = 3;
+    const size_t total_triangles = index_count / vertices_per_triangle;
+    for (size_t v = 0; v < total_triangles; ++v) {
+        // we got the 3 indices
+        int index0 = m.indices[v * vertices_per_triangle + 0];
+        int index1 = m.indices[v * vertices_per_triangle + 1];
+        int index2 = m.indices[v * vertices_per_triangle + 2];
+
+        Vector3D v0 = {
+            m.vertices[index0 * float_per_vertex + 0],
+            m.vertices[index0 * float_per_vertex + 1],
+            m.vertices[index0 * float_per_vertex + 2]
+        };
+
+        Vector3D v1 = {
+            m.vertices[index1 * float_per_vertex + 0],
+            m.vertices[index1 * float_per_vertex + 1],
+            m.vertices[index1 * float_per_vertex + 2]
+        };
+
+        Vector3D v2 = {
+            m.vertices[index2 * float_per_vertex + 0],
+            m.vertices[index2 * float_per_vertex + 1],
+            m.vertices[index2 * float_per_vertex + 2]
+        };
+
+        Vector3D vector1 = v1 - v0;
+        Vector3D vector2 = v2 - v0;
+        Vector3D normal = cross(vector1, vector2);
+
+        m.vertices[index0 * float_per_vertex + 3] += normal.x;
+        m.vertices[index0 * float_per_vertex + 4] += normal.y;
+        m.vertices[index0 * float_per_vertex + 5] += normal.z;
+
+        m.vertices[index1 * float_per_vertex + 3] += normal.x;
+        m.vertices[index1 * float_per_vertex + 4] += normal.y;
+        m.vertices[index1 * float_per_vertex + 5] += normal.z;
+
+        m.vertices[index2 * float_per_vertex + 3] += normal.x;
+        m.vertices[index2 * float_per_vertex + 4] += normal.y;
+        m.vertices[index2 * float_per_vertex + 5] += normal.z;
+    }
+
+    for (size_t v = 0; v < actual_vertex_count; ++v) {
+        Vector3D normal{
+            m.vertices[v * float_per_vertex + 3],
+            m.vertices[v * float_per_vertex + 4],
+            m.vertices[v * float_per_vertex + 5]
+        };
+
+        normal = normalize(normal);
+
+        m.vertices[v * float_per_vertex + 3] = normal.x;
+        m.vertices[v * float_per_vertex + 4] = normal.y;
+        m.vertices[v * float_per_vertex + 5] = normal.z;
+    }
+    
     m.program_id = world_geometry_program;
 
     return currentId;
@@ -345,14 +406,18 @@ void SendGeometryDataToTheGPU() {
         glBindBuffer(GL_ARRAY_BUFFER, m.VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * m.vertice_count, m.vertices, GL_STATIC_DRAW);
 
-        constexpr int float_per_vertex = 5;
+        constexpr int float_per_vertex = 8;
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
 
-
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
                               reinterpret_cast<void *>(3 * sizeof(float)));
+
+
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+                              reinterpret_cast<void *>(6 * sizeof(float)));
 
         glGenBuffers(1, &m.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.VBE);
