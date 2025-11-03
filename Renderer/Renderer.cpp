@@ -532,7 +532,7 @@ void Renderer_FinalizeMeshLoading() {
 }
 
 // TODO we can probably work with a Matrix4D eventually
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color, Vector3D light_pos) {
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Light light, Material material) {
     Mesh mesh = Meshes[mesh_id];
     unsigned int program_to_use = mesh.program_id;
     glUseProgram(program_to_use);
@@ -540,10 +540,19 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_col
     // this means all programs need this uniform
     GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
     GLint position_id = glGetUniformLocation(program_to_use, "position");
-    GLint light_color_id = glGetUniformLocation(program_to_use, "light_color");
-    GLint light_pos_id = glGetUniformLocation(program_to_use, "light_position");
     GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
     GLuint texture_to_bind = mesh.texture_id == -1 ? defaultTexture : textures[mesh.texture_id].texture_id;
+
+    GLint light_pos_id = glGetUniformLocation(program_to_use, "light.position");
+    GLint light_ambient_id = glGetUniformLocation(program_to_use, "light.ambient");
+    GLint light_diffuse_id = glGetUniformLocation(program_to_use, "light.diffuse");
+    GLint light_specular_id = glGetUniformLocation(program_to_use, "light.specular");
+
+
+    GLint material_ambient_id = glGetUniformLocation(program_to_use, "material.ambient");
+    GLint material_diffuse_id = glGetUniformLocation(program_to_use, "material.diffuse");
+    GLint mterial_specular_id = glGetUniformLocation(program_to_use, "material.specular");
+    GLint material_shineness_id = glGetUniformLocation(program_to_use, "material.shininess");
 
 
     glBindTexture(GL_TEXTURE_2D, texture_to_bind);
@@ -553,9 +562,20 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_col
 
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
-    glUniform3fv(light_color_id, 1, &light_color.x);
-    glUniform3fv(light_pos_id, 1, &light_pos.x);
+
+    glUniform3fv(light_pos_id, 1, &light.position.x);
+    glUniform3fv(light_ambient_id, 1, &light.ambient.x);
+    glUniform3fv(light_diffuse_id, 1, &light.diffuse.x);
+    glUniform3fv(light_specular_id, 1, &light.specular.x);
+
+
     glUniform3fv(view_pos_id, 1, &SceneCamera->position.x);
+
+    glUniform3fv(material_ambient_id, 1, &material.ambient.x);
+    glUniform3fv(material_diffuse_id, 1, &material.diffuse.x);
+    glUniform3fv(mterial_specular_id, 1, &material.specular.x);
+    glUniform1fv(material_shineness_id, 1, &material.shininess);
+
     glDrawElements(GL_TRIANGLES, mesh.index_count,GL_UNSIGNED_INT, nullptr);
 }
 

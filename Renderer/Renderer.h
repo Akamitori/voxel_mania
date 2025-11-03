@@ -8,13 +8,28 @@
 
 struct Matrix4D;
 struct Vector4D;
-struct Vector3D;
 struct Camera;
 
 
 inline SDL_Window *window;
 inline SDL_GLContext open_gl_context;
 inline Camera *SceneCamera;
+
+
+struct Material {
+    Vector3D ambient;
+    Vector3D diffuse;
+    Vector3D specular;
+    float shininess;
+};
+
+struct Light {
+    Vector3D position;
+    
+    Vector3D ambient;
+    Vector3D diffuse;
+    Vector3D specular;
+};
 
 
 void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far);
@@ -53,7 +68,7 @@ void Renderer_FrameStart();
 
 void Renderer_FrameEnd();
 
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color, Vector3D light_pos);
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Light light, Material material);
 
 void Renderer_DrawLight(int light_id, Vector3D pos, Vector3D color);
 

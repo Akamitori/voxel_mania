@@ -15,6 +15,7 @@
 
 #include "OpenGlHelpers/ShaderLoader.h"
 #include "Renderer/Renderer.h"
+#include "SDL3/SDL_timer.h"
 
 
 // Vertex Shader source code
@@ -83,8 +84,6 @@ void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &curs
 struct model_instance {
     int mesh_id{};
     Vector3D pos{};
-    Vector3D color{};
-    Vector3D light_color{};
 };
 
 int RegisterCubeMesh3Part(int mesh_id) {
@@ -112,6 +111,7 @@ int main() {
     constexpr int initial_screen_width = 800, initial_screen_height = 600;
     Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
 
+    const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
     const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
     const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
     const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png");
@@ -122,14 +122,17 @@ int main() {
         grassTextureId
     );
 
-    const int wood_cube_id= RegisterCubeMesh1Part(woodTextureId);
-    
+    const int white_cube_id = RegisterCubeMesh3Part(
+        whiteTextureId
+    );
+
+    const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId);
+
     const int mushroom_cube_id = Renderer_RegisterTextured_Cross_Mesh(
         mushroomTextureId,
         0.5f
     );
 
-    
 
     const int light_source = Renderer_RegisterLight(
         cube::vertex_data,
@@ -138,12 +141,6 @@ int main() {
         cube::indices_count
     );
 
-    const int object_to_draw_light_on = Renderer_RegisterPrimitiveMeshData(
-        cube::vertex_data,
-        cube::vertices_count,
-        cube::vertex_indices,
-        cube::indices_count
-    );
 
     //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
@@ -211,15 +208,27 @@ int main() {
     Vector3D light_color = {1, 1, 1};
 
     model_instance models[]{
-        grass_cube_id, Vector3D{1.2, 2, 1}, light_color, {1, 1, 1},
-        grass_cube_id, Vector3D{0, 0, 0}, Vector3D{1, 1, 1}, light_color
+        white_cube_id, Vector3D{0, 0, 0},
     };
 
-    model_instance lights[] {
-        light_source, Vector3D{-2, 2, 1}, light_color, {1, 1, 1},
+    model_instance lights[]{
+        light_source, Vector3D{2, 2, 1.2},
     };
 
-    int y=10;
+    Material our_material{
+        {1.0, 0.5, 0.31f},
+        {1.0, 0.5, 0.31f},
+        {0.5, 0.5, 0.5},
+        32
+    };
+
+    Light our_light{
+        lights[0].pos,
+        {0.2, 0.2, 0.2},
+        {0.2, 0.2, 0.2},
+        {1, 1, 1},
+    };
+
 
     bool keepRunning = true;
     // Rendering loop
@@ -249,13 +258,13 @@ int main() {
 
         Renderer_FrameStart();
 
-        for (const auto &[mesh_id, pos, color, light_color_v]: models) {
+        for (const auto &[mesh_id, pos]: models) {
             // this seems to be in need of some refactoringggggg
-            Renderer_Draw(mesh_id, pos, color, lights[0].color, lights[0].pos);
+            Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_light, our_material);
         }
 
-        for (const auto&m : lights) {
-            Renderer_DrawLight(m.mesh_id, m.pos, m.color);
+        for (const auto &m: lights) {
+            Renderer_DrawLight(m.mesh_id, m.pos, light_color);
         }
 
 
@@ -272,11 +281,12 @@ int main() {
         IMGUI_CHECKVERSION();
 
         float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
-        
-        
+
+
         if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
         ) {
-            lights[0].pos= *reinterpret_cast<Vector3D*>(p_as_float3);
+            lights[0].pos = *reinterpret_cast<Vector3D *>(p_as_float3);
+            our_light.position = lights[0].pos;
         }
         // Show demo window! :)
 
