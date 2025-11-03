@@ -18,6 +18,7 @@
 #include "Trigonometry.h"
 
 unsigned int world_geometry_program;
+unsigned int world_light_program;
 unsigned int world_geometry_program_cross_textures;
 unsigned int ViewMatricesBlock;
 unsigned int ViewMatrices_binding_point = 0;
@@ -28,6 +29,7 @@ unsigned int defaultTexture;
 void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
+    world_light_program = InitializeProgram("light_program");
 
 
     unsigned char whitePixel[4] = {255, 255, 255, 255};
@@ -168,6 +170,7 @@ struct Mesh {
 };
 
 std::vector<Mesh> Meshes{};
+std::vector<Mesh> Lights{};
 
 // load the models into our cache
 int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t vertice_count, const int *indices,
@@ -258,8 +261,44 @@ int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t verti
         m.vertices[v * float_per_vertex + 4] = normal.y;
         m.vertices[v * float_per_vertex + 5] = normal.z;
     }
-    
+
     m.program_id = world_geometry_program;
+
+    return currentId;
+}
+
+int Renderer_RegisterLight(const float *vertices, const size_t vertice_count, const int *indices,
+                           const size_t index_count) {
+    const int currentId = Lights.size();
+
+    Lights.emplace_back();
+    Mesh &m = Lights.back();
+
+    m.indices = new int[index_count];
+    memcpy(m.indices, indices, index_count * sizeof(int));
+
+    m.index_count = index_count;
+
+    // the idea is to add a bunch of UVs at the end
+    const size_t actual_vertex_count = vertice_count / 3;
+    constexpr size_t float_per_vertex = 8;
+    const size_t totalFloats = actual_vertex_count * float_per_vertex;
+    m.vertices = new float[totalFloats]{};
+    m.vertice_count = totalFloats;
+    m.texture_id = -1;
+
+
+    // sets uvs and vertices
+    for (size_t v = 0; v < actual_vertex_count; ++v) {
+        m.vertices[v * float_per_vertex + 0] = vertices[v * 3 + 0];
+        m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
+        m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
+
+        m.vertices[v * float_per_vertex + 4] = 1;
+        m.vertices[v * float_per_vertex + 5] = 1;
+    }
+
+    m.program_id = world_light_program;
 
     return currentId;
 }
@@ -431,6 +470,39 @@ void SendGeometryDataToTheGPU() {
     }
 }
 
+// this is for untextured meshes ;)
+void SendLightGeometryDataToTheGPU() {
+    for (int i = 0; i < Lights.size(); ++i) {
+        auto &light = Lights[i];
+        glUseProgram(light.program_id);
+
+        glGenVertexArrays(1, &light.VAO);
+        glBindVertexArray(light.VAO);
+
+        glGenBuffers(1, &light.VBO);
+        glBindBuffer(GL_ARRAY_BUFFER, light.VBO);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * light.vertice_count, light.vertices, GL_STATIC_DRAW);
+
+        constexpr int float_per_vertex = 8;
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
+
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+                              reinterpret_cast<void *>(4 * sizeof(float)));
+
+        glGenBuffers(1, &light.VBE);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, light.VBE);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(int) * light.index_count, light.indices, GL_STATIC_DRAW);
+
+        delete[] light.vertices;
+        light.vertices = nullptr;
+
+        delete[] light.indices;
+        light.indices = nullptr;
+    }
+}
+
 void SendTextureDataToTheGPU() {
     for (auto &t: textures) {
         glGenTextures(1, &t.texture_id);
@@ -455,11 +527,12 @@ void SendTextureDataToTheGPU() {
 // we can probably do some post-processing here if we want for the index sorting
 void Renderer_FinalizeMeshLoading() {
     SendGeometryDataToTheGPU();
+    SendLightGeometryDataToTheGPU();
     SendTextureDataToTheGPU();
 }
 
 // TODO we can probably work with a Matrix4D eventually
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color) {
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color, Vector3D light_pos) {
     Mesh mesh = Meshes[mesh_id];
     unsigned int program_to_use = mesh.program_id;
     glUseProgram(program_to_use);
@@ -468,6 +541,8 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_col
     GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
     GLint position_id = glGetUniformLocation(program_to_use, "position");
     GLint light_color_id = glGetUniformLocation(program_to_use, "light_color");
+    GLint light_pos_id = glGetUniformLocation(program_to_use, "light_position");
+    GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
     GLuint texture_to_bind = mesh.texture_id == -1 ? defaultTexture : textures[mesh.texture_id].texture_id;
 
 
@@ -479,7 +554,30 @@ void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_col
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
     glUniform3fv(light_color_id, 1, &light_color.x);
+    glUniform3fv(light_pos_id, 1, &light_pos.x);
+    glUniform3fv(view_pos_id, 1, &SceneCamera->position.x);
     glDrawElements(GL_TRIANGLES, mesh.index_count,GL_UNSIGNED_INT, nullptr);
+}
+
+void Renderer_DrawLight(int light_id, Vector3D pos, Vector3D color) {
+    Mesh light = Lights[light_id];
+    unsigned int program_to_use = light.program_id;
+    glUseProgram(program_to_use);
+
+    // this means all programs need this uniform
+    GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
+    GLint position_id = glGetUniformLocation(program_to_use, "position");
+    GLuint texture_to_bind = light.texture_id == -1 ? defaultTexture : textures[light.texture_id].texture_id;
+
+
+    glBindTexture(GL_TEXTURE_2D, texture_to_bind);
+    glBindVertexArray(light.VAO);
+
+    Vector4D color_4{color.x, color.y, color.z, 1};
+
+    glUniform3fv(position_id, 1, &pos.x);
+    glUniform4fv(voxel_color, 1, &color_4.x);
+    glDrawElements(GL_TRIANGLES, light.index_count,GL_UNSIGNED_INT, nullptr);
 }
 
 void Renderer_FrameEnd() {

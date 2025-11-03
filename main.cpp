@@ -131,7 +131,7 @@ int main() {
 
     
 
-    const int light_source = Renderer_RegisterPrimitiveMeshData(
+    const int light_source = Renderer_RegisterLight(
         cube::vertex_data,
         cube::vertices_count,
         cube::vertex_indices,
@@ -211,8 +211,12 @@ int main() {
     Vector3D light_color = {1, 1, 1};
 
     model_instance models[]{
-        light_source, Vector3D{1.2, 2, 1}, light_color, {1, 1, 1},
-        grass_cube_id, Vector3D{0, 0, 0}, Vector3D{1, 0.5, 0.31f}, light_color
+        grass_cube_id, Vector3D{1.2, 2, 1}, light_color, {1, 1, 1},
+        grass_cube_id, Vector3D{0, 0, 0}, Vector3D{1, 1, 1}, light_color
+    };
+
+    model_instance lights[] {
+        light_source, Vector3D{-2, 2, 1}, light_color, {1, 1, 1},
     };
 
     int y=10;
@@ -246,7 +250,12 @@ int main() {
         Renderer_FrameStart();
 
         for (const auto &[mesh_id, pos, color, light_color_v]: models) {
-            Renderer_Draw(mesh_id, pos, color, light_color_v);
+            // this seems to be in need of some refactoringggggg
+            Renderer_Draw(mesh_id, pos, color, lights[0].color, lights[0].pos);
+        }
+
+        for (const auto&m : lights) {
+            Renderer_DrawLight(m.mesh_id, m.pos, m.color);
         }
 
 
@@ -262,13 +271,13 @@ int main() {
         // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
         IMGUI_CHECKVERSION();
 
-        // float *p_as_float3 = reinterpret_cast<float *>(&t);
-        //
-        //
-        // if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
-        // ) {
-        //     appData.view_dirty = true;
-        // }
+        float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
+        
+        
+        if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
+        ) {
+            lights[0].pos= *reinterpret_cast<Vector3D*>(p_as_float3);
+        }
         // Show demo window! :)
 
         ImGui::Render();

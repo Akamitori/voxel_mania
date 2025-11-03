@@ -26,6 +26,13 @@ int Renderer_RegisterPrimitiveMeshData(
     size_t index_count
 );
 
+int Renderer_RegisterLight(
+    const float *vertices,
+    size_t vertice_count,
+    const int *indices,
+    size_t index_count
+);
+
 int Renderer_RegisterTexture(const std::string &path);
 
 int Renderer_RegisterTexturedMesh(
@@ -46,7 +53,9 @@ void Renderer_FrameStart();
 
 void Renderer_FrameEnd();
 
-void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color);
+void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Vector3D light_color, Vector3D light_pos);
+
+void Renderer_DrawLight(int light_id, Vector3D pos, Vector3D color);
 
 void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 
