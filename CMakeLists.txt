@@ -23,30 +23,23 @@ find_package(OpenGL REQUIRED)
 
 add_executable(voxel_mania
         main.cpp
-        Camera.cpp
         InputHandling.cpp
-        InputHandling.h
         AppData.h
-        math_ops.h
-        math_ops.cpp
         RandomNumberGeneration.cpp
-        RandomNumberGeneration.h
-        Perlin.h
         Perlin.cpp
-        Renderer/Renderer.cpp
 )
 
-target_link_libraries(voxel_mania PUBLIC primitive_mesh_data)
-
-target_link_libraries(voxel_mania PRIVATE
+target_link_libraries(voxel_mania
+        PUBLIC
+        primitive_mesh_data
+        PRIVATE
         libglew_shared
         SDL3::SDL3
-        LinearAlgebra
-        Trigonometry
         DearImGui
-        OpenGL::GL
-        OpenGlHelpers
-        stb_image
+        OpenGlHelpers    
+        math_ops         
+        Renderer
+        Trigonometry
 )
 
 # Copy shaders

@@ -26,7 +26,6 @@ struct EXPORTED Matrix4D {
     Vector4D &operator[](int index);
 
     const Vector4D &operator[](int index) const;
-
     Matrix4D& operator=(const Matrix4D& b);
 };
 

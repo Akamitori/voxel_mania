@@ -1,6 +1,5 @@
 ﻿#include "ShaderLoader.h"
 
-#include <vector>
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -59,10 +58,10 @@ GLuint LoadShader(const GLenum eShaderType, const std::string &strShaderFilename
 
 // Function to link vertex and fragment shaders into a program
 unsigned int InitializeProgram(const std::string &program_id) {
-    std::vector<GLuint> shaders;
+    GLuint shaders[2]{};
 
-    shaders.push_back(LoadShader(GL_FRAGMENT_SHADER, "frag.frag", program_id));
-    shaders.push_back(LoadShader(GL_VERTEX_SHADER, "vert.vert", program_id));
+    shaders[0] = (LoadShader(GL_FRAGMENT_SHADER, "frag.frag", program_id));
+    shaders[1] = (LoadShader(GL_VERTEX_SHADER, "vert.vert", program_id));
     GLuint shaderProgram = glCreateProgram();
 
     std::ranges::for_each(shaders, [shaderProgram](const GLuint &s_id) {
