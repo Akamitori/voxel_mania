@@ -73,13 +73,7 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm);
 vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm);
 
 void main() {
-    vec4 texColor=   vec4(texture(material.diffuse, TexCoord));
-
-    if(texColor.a < 1){
-        discard;
-    }
-    
-    vec3 diffuseTexMap=  texColor.xyz;
+    vec3 diffuseTexMap=  vec3(texture(material.diffuse, TexCoord));
     vec3 specularTexMap = vec3(texture(material.specular, TexCoord));
     vec3 emisionTexMap =   vec3(texture(material.emission, TexCoord));
     vec3 norm=normalize(Normal);
@@ -118,7 +112,7 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
         float attenuation = 1.0 / (1.0 + light.linear_factor * distance +
         light.quadric_factor * (distance * distance));
 
-        output_color+=  (ambient+diffuse + specular)*attenuation;
+        output_color+= (ambient+diffuse + specular)*attenuation;
     }
     return output_color;
 }

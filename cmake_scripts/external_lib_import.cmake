@@ -70,7 +70,7 @@ function(import_external_library LIB_NAME)
             OUTPUT_VARIABLE GIT_COMMIT_HASH
             OUTPUT_STRIP_TRAILING_WHITESPACE
             RESULT_VARIABLE GIT_RESULT
-            ERROR_QUIET 
+            ERROR_QUIET
     )
 
     if (NOT GIT_RESULT EQUAL 0)
@@ -82,7 +82,7 @@ function(import_external_library LIB_NAME)
     # Fingerprint
     set(CURRENT_FINGERPRINT "${GIT_COMMIT_HASH}_${CMAKE_BUILD_TYPE}_${CMAKE_SYSTEM_NAME}_${CMAKE_CXX_COMPILER_ID}")
     set(FINGERPRINT_FILE "${INSTALL_PREFIX}/.build_fingerprint")
-    
+
     # Determine if build is needed
     set(NEEDS_BUILD FALSE)
     if (NOT EXISTS "${LIB_FILE}")
@@ -94,7 +94,7 @@ function(import_external_library LIB_NAME)
         if (NOT "${CURRENT_FINGERPRINT}" STREQUAL "${PREVIOUS_FINGERPRINT}")
             set(NEEDS_BUILD TRUE)
             message(STATUS "[${LIB_NAME}] Commit/platform changed (${CURRENT_FINGERPRINT} vs ${PREVIOUS_FINGERPRINT}), will rebuild")
-            
+
             message(STATUS "[${LIB_NAME}] Fingerprint changed, cleaning and rebuilding")
             message(STATUS "[${LIB_NAME}]   Old: ${PREVIOUS_FINGERPRINT}")
             message(STATUS "[${LIB_NAME}]   New: ${CURRENT_FINGERPRINT}")
@@ -129,7 +129,7 @@ function(import_external_library LIB_NAME)
 
         list(APPEND IMPORT_CMAKE_ARGS
                 -DCMAKE_BUILD_RPATH=${INSTALL_PREFIX}/lib
-                "-DCMAKE_INSTALL_RPATH=${RPATH_ORIGIN};${RPATH_ORIGIN}/../lib"  # Fixed separator
+                "-DCMAKE_INSTALL_RPATH=${RPATH_ORIGIN};${RPATH_ORIGIN}/../lib"
                 -DCMAKE_INSTALL_RPATH_USE_LINK_PATH=TRUE
         )
     endif ()
@@ -139,48 +139,24 @@ function(import_external_library LIB_NAME)
         list(APPEND IMPORT_CMAKE_ARGS -DCMAKE_TOOLCHAIN_FILE=${CMAKE_TOOLCHAIN_FILE})
     endif ()
 
-    # Always create ExternalProject (even if not building)
-    # This ensures proper dependency tracking
-    ExternalProject_Add(${LIB_NAME}_build
-            SOURCE_DIR "${IMPORT_SOURCE_DIR}"
-            CMAKE_GENERATOR ${CMAKE_GENERATOR}
-            CMAKE_ARGS
-            -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
-            -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
-            -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-            -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
-            -DCMAKE_POSITION_INDEPENDENT_CODE=ON
-            -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}     
-            -DCMAKE_CXX_STANDARD_REQUIRED=ON               
-            ${IMPORT_CMAKE_ARGS}
-            BUILD_BYPRODUCTS ${BUILD_BYPRODUCTS}
-            BUILD_ALWAYS 0
-            UPDATE_COMMAND ""
-            DOWNLOAD_COMMAND ""
-            # Key fix: Skip build/install if not needed
-            BUILD_COMMAND ${CMAKE_COMMAND} -E echo "Skipping build - library up to date"
-            INSTALL_COMMAND ${CMAKE_COMMAND} -E echo "Skipping install - library up to date"
-    )
-
-    # Override build/install commands only if we need to build
+    # Only create ExternalProject if we actually need to build
     if (NEEDS_BUILD)
-        ExternalProject_Add_Step(${LIB_NAME}_build force_build
-                COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR>
-                --config ${CMAKE_BUILD_TYPE}
-                --parallel
-                COMMENT "Building ${LIB_NAME}"
-                DEPENDEES configure
-                DEPENDERS build
-        )
-
-        ExternalProject_Add_Step(${LIB_NAME}_build force_install
-                COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR>
-                --config ${CMAKE_BUILD_TYPE}
-                --parallel
-                --target install
-                COMMENT "Installing ${LIB_NAME}"
-                DEPENDEES build
-                DEPENDERS install
+        ExternalProject_Add(${LIB_NAME}_build
+                SOURCE_DIR "${IMPORT_SOURCE_DIR}"
+                CMAKE_GENERATOR ${CMAKE_GENERATOR}
+                CMAKE_ARGS
+                -DCMAKE_INSTALL_PREFIX=${INSTALL_PREFIX}
+                -DCMAKE_BUILD_TYPE=${CMAKE_BUILD_TYPE}
+                -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+                -DCMAKE_CXX_COMPILER=${CMAKE_CXX_COMPILER}
+                -DCMAKE_POSITION_INDEPENDENT_CODE=ON
+                -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
+                -DCMAKE_CXX_STANDARD_REQUIRED=ON
+                ${IMPORT_CMAKE_ARGS}
+                BUILD_BYPRODUCTS ${BUILD_BYPRODUCTS}
+                BUILD_ALWAYS 0
+                UPDATE_COMMAND ""
+                DOWNLOAD_COMMAND ""
         )
 
         # Update fingerprint after successful build
@@ -189,7 +165,27 @@ function(import_external_library LIB_NAME)
                 DEPENDEES install
                 COMMENT "Updating build fingerprint for ${LIB_NAME}"
         )
+    else()
+        # Create dummy target that does nothing - library is already cached
+        add_custom_target(${LIB_NAME}_build
+                COMMAND ${CMAKE_COMMAND} -E echo "[${LIB_NAME}] Using cached build (${GIT_COMMIT_HASH})"
+        )
     endif ()
+
+
+    if (NOT NEEDS_BUILD)
+        # Add a build-time check
+        add_custom_command(
+                OUTPUT ${LIB_FILE}_timestamp
+                COMMAND ${CMAKE_COMMAND} -E echo "Verifying ${LIB_NAME} cache..."
+                COMMAND ${CMAKE_COMMAND} -E copy ${LIB_FILE} ${LIB_FILE}.verified ||
+        (${CMAKE_COMMAND} -E echo "ERROR: Cached lib missing, run: cmake ." && exit 1)
+                DEPENDS ${LIB_FILE}
+                COMMENT "Verifying cached ${LIB_NAME}"
+        )
+        add_custom_target(${LIB_NAME}_verify DEPENDS ${LIB_FILE}_timestamp)
+        add_dependencies(${LIB_NAME}_build ${LIB_NAME}_verify)
+    endif()
 
     # Create imported target AFTER ExternalProject
     add_library(${IMPORT_TARGET_NAME} ${LIB_TYPE} IMPORTED GLOBAL)

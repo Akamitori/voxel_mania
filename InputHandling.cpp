@@ -4,7 +4,7 @@
 
 #include "InputHandling.h"
 #include "Camera.h"
-#include "Renderer/Renderer.h"
+#include "Renderer.h"
 
 //TODO we can probably remove the camera and request it from the renderer directly
 //TODO we could also probably have a camera attached to a separate object with transform hierarchies but lets ignore that for now

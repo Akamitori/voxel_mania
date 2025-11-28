@@ -16,12 +16,17 @@ struct quad {
         0.5f, 0, 0.5f,          
     };
 
-    static constexpr int vertices_count_uv = 4 * 5;
+    static constexpr int vertices_count_uv = 8 * 8;
     static constexpr float vertex_data_uv_1_part_texture[vertices_count_uv]{
-        -0.5f, 0, 0.5f,         0,1,
-        -0.5f, 0, -0.5f,        0,0.f,
-        0.5f, 0, -0.5f,         1,0.f,
-        0.5f, 0, 0.5f,          1,1.0f,
+        -0.5f, 0, 0.5f,   0,-1,0,      0,1,
+        -0.5f, 0, -0.5f,  0,-1,0,      0,0.f,
+        0.5f, 0, -0.5f,   0,-1,0,      1,0.f,
+        0.5f, 0, 0.5f,    0,-1,0,      1,1.0f,
+
+        -0.5f, 0, 0.5f,   0,1,0,      0,1,
+        -0.5f, 0, -0.5f,  0,1,0,      0,0.f,
+        0.5f, 0, -0.5f,   0,1,0,      1,0.f,
+        0.5f, 0, 0.5f,    0,1,0,      1,1.0f,
     };
 
     static constexpr int vertex_indices_count_uv=12;
@@ -30,8 +35,9 @@ struct quad {
         0, 1, 2,
         0, 2, 3,
 
-        2,1,0,
-        3,2,0
+        //back face
+        6,5,4,
+        7,6,4
     };
 
 };
