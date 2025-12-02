@@ -14,10 +14,10 @@
 #include "Transformations.h"
 #include "Trigonometry.h"
 
-
 unsigned int world_geometry_program;
 unsigned int world_unshaded_geometry_program;
 unsigned int world_geometry_program_cross_textures;
+
 unsigned int ViewMatricesBlock;
 unsigned int Point_Lights_Block;
 unsigned int Directional_Lights_Block;
@@ -31,6 +31,44 @@ unsigned int Spot_Lights_binding_point = 3;
 
 unsigned int defaultTexture;
 unsigned int defaultEmissionTexture;
+
+enum class TextureType {
+    RGB,
+    RGBA
+};
+
+struct Texture {
+    int id{};
+    int width{};
+    int height{};
+    TextureType texture_type{};
+    unsigned char *data{};
+    GLuint texture_id{};
+};
+
+struct Mesh {
+    int id{};
+    float *vertices{nullptr};
+    size_t vertice_count{0};
+
+    int *indices{nullptr};
+    size_t index_count{0};
+
+    GLuint VAO{0};
+    GLuint VBO{0};
+    GLuint VBE{0};
+    int diffuse_texture_id{-1};
+    int specular_texture_id{-1};
+    int emission_texture_id{-1};
+    unsigned int program_id{0};
+};
+
+
+struct {
+    float FOV;
+    float Z_near;
+    float Z_far;
+} ProjectionParams;
 
 constexpr int MAX_POINT_LIGHTS = 4;
 
@@ -89,13 +127,6 @@ void OpenGLGlobalSetup() {
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, blackPixels);
 }
-
-
-struct {
-    float FOV;
-    float Z_near;
-    float Z_far;
-} ProjectionParams;
 
 
 void Renderer_Init(const int screen_width, const int screen_height, const float fov, const float z_near,
@@ -229,22 +260,6 @@ void Renderer_FrameStart() {
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 }
 
-struct Mesh {
-    int id{};
-    float *vertices{nullptr};
-    size_t vertice_count{0};
-
-    int *indices{nullptr};
-    size_t index_count{0};
-
-    GLuint VAO{0};
-    GLuint VBO{0};
-    GLuint VBE{0};
-    int diffuse_texture_id{-1};
-    int specular_texture_id{-1};
-    int emission_texture_id{-1};
-    unsigned int program_id{0};
-};
 
 std::vector<Mesh> Meshes{};
 std::vector<Mesh> Lights{};
@@ -346,7 +361,7 @@ int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t verti
 }
 
 int Renderer_RegisterUnshadedTexture(const float *vertices, const size_t vertice_count, const int *indices,
-                           const size_t index_count) {
+                                     const size_t index_count) {
     const int currentId = Lights.size();
 
     Lights.emplace_back();
@@ -380,20 +395,6 @@ int Renderer_RegisterUnshadedTexture(const float *vertices, const size_t vertice
 
     return currentId;
 }
-
-enum class TextureType {
-    RGB,
-    RGBA
-};
-
-struct Texture {
-    int id{};
-    int width{};
-    int height{};
-    TextureType texture_type{};
-    unsigned char *data{};
-    GLuint texture_id{};
-};
 
 
 std::vector<Texture> textures{};

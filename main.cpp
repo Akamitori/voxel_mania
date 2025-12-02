@@ -22,6 +22,10 @@
 
 #include "libraries/Renderer/Camera.h"
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
 
 // Vertex Shader source code
 float normalize_coord(const float value, const float max) {
@@ -118,6 +122,8 @@ int RegisterCubeMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
 
 int main() {
     try {
+
+        
         constexpr int initial_screen_width = 800, initial_screen_height = 600;
         Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
 
