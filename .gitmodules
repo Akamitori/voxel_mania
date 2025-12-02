@@ -8,3 +8,6 @@
 	path = libraries/3rd_party/imgui
 	url = https://github.com/ocornut/imgui
 	branch = docking
+[submodule "libraries/3rd_party/assimp"]
+	path = libraries/3rd_party/assimp
+	url = https://github.com/assimp/assimp

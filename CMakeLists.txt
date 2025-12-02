@@ -36,10 +36,11 @@ target_link_libraries(voxel_mania
         libglew_shared
         SDL3::SDL3
         DearImGui
-        OpenGlHelpers    
-        math_ops         
+        OpenGlHelpers
+        math_ops
         Renderer
         Trigonometry
+        assimp::assimp
 )
 
 # Copy shaders
