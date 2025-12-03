@@ -16,4 +16,5 @@ target_link_libraries(Renderer
         stb_image          # Internal only
         Trigonometry       # Internal only
         math_ops           # Internal only
+        assimp::assimp
 )

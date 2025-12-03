@@ -80,6 +80,8 @@ EXPORTED int Renderer_RegisterTexturedMesh(
 
 EXPORTED int Renderer_RegisterTextured_Cross_Mesh(int texture_id, float scale = 1);
 
+EXPORTED int Renderer_Register_Model(const char * path);
+
 EXPORTED int Renderer_Register_Directional_Light(const DirectionalLight &light);
 
 EXPORTED int Renderer_Register_Point_Light(const PointLight &light);
@@ -95,6 +97,8 @@ EXPORTED void Renderer_FrameStart();
 EXPORTED void Renderer_FrameEnd();
 
 EXPORTED void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Material material);
+
+EXPORTED void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material);
 
 EXPORTED void Renderer_DrawUnshadedTexture(int light_id, Vector3D pos, Vector3D color);
 
