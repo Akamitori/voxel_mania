@@ -7,6 +7,8 @@
 #include "quad.h"
 #include "Matrix4D.h"
 #include "vector"
+#include <cstddef>
+#include <cstdint>
 
 #define STB_IMAGE_IMPLEMENTATION
 
@@ -51,7 +53,7 @@ struct Mesh {
     float *vertices{nullptr};
     size_t vertice_count{0};
 
-    int *indices{nullptr};
+    uint32_t *indices{nullptr};
     size_t index_count{0};
 
     GLuint VAO{0};
@@ -265,16 +267,20 @@ std::vector<Mesh> Meshes{};
 std::vector<Mesh> Lights{};
 
 // load the models into our cache
-int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t vertice_count, const int *indices,
-                                       const size_t index_count) {
+int Renderer_RegisterPrimitiveMeshData(
+    const float *vertices,
+    const size_t vertice_count,
+    const uint32_t *indices,
+    const size_t index_count
+) {
     const int currentId = Meshes.size();
 
     Meshes.emplace_back();
     Mesh &m = Meshes.back();
 
-    m.indices = new int[index_count];
-    memset(m.indices, -1, sizeof(int) * index_count);
-    memcpy(m.indices, indices, index_count * sizeof(int));
+    m.indices = new uint32_t[index_count];
+    memset(m.indices, -1, sizeof(uint32_t) * index_count);
+    memcpy(m.indices, indices, sizeof(uint32_t) * index_count);
 
     m.index_count = index_count;
 
@@ -360,15 +366,19 @@ int Renderer_RegisterPrimitiveMeshData(const float *vertices, const size_t verti
     return currentId;
 }
 
-int Renderer_RegisterUnshadedTexture(const float *vertices, const size_t vertice_count, const int *indices,
-                                     const size_t index_count) {
+int Renderer_RegisterUnshadedTexture(
+    const float *vertices,
+    const size_t vertice_count,
+    const uint32_t *indices,
+    const size_t index_count
+) {
     const int currentId = Lights.size();
 
     Lights.emplace_back();
     Mesh &m = Lights.back();
 
-    m.indices = new int[index_count];
-    memcpy(m.indices, indices, index_count * sizeof(int));
+    m.indices = new uint32_t[index_count];
+    memcpy(m.indices, indices, index_count * sizeof(uint32_t));
 
     m.index_count = index_count;
 
@@ -430,8 +440,10 @@ int Renderer_RegisterTexturedMesh(
     const int specular_texture_id,
     const int emission_texture_id,
     const float *vertices,
-    const size_t vertice_count, const int *indices,
-    const size_t index_count) {
+    const size_t vertice_count,
+    const uint32_t *indices,
+    const size_t index_count
+) {
     assert(("Texture should be indexable", diffuse_texture_id < textures.size()));
     assert(("Texture should be indexable", specular_texture_id < textures.size()));
     assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id < textures.size()));
@@ -444,8 +456,8 @@ int Renderer_RegisterTexturedMesh(
     memcpy(m.vertices, vertices, vertice_count * sizeof(float));
     m.vertice_count = vertice_count;
 
-    m.indices = new int[index_count];
-    memcpy(m.indices, indices, index_count * sizeof(int));
+    m.indices = new uint32_t[index_count];
+    memcpy(m.indices, indices, index_count * sizeof(uint32_t));
 
     m.index_count = index_count;
 
@@ -461,7 +473,7 @@ int Renderer_RegisterTexturedMesh(
 int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale) {
     assert(("Support only downsizing", scale<=1));
 
-    const int total_quads = 2;
+    constexpr int total_quads = 2;
 
     Mesh m{};
     m.vertice_count = quad::vertices_count_uv * total_quads;
@@ -533,7 +545,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 
 
     m.index_count = quad::vertex_indices_count_uv * total_quads;;
-    m.indices = new int[m.index_count];
+    m.indices = new uint32_t[m.index_count];
 
     constexpr int total_elements_for_1_quad = (quad::vertices_count_uv / stride);
     for (int quad_idx = 0; quad_idx < total_quads; ++quad_idx) {
@@ -608,7 +620,7 @@ void SendGeometryDataToTheGPU() {
 
         glGenBuffers(1, &m.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.VBE);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(int) * m.index_count, m.indices, GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * m.index_count, m.indices, GL_STATIC_DRAW);
 
         delete[] m.vertices;
         m.vertices = nullptr;
@@ -641,7 +653,7 @@ void SendLightGeometryDataToTheGPU() {
 
         glGenBuffers(1, &light.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, light.VBE);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(int) * light.index_count, light.indices, GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * light.index_count, light.indices, GL_STATIC_DRAW);
 
         delete[] light.vertices;
         light.vertices = nullptr;
@@ -731,7 +743,8 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
     GLint material_shineness_id = glGetUniformLocation(program_to_use, "material.shininess");
     glUniform1fv(material_shineness_id, 1, &material.shininess);
 
-    glDrawElements(GL_TRIANGLES, mesh.index_count,GL_UNSIGNED_INT, nullptr);
+    assert(mesh.index_count <= INT_MAX); // this should never happen 
+    glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
 void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const Vector3D color) {
@@ -755,7 +768,9 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
 
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
-    glDrawElements(GL_TRIANGLES, light.index_count,GL_UNSIGNED_INT, nullptr);
+
+    assert(light.index_count <= INT_MAX); // this should never happen
+    glDrawElements(GL_TRIANGLES, static_cast<int>(light.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
 void Renderer_FrameEnd() {
@@ -810,12 +825,4 @@ void Renderer_UploadLights() {
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Spot_Lights), &Spot_Lights);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-    // constexpr int int_padded=sizeof(int)+12;
-    // for (int i=0;i<Point_Lights.num_of_light;++i) {
-    //     glBufferSubData(GL_UNIFORM_BUFFER, int_padded+i*sizeof(PointLight), sizeof(PointLight), &Point_Lights.Lights[i]);
-    // }
-
-    // upload number of lights
-    //    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(int), &m[0].x);
-    // upload actual light data
 }

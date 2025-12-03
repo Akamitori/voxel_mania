@@ -5,6 +5,8 @@
 #ifndef CUBE_H
 #define CUBE_H
 
+#include <cstdint>
+
 struct cube {
     static constexpr int vertices_count = 8 * 3;
     static constexpr float vertex_data[vertices_count]{
@@ -103,7 +105,7 @@ struct cube {
     // and 1 for max
 
     static constexpr int vertex_indices_count_uv=36;
-    static constexpr int vertex_indices_uvs[36]{
+    static constexpr uint32_t vertex_indices_uvs[36]{
         //bottom face
         0, 3, 1,
         0, 2, 3,
@@ -132,7 +134,7 @@ struct cube {
 
 
     static constexpr int indices_count = 12 * 3;
-    static constexpr int vertex_indices[indices_count]{
+    static constexpr uint32_t vertex_indices[indices_count]{
 
         // bottom face
         0, 3, 1,

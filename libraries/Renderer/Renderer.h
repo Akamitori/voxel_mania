@@ -4,6 +4,7 @@
 #include "Vector3D.h"
 #include "export.h"
 #include "SDL3/SDL_video.h"
+#include <cstdint> 
 
 struct Matrix4D;
 struct Vector4D;
@@ -54,14 +55,14 @@ EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, floa
 EXPORTED int Renderer_RegisterPrimitiveMeshData(
     const float *vertices,
     size_t vertice_count,
-    const int *indices,
+    const uint32_t *indices,
     size_t index_count
 );
 
 EXPORTED int Renderer_RegisterUnshadedTexture(
     const float *vertices,
     size_t vertice_count,
-    const int *indices,
+    const uint32_t *indices,
     size_t index_count
 );
 
@@ -73,7 +74,7 @@ EXPORTED int Renderer_RegisterTexturedMesh(
     int emission_texture_id,
     const float *vertices,
     size_t vertice_count,
-    const int *indices,
+    const uint32_t *indices,
     size_t index_count
 );
 
