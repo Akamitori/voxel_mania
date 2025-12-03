@@ -6,6 +6,8 @@
 #define QUAD_H
 
 
+#include <cstdint>
+
 struct quad {
     static constexpr int vertices_count = 4 * 3;
     
@@ -30,7 +32,7 @@ struct quad {
     };
 
     static constexpr int vertex_indices_count_uv=12;
-    static constexpr int vertex_indices_uvs[vertex_indices_count_uv]{
+    static constexpr uint32_t vertex_indices_uvs[vertex_indices_count_uv]{
         // front face
         0, 1, 2,
         0, 2, 3,
