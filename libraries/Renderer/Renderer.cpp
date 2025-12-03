@@ -12,9 +12,14 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 
+#include <queue>
+
 #include "stb_image.h"
 #include "Transformations.h"
 #include "Trigonometry.h"
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
 
 unsigned int world_geometry_program;
 unsigned int world_unshaded_geometry_program;
@@ -45,6 +50,7 @@ struct Texture {
     int height{};
     TextureType texture_type{};
     unsigned char *data{};
+    char *path{};
     GLuint texture_id{};
 };
 
@@ -65,6 +71,10 @@ struct Mesh {
     unsigned int program_id{0};
 };
 
+struct Model {
+    int *mesh_ids;
+    size_t mesh_count;
+};
 
 struct {
     float FOV;
@@ -101,8 +111,14 @@ Camera *SceneCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
+std::vector<Model> Models{};
+std::vector<Mesh> Meshes{};
+std::vector<Mesh> Lights{};
+
 
 void Renderer_UploadLights();
+
+int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
 
 void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
@@ -110,7 +126,7 @@ void OpenGLGlobalSetup() {
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
 
 
-    unsigned char whitePixel[4] = {255, 255, 255, 255};
+    const unsigned char whitePixel[4] = {255, 255, 255, 255};
 
     glGenTextures(1, &defaultTexture);
     glBindTexture(GL_TEXTURE_2D, defaultTexture);
@@ -120,7 +136,7 @@ void OpenGLGlobalSetup() {
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, whitePixel);
 
-    unsigned char blackPixels[4] = {0, 0, 0, 0};
+    const unsigned char blackPixels[4] = {0, 0, 0, 0};
     glGenTextures(1, &defaultEmissionTexture);
     glBindTexture(GL_TEXTURE_2D, defaultEmissionTexture);
 
@@ -232,10 +248,11 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     // for now we have only one shader to worry about
     // get the index of that block out of our shader
     for (const auto &program_to_initialize: programs_to_initialize) {
-        unsigned int ViewMatrices_Index = glGetUniformBlockIndex(program_to_initialize, "ViewMatrices");
-        unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
-        unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
-        unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
+        const unsigned int ViewMatrices_Index = glGetUniformBlockIndex(program_to_initialize, "ViewMatrices");
+        const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
+        const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(
+            program_to_initialize, "Directional_Lights");
+        const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
 
         //bind it to the buffer we made at a specific binding point
         // in the geometry program, our uniform that map to a UBO  can be found at global binding pointViewMatrices_binding_point
@@ -263,10 +280,6 @@ void Renderer_FrameStart() {
 }
 
 
-std::vector<Mesh> Meshes{};
-std::vector<Mesh> Lights{};
-
-// load the models into our cache
 int Renderer_RegisterPrimitiveMeshData(
     const float *vertices,
     const size_t vertice_count,
@@ -308,9 +321,9 @@ int Renderer_RegisterPrimitiveMeshData(
     const size_t total_triangles = index_count / vertices_per_triangle;
     for (size_t v = 0; v < total_triangles; ++v) {
         // we got the 3 indices
-        int index0 = m.indices[v * vertices_per_triangle + 0];
-        int index1 = m.indices[v * vertices_per_triangle + 1];
-        int index2 = m.indices[v * vertices_per_triangle + 2];
+        const int index0 = m.indices[v * vertices_per_triangle + 0];
+        const int index1 = m.indices[v * vertices_per_triangle + 1];
+        const int index2 = m.indices[v * vertices_per_triangle + 2];
 
         Vector3D v0 = {
             m.vertices[index0 * float_per_vertex + 0],
@@ -332,7 +345,7 @@ int Renderer_RegisterPrimitiveMeshData(
 
         Vector3D vector1 = v1 - v0;
         Vector3D vector2 = v2 - v0;
-        Vector3D normal = cross(vector1, vector2);
+        const Vector3D normal = cross(vector1, vector2);
 
         m.vertices[index0 * float_per_vertex + 3] += normal.x;
         m.vertices[index0 * float_per_vertex + 4] += normal.y;
@@ -423,12 +436,17 @@ int Renderer_RegisterTexture(const char *path) {
     assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
 
     const int id = textures.size();
+
+    char *texture_path = new char[strlen(path) + 1];
+    texture_path[0] = '\0';
+    strcat(texture_path, path);
     const Texture t{
         id,
         width,
         height,
         nrChannels == 3 ? TextureType::RGB : TextureType::RGBA,
-        data
+        data,
+        texture_path,
     };
     textures.push_back(t);
     return id;
@@ -490,15 +508,15 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
     scale_matrix[3].w = 1;
 
     Matrix4D translation_matrix{1};
-    float amount_lost_per_side = (1 - scale) / 2;
+    const float amount_lost_per_side = (1 - scale) / 2;
     translation_matrix[3] = {0, 0, -amount_lost_per_side, 1};
 
 
-    auto rotate_45 = rotation_z_matrix4D(DegreeToRadians(45));
-    auto rotate_45_minus = rotation_z_matrix4D(DegreeToRadians(-45));
+    const auto rotate_45 = rotation_z_matrix4D(DegreeToRadians(45));
+    const auto rotate_45_minus = rotation_z_matrix4D(DegreeToRadians(-45));
 
 
-    Matrix4D rotations_per_quad[total_quads] = {rotate_45, rotate_45_minus};
+    const Matrix4D rotations_per_quad[total_quads] = {rotate_45, rotate_45_minus};
 
 
     Matrix4D rotations_and_scales_per_quad[total_quads];
@@ -565,6 +583,124 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
     Meshes.push_back(m);
 
     return currentId;
+}
+
+
+int Renderer_Register_Model(const char *path) {
+    Assimp::Importer importer;
+    const aiScene *scene = importer.ReadFile(
+        path,
+        aiProcess_Triangulate |
+        aiProcess_FlipUVs |
+        aiProcess_MakeLeftHanded
+    );
+    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
+        fprintf(stderr, "ERROR::ASSIMP:: %s", importer.GetErrorString());
+        return -1;
+    }
+
+
+    // if we are here path is probably valid;
+    const char *last_slash = strrchr(path, '/');
+    const size_t chars_to_copy = last_slash ? (last_slash - path) : strlen(path);
+    char *directory = new char[chars_to_copy];
+    memcpy(directory, path, chars_to_copy * sizeof(char));
+    directory[chars_to_copy] = '\0';
+
+    // keep this bastard queue for now
+    // remove later because I hate STL
+    std::queue<aiNode *> nodes_to_process{};
+    nodes_to_process.push(scene->mRootNode);
+
+
+    const int model_id = Models.size();
+    Models.emplace_back(new int[scene->mNumMeshes], scene->mNumMeshes);
+    const Model &model_to_register = Models.back();
+
+    int count = 0;
+
+    while (!nodes_to_process.empty()) {
+        const aiNode *node = nodes_to_process.front();
+        nodes_to_process.pop();
+        for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
+            const aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
+
+            const size_t total_floats = mesh->mNumVertices * 8;
+            float *vertex_data = new float[total_floats];
+
+            // get the vertex data
+            for (unsigned int j = 0; j < mesh->mNumVertices; ++j) {
+                const Vector3D position{
+                    mesh->mVertices[j].x,
+                    mesh->mVertices[j].y,
+                    mesh->mVertices[j].z,
+                };
+
+                const Vector3D normal{
+                    mesh->mNormals[j].x,
+                    mesh->mNormals[j].y,
+                    mesh->mNormals[j].z,
+                };
+
+                float uv_x = 0;
+                float uv_y = 0;
+
+                if (mesh->mTextureCoords[0]) {
+                    uv_x = mesh->mTextureCoords[0][j].x;
+                    uv_y = mesh->mTextureCoords[0][j].y;
+                }
+
+                const unsigned int offset = j * 8;
+                // flip the axes so y swaps with z and open gl forward becomes backward
+                vertex_data[offset] = position.x;
+                vertex_data[offset + 1] = position.z;
+                vertex_data[offset + 2] = position.y;
+
+                vertex_data[offset + 3] = normal.x;
+                vertex_data[offset + 4] = normal.z;
+                vertex_data[offset + 5] = normal.y;
+
+                vertex_data[offset + 6] = uv_x;
+                vertex_data[offset + 7] = uv_y;
+            }
+
+            // get the indices data
+            size_t total_indices = 0;
+            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
+                total_indices += mesh->mFaces[j].mNumIndices;
+            }
+            uint32_t *indice_data = new uint32_t[total_indices];
+            for (size_t j = 0, indice_index = 0; j < mesh->mNumFaces; ++j) {
+                const aiFace face = mesh->mFaces[j];
+                for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index)
+                    indice_data[indice_index] = face.mIndices[k];
+            }
+            
+            const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
+            const int diffuse_texture_id = LoadTexture(aiTextureType_DIFFUSE, directory, material);
+            const int specular_texture_id = LoadTexture(aiTextureType_SPECULAR, directory, material);
+
+            model_to_register.mesh_ids[count++] = Renderer_RegisterTexturedMesh(
+                diffuse_texture_id,
+                specular_texture_id,
+                -1,
+                vertex_data,
+                total_floats,
+                indice_data,
+                total_indices
+            );
+
+            delete[] indice_data;
+            delete[] vertex_data;
+        }
+
+        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+            nodes_to_process.push(node->mChildren[i]);
+        }
+    }
+
+
+    return model_id;
 }
 
 
@@ -694,24 +830,24 @@ void Renderer_FinalizeMeshLoading() {
 
 // TODO we can probably work with a Matrix4D eventually
 void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, const Material material) {
-    Mesh mesh = Meshes[mesh_id];
-    unsigned int program_to_use = mesh.program_id;
+    const Mesh mesh = Meshes[mesh_id];
+    const unsigned int program_to_use = mesh.program_id;
     glUseProgram(program_to_use);
 
     // this means all programs need this uniform
-    GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
-    GLint position_id = glGetUniformLocation(program_to_use, "position");
-    GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
-    GLuint diffuse_texture_id = mesh.diffuse_texture_id == -1
-                                    ? defaultTexture
-                                    : textures[mesh.diffuse_texture_id].texture_id;
-    GLuint specular_texture_id = mesh.specular_texture_id == -1
-                                     ? defaultEmissionTexture
-                                     : textures[mesh.specular_texture_id].texture_id;
+    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
+    const GLint position_id = glGetUniformLocation(program_to_use, "position");
+    const GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
+    const GLuint diffuse_texture_id = mesh.diffuse_texture_id == -1
+                                          ? defaultTexture
+                                          : textures[mesh.diffuse_texture_id].texture_id;
+    const GLuint specular_texture_id = mesh.specular_texture_id == -1
+                                           ? defaultEmissionTexture
+                                           : textures[mesh.specular_texture_id].texture_id;
 
-    GLuint emission_texture_id = mesh.emission_texture_id == -1
-                                     ? defaultEmissionTexture
-                                     : textures[mesh.emission_texture_id].texture_id;
+    const GLuint emission_texture_id = mesh.emission_texture_id == -1
+                                           ? defaultEmissionTexture
+                                           : textures[mesh.emission_texture_id].texture_id;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
@@ -721,7 +857,7 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
     glBindTexture(GL_TEXTURE_2D, emission_texture_id);
     glBindVertexArray(mesh.VAO);
 
-    Vector4D color_4{color.x, color.y, color.z, 1};
+    const Vector4D color_4{color.x, color.y, color.z, 1};
 
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
@@ -731,40 +867,47 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
     // TODO set slot to zero
 
 
-    GLint material_diffuse_id = glGetUniformLocation(program_to_use, "material.diffuse");
+    const GLint material_diffuse_id = glGetUniformLocation(program_to_use, "material.diffuse");
     glUniform1i(material_diffuse_id, 0);
 
-    GLint material_specular_id = glGetUniformLocation(program_to_use, "material.specular");
+    const GLint material_specular_id = glGetUniformLocation(program_to_use, "material.specular");
     glUniform1i(material_specular_id, 1);
 
-    GLint material_emission_id = glGetUniformLocation(program_to_use, "material.emission");
+    const GLint material_emission_id = glGetUniformLocation(program_to_use, "material.emission");
     glUniform1i(material_emission_id, 2);
 
-    GLint material_shineness_id = glGetUniformLocation(program_to_use, "material.shininess");
+    const GLint material_shineness_id = glGetUniformLocation(program_to_use, "material.shininess");
     glUniform1fv(material_shineness_id, 1, &material.shininess);
 
     assert(mesh.index_count <= INT_MAX); // this should never happen 
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
+void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material) {
+    const Model model = Models[model_id];
+    for (size_t i = 0; i < model.mesh_count; ++i) {
+        Renderer_Draw(model.mesh_ids[i], pos, color, material);
+    }
+}
+
 void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const Vector3D color) {
-    Mesh light = Lights[light_id];
-    unsigned int program_to_use = light.program_id;
+    const Mesh light = Lights[light_id];
+    const unsigned int program_to_use = light.program_id;
     glUseProgram(program_to_use);
 
     // this means all programs need this uniform
-    GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
-    GLint position_id = glGetUniformLocation(program_to_use, "position");
-    GLuint diffuse_texture_id = light.diffuse_texture_id == -1
-                                    ? defaultTexture
-                                    : textures[light.diffuse_texture_id].texture_id;
+    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
+    const GLint position_id = glGetUniformLocation(program_to_use, "position");
+    const GLuint diffuse_texture_id = light.diffuse_texture_id == -1
+                                          ? defaultTexture
+                                          : textures[light.diffuse_texture_id].texture_id;
 
 
     glActiveTexture(GL_TEXTURE0); // Add this
     glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
     glBindVertexArray(light.VAO);
 
-    Vector4D color_4{color.x, color.y, color.z, 1};
+    const Vector4D color_4{color.x, color.y, color.z, 1};
 
     glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
@@ -825,4 +968,36 @@ void Renderer_UploadLights() {
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Spot_Lights), &Spot_Lights);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material) {
+    aiString str;
+    const unsigned int texture_count_for_type = material->GetTextureCount(type);
+    assert((("Currently we only support one texture per type"), texture_count_for_type<=1));
+
+    if (texture_count_for_type == 0) {
+        return -1;
+    }
+
+
+    material->GetTexture(type, 0, &str);
+
+    const char *file_name = str.C_Str();
+    const size_t dir_name_len = strlen(directory);
+    const size_t file_name_len = strlen(file_name);
+
+    char *relative_path = new char[dir_name_len + file_name_len + 2];
+    relative_path[0] = '\0';
+    if (dir_name_len == 0) {
+        strcat(relative_path, file_name);
+    } else {
+        strcat(relative_path, directory);
+        strcat(relative_path, "/");
+        strcat(relative_path, file_name);
+    }
+
+    const int texture_id = Renderer_RegisterTexture(relative_path);
+    free(relative_path);
+
+    return texture_id;
 }

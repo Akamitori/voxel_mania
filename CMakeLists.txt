@@ -40,7 +40,6 @@ target_link_libraries(voxel_mania
         math_ops
         Renderer
         Trigonometry
-        assimp::assimp
 )
 
 # Copy shaders

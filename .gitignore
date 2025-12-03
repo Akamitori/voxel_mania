@@ -1048,3 +1048,5 @@ dkms.conf
 
 # folder for 3rd party dll/lib installations for git submodules
 .prebuild_libs/
+
+!data/models/**/*.obj

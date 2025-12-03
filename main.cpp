@@ -22,11 +22,6 @@
 
 #include "libraries/Renderer/Camera.h"
 
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
-
-
 // Vertex Shader source code
 float normalize_coord(const float value, const float max) {
     return 2 * value / max - 1;
@@ -122,14 +117,10 @@ int RegisterCubeMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
 
 int main() {
     try {
-
         
         constexpr int initial_screen_width = 800, initial_screen_height = 600;
         Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
-
-        // this is a comments
-
-        printf("hallllo");
+        
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
         const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
@@ -167,6 +158,10 @@ int main() {
 
 
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
+
+        // loads a model . skip for now because this is slow as fuck
+        //const int back_pack_model=Renderer_Register_Model("data/models/backpack/backpack.obj");
+        
 
 
         // Setup Dear ImGui context
@@ -278,12 +273,12 @@ int main() {
         };
         DirectionalLight our_dir_light{
             {0, -1, 0.2f}, // Από πάνω προς τα κάτω
-            {0.02f, 0.02f, 0.02f}, // Minimal ambient (ήταν 0.1)
+            {0.1f, 0.1f, 0.1f}, // Minimal ambient (ήταν 0.1)
             {0.15f, 0.15f, 0.15f}, // Πολύ αχνό diffuse (ήταν 0.7)
             {0.3f, 0.3f, 0.3f}
         };
 
-        //Renderer_Register_Point_Light(our_light);
+        Renderer_Register_Point_Light(our_light);
         Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
 
@@ -323,11 +318,13 @@ int main() {
                 // this seems to be in need of some refactoringggggg
                 Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
             }
-
+            
             for (const auto &m: lights) {
                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
             }
 
+
+            //Renderer_Draw_Model(back_pack_model, {1,5,1}, {0,0,0}, {32});
 
             Draw_Cursor(cursorProgram, cursor_vao);
 
