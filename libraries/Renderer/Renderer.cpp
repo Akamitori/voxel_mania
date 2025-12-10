@@ -21,23 +21,29 @@
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
 
-unsigned int world_geometry_program;
-unsigned int world_unshaded_geometry_program;
-unsigned int world_geometry_program_cross_textures;
+Camera *SceneCamera = nullptr;
+SDL_Window *window{};
+SDL_GLContext open_gl_context{};
 
-unsigned int ViewMatricesBlock;
-unsigned int Point_Lights_Block;
-unsigned int Directional_Lights_Block;
-unsigned int Spot_Lights_Block;
+static unsigned int world_geometry_program;
+static unsigned int world_unshaded_geometry_program;
+static unsigned int world_geometry_program_cross_textures;
+static unsigned int world_geometry_program_outlines;
+static unsigned int world_geometry_program_outlines_cross_textures;
 
-unsigned int ViewMatrices_binding_point = 0;
-unsigned int Point_Lights_binding_point = 1;
-unsigned int Directional_Lights_binding_point = 2;
-unsigned int Spot_Lights_binding_point = 3;
+static unsigned int ViewMatricesBlock;
+static unsigned int Point_Lights_Block;
+static unsigned int Directional_Lights_Block;
+static unsigned int Spot_Lights_Block;
+
+static unsigned int ViewMatrices_binding_point = 0;
+static unsigned int Point_Lights_binding_point = 1;
+static unsigned int Directional_Lights_binding_point = 2;
+static unsigned int Spot_Lights_binding_point = 3;
 
 
-unsigned int defaultTexture;
-unsigned int defaultEmissionTexture;
+static unsigned int defaultTexture;
+static unsigned int defaultEmissionTexture;
 
 enum class TextureType {
     RGB,
@@ -69,6 +75,7 @@ struct Mesh {
     int specular_texture_id{-1};
     int emission_texture_id{-1};
     unsigned int program_id{0};
+    unsigned int outline_program_id{0};
 };
 
 struct Model {
@@ -103,27 +110,43 @@ struct Spot_Lights {
     SpotLight Lights[MAX_SPOT_LIGHTS]{};
 };
 
-Point_Lights Point_Lights{};
-Directional_Lights Directional_Lights{};
-Spot_Lights Spot_Lights{};
+static Point_Lights Point_Lights{};
+static Directional_Lights Directional_Lights{};
+static Spot_Lights Spot_Lights{};
 
-Camera *SceneCamera = nullptr;
-SDL_Window *window{};
-SDL_GLContext open_gl_context{};
+static std::vector<Model> Models{};
+static std::vector<Mesh> Meshes{};
+static std::vector<Mesh> Lights{};
+static std::vector<Texture> textures{};
 
-std::vector<Model> Models{};
-std::vector<Mesh> Meshes{};
-std::vector<Mesh> Lights{};
+static void SendLightUBOsToTheGPU();
 
+static void SendGeometryDataToTheGPU();
 
-void Renderer_UploadLights();
+static void SendLightGeometryDataToTheGPU();
 
-int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
+static void SendTextureDataToTheGPU();
+
+static void Draw(
+    unsigned int program_to_use,
+    const Mesh &mesh,
+    Vector3D pos,
+    Vector3D color,
+    Material material
+);
+
+static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
+
+static void OpenGLGlobalSetup();
 
 void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
+    world_geometry_program_outlines = InitializeProgram("program_for_regular_texture_outlines");
+    // no special impl for this
+    // added just for completion's sake
+    world_geometry_program_outlines_cross_textures = world_geometry_program_outlines;
 
 
     const unsigned char whitePixel[4] = {255, 255, 255, 255};
@@ -161,6 +184,8 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
 
+    // add a stencil buffer
+    SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     SceneCamera = new Camera{};
 
@@ -210,30 +235,46 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     // for the above depth mapping to work properly on the projection level
     glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
 
+    // enable the stencil test. we don't need to disable it for now
+    // everything not equal to 1 passes. this is just for complete init since each call will override it
+    // keep  , keep and replace with 1
+    // keep in mind that stencil ops can be blocked by the write mask
+    glEnable(GL_STENCIL_TEST);
+
+    // we don't need to override the glStencilFunc because we do that for each draw call
+    // glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+
+    // keep if the stencil test fails
+    // else keep if the depth pass fails
+    // else replace if both tests pass
+    glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
 
     OpenGLGlobalSetup();
 
-    // bind this buffer and fill it with nothing
-    // this can be run once
+    // bind the buffers and fill them with nothing
+    // then bind them to the proper binding point
     glGenBuffers(1, &ViewMatricesBlock);
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
     glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(Matrix4D), nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, ViewMatrices_binding_point, ViewMatricesBlock);
 
     glGenBuffers(1, &Point_Lights_Block);
     glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(Point_Lights), nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, Point_Lights_binding_point, Point_Lights_Block);
 
     glGenBuffers(1, &Directional_Lights_Block);
     glBindBuffer(GL_UNIFORM_BUFFER, Directional_Lights_Block);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(Directional_Lights), nullptr, GL_DYNAMIC_DRAW);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    glBindBufferBase(GL_UNIFORM_BUFFER, Directional_Lights_binding_point, Directional_Lights_Block);
 
     glGenBuffers(1, &Spot_Lights_Block);
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
     glBufferData(GL_UNIFORM_BUFFER, sizeof(Spot_Lights), nullptr, GL_DYNAMIC_DRAW);
+    glBindBufferBase(GL_UNIFORM_BUFFER, Spot_Lights_binding_point, Spot_Lights_Block);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
 
     Renderer_ResolutionChanged(screen_width, screen_height);
     Renderer_CameraUpdate();
@@ -242,7 +283,8 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     unsigned int programs_to_initialize[]{
         world_geometry_program,
         world_geometry_program_cross_textures,
-        world_unshaded_geometry_program
+        world_unshaded_geometry_program,
+        world_geometry_program_outlines
     };
     // this is run per shader
     // for now we have only one shader to worry about
@@ -261,12 +303,6 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
         glUniformBlockBinding(program_to_initialize, Point_Lights_Index, Point_Lights_binding_point);
         glUniformBlockBinding(program_to_initialize, Directional_Lights_Index, Directional_Lights_binding_point);
         glUniformBlockBinding(program_to_initialize, Spot_Lights_Index, Spot_Lights_binding_point);
-
-        // now, bind the buffer to that UBO please
-        glBindBufferBase(GL_UNIFORM_BUFFER, ViewMatrices_binding_point, ViewMatricesBlock);
-        glBindBufferBase(GL_UNIFORM_BUFFER, Point_Lights_binding_point, Point_Lights_Block);
-        glBindBufferBase(GL_UNIFORM_BUFFER, Directional_Lights_binding_point, Directional_Lights_Block);
-        glBindBufferBase(GL_UNIFORM_BUFFER, Spot_Lights_binding_point, Spot_Lights_Block);
     }
 }
 
@@ -276,7 +312,10 @@ void Renderer_FrameStart() {
 
     // set the clear value to the value associated with the "furthest" object
     glClearDepth(0.0f);
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+    // clear the stencil buffer
+    glClearStencil(0);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 }
 
 
@@ -420,9 +459,6 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-std::vector<Texture> textures{};
-
-
 int Renderer_RegisterTexture(const char *path) {
     int width;
     int height;
@@ -484,6 +520,7 @@ int Renderer_RegisterTexturedMesh(
     m.specular_texture_id = specular_texture_id;
     m.emission_texture_id = emission_texture_id;
     m.program_id = world_geometry_program;
+    m.outline_program_id = world_geometry_program_outlines;
 
     return mesh_id;
 }
@@ -579,6 +616,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 
     m.diffuse_texture_id = texture_id;
     m.program_id = world_geometry_program_cross_textures;
+    m.outline_program_id = world_geometry_program_outlines;
 
     Meshes.push_back(m);
 
@@ -675,7 +713,7 @@ int Renderer_Register_Model(const char *path) {
                 for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index)
                     indice_data[indice_index] = face.mIndices[k];
             }
-            
+
             const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
             const int diffuse_texture_id = LoadTexture(aiTextureType_DIFFUSE, directory, material);
             const int specular_texture_id = LoadTexture(aiTextureType_SPECULAR, directory, material);
@@ -698,7 +736,6 @@ int Renderer_Register_Model(const char *path) {
             nodes_to_process.push(node->mChildren[i]);
         }
     }
-
 
     return model_id;
 }
@@ -728,11 +765,155 @@ int Renderer_Register_Spot_Light(const SpotLight &light) {
     return currentId;
 }
 
+// we can probably do some post-processing here if we want for the index sorting
+void Renderer_FinalizeMeshLoading() {
+    SendGeometryDataToTheGPU();
+    SendLightGeometryDataToTheGPU();
+    SendTextureDataToTheGPU();
+    SendLightUBOsToTheGPU();
+}
+
+
+// TODO we can probably work with a Matrix4D eventually
+void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, const Material material) {
+    // 1st stencil pass
+    // write 1 to stencil buffer where fragments are drawn
+    // for now assume everything has an outline
+    // all fragments pass stencil test (still need to pass depth test)
+
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glStencilMask(0xFF);
+
+    const Mesh mesh = Meshes[mesh_id];
+    Draw(mesh.program_id, mesh, pos, color, material);
+}
+
+void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material material) {
+    // now that we have written to the stencil buffer we need to draw an outline
+    // therefore everywhere where stencil passed shouldn't be drawn
+    // we also disable writing to the stencil buffer because we don't want outlines to write there
+    // our shader will scale the model internally and discard the fragments we had at scale 1
+    // we also disable depth test so the outline will be drawn on top
+    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
+    glStencilMask(0x00);
+    glDisable(GL_DEPTH_TEST);
+
+
+    const Mesh mesh = Meshes[mesh_id];
+    Draw(mesh.outline_program_id, mesh, pos, color, material);
+
+    // reset to the previous state
+    glStencilMask(0xFF);
+    // no need to bother with stencil func itself since all draw calls set it up proplery
+    //glStencilFunc(GL_ALWAYS, 0, 0xFF);
+    glEnable(GL_DEPTH_TEST);
+}
+
+
+void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material) {
+    const Model model = Models[model_id];
+    for (size_t i = 0; i < model.mesh_count; ++i) {
+        Renderer_Draw(model.mesh_ids[i], pos, color, material);
+    }
+}
+
+void Renderer_Draw_Model_Outline(int model_id, Vector3D pos, Vector3D color, Material material) {
+    const Model model = Models[model_id];
+    for (size_t i = 0; i < model.mesh_count; ++i) {
+        Renderer_Draw_Outline(model.mesh_ids[i], pos, color, material);
+    }
+}
+
+
+void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const Vector3D color) {
+    // always pass the test so we can draw
+    glStencilFunc(GL_ALWAYS, 0, 0xFF);
+    // don't write anything to the stenci buffer though ;)
+    glStencilMask(0x00);
+
+    const Mesh light = Lights[light_id];
+    const unsigned int program_to_use = light.program_id;
+    glUseProgram(program_to_use);
+
+    // this means all programs need this uniform
+    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
+    const GLint position_id = glGetUniformLocation(program_to_use, "position");
+    const GLuint diffuse_texture_id = light.diffuse_texture_id == -1
+                                          ? defaultTexture
+                                          : textures[light.diffuse_texture_id].texture_id;
+
+
+    glActiveTexture(GL_TEXTURE0); // Add this
+    glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
+    glBindVertexArray(light.VAO);
+
+    const Vector4D color_4{color.x, color.y, color.z, 1};
+
+    glUniform3fv(position_id, 1, &pos.x);
+    glUniform4fv(voxel_color, 1, &color_4.x);
+
+    assert(light.index_count <= INT_MAX); // this should never happen
+    glDrawElements(GL_TRIANGLES, static_cast<int>(light.index_count),GL_UNSIGNED_INT, nullptr);
+}
+
+void Renderer_FrameEnd() {
+    SDL_GL_SwapWindow(window);
+}
+
+
+void Renderer_Destroy() {
+    for (auto &m: Meshes) {
+        glDeleteVertexArrays(1, &m.VAO);
+        glDeleteBuffers(1, &m.VBO);
+        glDeleteBuffers(1, &m.VBE);
+    }
+
+    glDeleteBuffers(1, &ViewMatricesBlock);
+    SDL_DestroyWindow(window);
+    SDL_GL_DestroyContext(open_gl_context);
+    SDL_Quit();
+}
+
+
+void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen_height) {
+    auto m = PerspectiveMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
+                               static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height));
+
+    glViewport(0, 0, new_screen_width, new_screen_height);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Matrix4D), &m[0].x);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void Renderer_CameraUpdate() {
+    auto m = CameraLookAtMatrix(*SceneCamera);
+    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
+void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
+    Meshes[mesh_id].emission_texture_id = emission_texture_id;
+}
+
+void SendLightUBOsToTheGPU() {
+    glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, Directional_Lights_Block);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Directional_Lights), &Directional_Lights);
+
+
+    glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Spot_Lights), &Spot_Lights);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+}
+
 // this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
     for (int i = 0; i < Meshes.size(); ++i) {
         auto &m = Meshes[i];
-        glUseProgram(m.program_id);
 
         glGenVertexArrays(1, &m.VAO);
         glBindVertexArray(m.VAO);
@@ -820,18 +1001,40 @@ void SendTextureDataToTheGPU() {
 }
 
 
-// we can probably do some post-processing here if we want for the index sorting
-void Renderer_FinalizeMeshLoading() {
-    SendGeometryDataToTheGPU();
-    SendLightGeometryDataToTheGPU();
-    SendTextureDataToTheGPU();
-    Renderer_UploadLights();
+int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material) {
+    aiString str;
+    const unsigned int texture_count_for_type = material->GetTextureCount(type);
+    assert((("Currently we only support one texture per type"), texture_count_for_type<=1));
+
+    if (texture_count_for_type == 0) {
+        return -1;
+    }
+
+
+    material->GetTexture(type, 0, &str);
+
+    const char *file_name = str.C_Str();
+    const size_t dir_name_len = strlen(directory);
+    const size_t file_name_len = strlen(file_name);
+
+    char *relative_path = new char[dir_name_len + file_name_len + 2];
+    relative_path[0] = '\0';
+    if (dir_name_len == 0) {
+        strcat(relative_path, file_name);
+    } else {
+        strcat(relative_path, directory);
+        strcat(relative_path, "/");
+        strcat(relative_path, file_name);
+    }
+
+    const int texture_id = Renderer_RegisterTexture(relative_path);
+    free(relative_path);
+
+    return texture_id;
 }
 
-// TODO we can probably work with a Matrix4D eventually
-void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, const Material material) {
-    const Mesh mesh = Meshes[mesh_id];
-    const unsigned int program_to_use = mesh.program_id;
+void Draw(const unsigned int program_to_use, const Mesh &mesh, const Vector3D pos, const Vector3D color,
+          const Material material) {
     glUseProgram(program_to_use);
 
     // this means all programs need this uniform
@@ -881,123 +1084,4 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
 
     assert(mesh.index_count <= INT_MAX); // this should never happen 
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
-}
-
-void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material) {
-    const Model model = Models[model_id];
-    for (size_t i = 0; i < model.mesh_count; ++i) {
-        Renderer_Draw(model.mesh_ids[i], pos, color, material);
-    }
-}
-
-void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const Vector3D color) {
-    const Mesh light = Lights[light_id];
-    const unsigned int program_to_use = light.program_id;
-    glUseProgram(program_to_use);
-
-    // this means all programs need this uniform
-    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
-    const GLint position_id = glGetUniformLocation(program_to_use, "position");
-    const GLuint diffuse_texture_id = light.diffuse_texture_id == -1
-                                          ? defaultTexture
-                                          : textures[light.diffuse_texture_id].texture_id;
-
-
-    glActiveTexture(GL_TEXTURE0); // Add this
-    glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
-    glBindVertexArray(light.VAO);
-
-    const Vector4D color_4{color.x, color.y, color.z, 1};
-
-    glUniform3fv(position_id, 1, &pos.x);
-    glUniform4fv(voxel_color, 1, &color_4.x);
-
-    assert(light.index_count <= INT_MAX); // this should never happen
-    glDrawElements(GL_TRIANGLES, static_cast<int>(light.index_count),GL_UNSIGNED_INT, nullptr);
-}
-
-void Renderer_FrameEnd() {
-    SDL_GL_SwapWindow(window);
-}
-
-
-void Renderer_Destroy() {
-    for (auto &m: Meshes) {
-        glDeleteVertexArrays(1, &m.VAO);
-        glDeleteBuffers(1, &m.VBO);
-        glDeleteBuffers(1, &m.VBE);
-    }
-
-    glDeleteBuffers(1, &ViewMatricesBlock);
-    SDL_DestroyWindow(window);
-    SDL_GL_DestroyContext(open_gl_context);
-    SDL_Quit();
-}
-
-
-void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen_height) {
-    auto m = PerspectiveMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
-                               static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height));
-
-    glViewport(0, 0, new_screen_width, new_screen_height);
-
-    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Matrix4D), &m[0].x);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
-
-void Renderer_CameraUpdate() {
-    auto m = CameraLookAtMatrix(*SceneCamera);
-    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
-
-void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
-    Meshes[mesh_id].emission_texture_id = emission_texture_id;
-}
-
-void Renderer_UploadLights() {
-    glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
-
-    glBindBuffer(GL_UNIFORM_BUFFER, Directional_Lights_Block);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Directional_Lights), &Directional_Lights);
-
-
-    glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Spot_Lights), &Spot_Lights);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
-
-int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material) {
-    aiString str;
-    const unsigned int texture_count_for_type = material->GetTextureCount(type);
-    assert((("Currently we only support one texture per type"), texture_count_for_type<=1));
-
-    if (texture_count_for_type == 0) {
-        return -1;
-    }
-
-
-    material->GetTexture(type, 0, &str);
-
-    const char *file_name = str.C_Str();
-    const size_t dir_name_len = strlen(directory);
-    const size_t file_name_len = strlen(file_name);
-
-    char *relative_path = new char[dir_name_len + file_name_len + 2];
-    relative_path[0] = '\0';
-    if (dir_name_len == 0) {
-        strcat(relative_path, file_name);
-    } else {
-        strcat(relative_path, directory);
-        strcat(relative_path, "/");
-        strcat(relative_path, file_name);
-    }
-
-    const int texture_id = Renderer_RegisterTexture(relative_path);
-    free(relative_path);
-
-    return texture_id;
 }

@@ -117,10 +117,9 @@ int RegisterCubeMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
 
 int main() {
     try {
-        
         constexpr int initial_screen_width = 800, initial_screen_height = 600;
         Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
-        
+
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
         const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
@@ -160,8 +159,7 @@ int main() {
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
         // loads a model . skip for now because this is slow as fuck
-        //const int back_pack_model=Renderer_Register_Model("data/models/backpack/backpack.obj");
-        
+        //const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
 
 
         // Setup Dear ImGui context
@@ -226,7 +224,7 @@ int main() {
         Vector3D light_color = {1, 1, 1};
 
         std::vector<model_instance> models{};
-        
+
         // Grid of cubes για να δεις το spotlight
         for (int x = -3; x <= 3; x++) {
             for (int y = 0; y <= 10; y++) {
@@ -258,8 +256,8 @@ int main() {
             light_source, our_light.position,
         };
 
-        Vector3D spotLightpos=SceneCamera->position;
-        spotLightpos.z+=0.5f;
+        Vector3D spotLightpos = SceneCamera->position;
+        spotLightpos.z += 0.5f;
         SpotLight our_spot_light{
             spotLightpos,
             SceneCamera->forward,
@@ -314,17 +312,22 @@ int main() {
 
             Renderer_FrameStart();
 
-            for (const auto &[mesh_id, pos]: models) {
-                // this seems to be in need of some refactoringggggg
-                Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
-            }
-            
+
             for (const auto &m: lights) {
                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
             }
 
+            for (const auto &[mesh_id, pos]: models) {
+                Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
+            }
 
-            //Renderer_Draw_Model(back_pack_model, {1,5,1}, {0,0,0}, {32});
+            for (const auto &[mesh_id, pos]: models) {
+                Renderer_Draw_Outline(mesh_id, pos, {1, 1, 1}, our_material);
+            }
+
+
+            //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
+            //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
 
             Draw_Cursor(cursorProgram, cursor_vao);
 

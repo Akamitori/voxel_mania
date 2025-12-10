@@ -96,9 +96,15 @@ EXPORTED void Renderer_FrameStart();
 
 EXPORTED void Renderer_FrameEnd();
 
+// for now this assumes everything has potentially an outline
+// if it doesn't just don't invoke Renderer_Draw_Model_Outline
 EXPORTED void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Material material);
 
+EXPORTED void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material material);
+
 EXPORTED void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material);
+
+EXPORTED void Renderer_Draw_Model_Outline(int model_id, Vector3D pos, Vector3D color, Material material);
 
 EXPORTED void Renderer_DrawUnshadedTexture(int light_id, Vector3D pos, Vector3D color);
 
