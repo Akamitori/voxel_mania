@@ -4,13 +4,13 @@
 #include "Vector3D.h"
 #include "export.h"
 #include "SDL3/SDL_video.h"
-#include <cstdint> 
+#include <cstdint>
+
+#include "GL/glew.h"
 
 struct Matrix4D;
 struct Vector4D;
 struct Camera;
-
-
 
 extern EXPORTED Camera *SceneCamera;
 extern EXPORTED SDL_Window *window;
@@ -28,7 +28,7 @@ struct EXPORTED PointLight {
     alignas(16)Vector3D specular;
     float linear_factor;
     float quadric_factor;
-}; 
+};
 
 struct EXPORTED DirectionalLight {
     alignas(16)Vector3D direction;
@@ -49,6 +49,11 @@ struct EXPORTED SpotLight {
     float outer_cutOff;
 };
 
+enum class TextureWrapMode : uint32_t {
+    REPEAT = GL_REPEAT,
+    CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
+};
+
 
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far);
 
@@ -66,7 +71,11 @@ EXPORTED int Renderer_RegisterUnshadedTexture(
     size_t index_count
 );
 
-EXPORTED int Renderer_RegisterTexture(const char* path);
+EXPORTED int Renderer_RegisterTexture(
+    const char *path,
+    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT,
+    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT
+);
 
 EXPORTED int Renderer_RegisterTexturedMesh(
     int diffuse_texture_id,
@@ -80,7 +89,7 @@ EXPORTED int Renderer_RegisterTexturedMesh(
 
 EXPORTED int Renderer_RegisterTextured_Cross_Mesh(int texture_id, float scale = 1);
 
-EXPORTED int Renderer_Register_Model(const char * path);
+EXPORTED int Renderer_Register_Model(const char *path);
 
 EXPORTED int Renderer_Register_Directional_Light(const DirectionalLight &light);
 

@@ -57,6 +57,9 @@ struct Texture {
     TextureType texture_type{};
     unsigned char *data{};
     char *path{};
+    TextureWrapMode WrapMode_S{};
+    TextureWrapMode WrapMode_T{};
+
     GLuint texture_id{};
 };
 
@@ -248,6 +251,12 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     // else keep if the depth pass fails
     // else replace if both tests pass
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
+
+    // some plain old blending
+    // the caller should take care of the ordering
+    // we will definitely fix this later when we add batching
+    glEnable(GL_BLEND);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 
     OpenGLGlobalSetup();
@@ -459,7 +468,7 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-int Renderer_RegisterTexture(const char *path) {
+int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, TextureWrapMode wrap_mode_t) {
     int width;
     int height;
     int nrChannels;
@@ -483,6 +492,8 @@ int Renderer_RegisterTexture(const char *path) {
         nrChannels == 3 ? TextureType::RGB : TextureType::RGBA,
         data,
         texture_path,
+        wrap_mode_s,
+        wrap_mode_t
     };
     textures.push_back(t);
     return id;
@@ -985,8 +996,8 @@ void SendTextureDataToTheGPU() {
         glGenTextures(1, &t.texture_id);
         glBindTexture(GL_TEXTURE_2D, t.texture_id);
         // set the texture wrapping/filtering options (on the currently bound texture object)
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, static_cast<GLint>(t.WrapMode_S));
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, static_cast<GLint>(t.WrapMode_T));
         // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
         // glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);

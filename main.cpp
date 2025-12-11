@@ -1,4 +1,4 @@
-﻿#include <fstream>
+﻿#include <algorithm>
 #include <array>
 #include <format>
 
@@ -20,7 +20,14 @@
 #include "SDL3/SDL_timer.h"
 #include <vector>
 
+#include "quad.h"
 #include "libraries/Renderer/Camera.h"
+
+
+struct model_instance {
+    int mesh_id{};
+    Vector3D pos{};
+};
 
 // Vertex Shader source code
 float normalize_coord(const float value, const float max) {
@@ -85,10 +92,6 @@ void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &curs
 // draw this model at this position
 //
 
-struct model_instance {
-    int mesh_id{};
-    Vector3D pos{};
-};
 
 int RegisterCubeMesh3Part(int diffuse_texture_id, int specular_texture_id, int emission_texture_id = -1) {
     return Renderer_RegisterTexturedMesh(
@@ -114,6 +117,30 @@ int RegisterCubeMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
     );
 }
 
+int RegisterQuadMesh1Part(int diffuse_texture_id, int specular_texture_id, int emission_texture_id = -1) {
+    return Renderer_RegisterTexturedMesh(
+        diffuse_texture_id,
+        specular_texture_id,
+        emission_texture_id,
+        quad::vertex_data_uv_1_part_texture_single_faced,
+        quad::vertices_count_uv_single_faced,
+        quad::vertex_indices_uvs_single_faced,
+        quad::vertex_indices_count_uv_single_faced
+    );
+}
+
+int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int emission_texture_id = -1) {
+    return Renderer_RegisterTexturedMesh(
+        diffuse_texture_id,
+        specular_texture_id,
+        emission_texture_id,
+        quad::vertex_data_uv_1_part_texture,
+        quad::vertices_count_uv,
+        quad::vertex_indices_uvs,
+        quad::vertex_indices_count_uv
+    );
+}
+
 
 int main() {
     try {
@@ -127,6 +154,11 @@ int main() {
         const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png");
         const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png");
         const int crate_Texture_emission_id = Renderer_RegisterTexture("data/textures/box_container_emission.png");
+        const int tranrsparent_window_texture = Renderer_RegisterTexture(
+            "data/textures/blending_transparent_window.png",
+            TextureWrapMode::CLAMP_TO_EDGE,
+            TextureWrapMode::CLAMP_TO_EDGE
+        );
 
         // if our problem is wrapping cubes and data like that
         // we can probably have the API acknowledge that
@@ -141,6 +173,8 @@ int main() {
         const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId, woodTextureId);
 
         const int crate_cube_id = RegisterCubeMesh1Part(crate_Texture_diffuse_id, crate_Texture_specular_id);
+
+        const int glass_cube_id = RegisterQuadMesh2Part(tranrsparent_window_texture, tranrsparent_window_texture);
 
         const int mushroom_cube_id = Renderer_RegisterTextured_Cross_Mesh(
             mushroomTextureId,
@@ -223,20 +257,25 @@ int main() {
 
         Vector3D light_color = {1, 1, 1};
 
-        std::vector<model_instance> models{};
+        std::vector<model_instance> opaque_models{};
+        std::vector<model_instance> transparent_models{};
 
-        // Grid of cubes για να δεις το spotlight
-        for (int x = -3; x <= 3; x++) {
-            for (int y = 0; y <= 10; y++) {
-                models.push_back({
-                    crate_cube_id,
-                    Vector3D{x * 2.0f, y * 2.0f, 0}
-                });
-            }
-        }
+        // // Grid of cubes για να δεις το spotlight
+        // for (int x = -3; x <= 3; x++) {
+        //     for (int y = 0; y <= 10; y++) {
+        //         models.push_back({
+        //             crate_cube_id,
+        //             Vector3D{x * 2.0f, y * 2.0f, 0}
+        //         });
+        //     }
+        // }
 
         // Target cube πιο μακριά
-        models.push_back({mushroom_cube_id, {0, 0, 1}});
+        opaque_models.push_back({crate_cube_id, {0, 2, 0}});
+        opaque_models.push_back({crate_cube_id, {1, 2, 0}});
+        opaque_models.push_back({crate_cube_id, {1, -2, 0}});
+        transparent_models.push_back({glass_cube_id, {0, 1.5, 0}});
+        transparent_models.push_back({glass_cube_id, {0.5, 1, 0}});
 
 
         Material our_material{
@@ -317,14 +356,24 @@ int main() {
                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
             }
 
-            for (const auto &[mesh_id, pos]: models) {
+            for (const auto &[mesh_id, pos]: opaque_models) {
                 Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
             }
 
-            for (const auto &[mesh_id, pos]: models) {
+            for (const auto &[mesh_id, pos]: opaque_models) {
                 Renderer_Draw_Outline(mesh_id, pos, {1, 1, 1}, our_material);
             }
 
+            std::ranges::sort(transparent_models, [](const model_instance &m1, const model_instance &m2) {
+                float distance1 = magnitude_squared(SceneCamera->position - m1.pos);
+                float distance2 = magnitude_squared(SceneCamera->position - m2.pos);
+
+                return distance1 > distance2;
+            });
+
+            for (const auto &[mesh_id, pos]: transparent_models) {
+                Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
+            }
 
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});

@@ -73,7 +73,9 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm);
 vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm);
 
 void main() {
-    vec3 diffuseTexMap=  vec3(texture(material.diffuse, TexCoord));
+    vec4 texture_color=texture(material.diffuse, TexCoord);
+    
+    vec3 diffuseTexMap=  vec3(texture_color);
     vec3 specularTexMap = vec3(texture(material.specular, TexCoord));
     vec3 emisionTexMap =   vec3(texture(material.emission, TexCoord));
     vec3 norm=normalize(Normal);
@@ -85,7 +87,7 @@ void main() {
     output_color+=CalculateSpotLights(diffuseTexMap, specularTexMap, norm);
     output_color+=emisionTexMap;
 
-    FragColor= vec4(output_color, 1.0);
+    FragColor= vec4(output_color, texture_color.a );
 }
 
 vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
