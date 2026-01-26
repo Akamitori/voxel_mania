@@ -1,6 +1,4 @@
-﻿#include <algorithm>
-#include <array>
-#include <format>
+﻿#include <array>
 
 #include <GL/glew.h>
 #include <SDL3/SDL_init.h>
@@ -12,22 +10,17 @@
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
 #include <imgui_impl_opengl3.h>
-#include <iostream>
 
 #include "Trigonometry.h"
 #include "OpenGlHelpers/ShaderLoader.h"
 #include "Renderer/Renderer.h"
 #include "SDL3/SDL_timer.h"
-#include <vector>
 
 #include "quad.h"
 #include "libraries/Renderer/Camera.h"
 
+#include "Main_Containers.h"
 
-struct model_instance {
-    int mesh_id{};
-    Vector3D pos{};
-};
 
 // Vertex Shader source code
 float normalize_coord(const float value, const float max) {
@@ -141,6 +134,19 @@ int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int e
     );
 }
 
+int compare_models_descending(const void *p, const void *q) {
+    const model_instance m1 = *(const model_instance *) p;
+    const model_instance m2 = *(const model_instance *) q;
+
+    const float distance1 = magnitude_squared(SceneCamera->position - m1.pos);
+    const float distance2 = magnitude_squared(SceneCamera->position - m2.pos);
+
+    return (distance1 < distance2) - (distance1 > distance2);
+}
+
+void sort_objects_based_on_camera_distance(model_instance *models, const size_t number) {
+    qsort(models, number, sizeof(model_instance), compare_models_descending);
+}
 
 int main() {
     try {
@@ -257,8 +263,9 @@ int main() {
 
         Vector3D light_color = {1, 1, 1};
 
-        std::vector<model_instance> opaque_models{};
-        std::vector<model_instance> transparent_models{};
+
+        Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
+        Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
 
         // // Grid of cubes για να δεις το spotlight
         // for (int x = -3; x <= 3; x++) {
@@ -271,12 +278,12 @@ int main() {
         // }
 
         // Target cube πιο μακριά
-        opaque_models.push_back({crate_cube_id, {0, 2, 0}});
-        opaque_models.push_back({crate_cube_id, {1, 2, 0}});
-        opaque_models.push_back({crate_cube_id, {1, -2, 0}});
-        transparent_models.push_back({glass_cube_id, {0, 1.5, 0}});
-        transparent_models.push_back({glass_cube_id, {0.5, 1, 0}});
+        Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
+        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
+        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
 
+        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
+        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
 
         Material our_material{
             32
@@ -305,8 +312,8 @@ int main() {
             {1.0f, 1.0f, 1.0f},
             0.09f,
             0.032f,
-            cos(DegreeToRadians(12.5f)),
-            cos(DegreeToRadians(17.5f)),
+            (float) cos(DegreeToRadians(12.5f)),
+            (float) cos(DegreeToRadians(17.5f)),
         };
         DirectionalLight our_dir_light{
             {0, -1, 0.2f}, // Από πάνω προς τα κάτω
@@ -356,23 +363,22 @@ int main() {
                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
             }
 
-            for (const auto &[mesh_id, pos]: opaque_models) {
-                Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
+            for (size_t i = 0; i < opaque_models->length; ++i) {
+                const model_instance m = opaque_models->data[i];
+                Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
-            for (const auto &[mesh_id, pos]: opaque_models) {
-                Renderer_Draw_Outline(mesh_id, pos, {1, 1, 1}, our_material);
+            for (size_t i = 0; i < opaque_models->length; ++i) {
+                const model_instance m = opaque_models->data[i];
+                Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
-            std::ranges::sort(transparent_models, [](const model_instance &m1, const model_instance &m2) {
-                float distance1 = magnitude_squared(SceneCamera->position - m1.pos);
-                float distance2 = magnitude_squared(SceneCamera->position - m2.pos);
 
-                return distance1 > distance2;
-            });
+            sort_objects_based_on_camera_distance(transparent_models->data, transparent_models->length);
 
-            for (const auto &[mesh_id, pos]: transparent_models) {
-                Renderer_Draw(mesh_id, pos, {1, 1, 1}, our_material);
+            for (size_t i = 0; i < transparent_models->length; ++i) {
+                const model_instance m = transparent_models->data[i];
+                Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
@@ -432,7 +438,7 @@ int main() {
         ImGui_ImplSDL3_Shutdown();
         ImGui::DestroyContext();
     } catch (const std::exception &e) {
-        std::cerr << "Fatal error: " << e.what() << std::endl;
+        fprintf(stderr, "Fatal error: %s", e.what());
         return EXIT_FAILURE;
     }
 

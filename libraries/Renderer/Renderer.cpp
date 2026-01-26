@@ -12,7 +12,6 @@
 
 #define STB_IMAGE_IMPLEMENTATION
 
-#include <queue>
 
 #include "stb_image.h"
 #include "Transformations.h"
@@ -20,6 +19,14 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+#include "queue_container.h"
+#include "vector_container.h"
+
+
+typedef aiNode *aiNodePtr;
+QUEUE_DECLARATION_STATIC(aiNodePtr)
+QUEUE_IMPLEMENTATION(aiNodePtr)
+
 
 Camera *SceneCamera = nullptr;
 SDL_Window *window{};
@@ -117,10 +124,30 @@ static Point_Lights Point_Lights{};
 static Directional_Lights Directional_Lights{};
 static Spot_Lights Spot_Lights{};
 
-static std::vector<Model> Models{};
-static std::vector<Mesh> Meshes{};
-static std::vector<Mesh> Lights{};
-static std::vector<Texture> textures{};
+VECTOR_DECLARATION_STATIC(Mesh)
+
+VECTOR_IMPLEMENTATION(Mesh)
+
+VECTOR_DECLARATION_STATIC(Model)
+
+VECTOR_IMPLEMENTATION(Model)
+
+VECTOR_DECLARATION_STATIC(Texture)
+
+VECTOR_IMPLEMENTATION(Texture)
+
+VECTOR_DECLARATION_STATIC(uint32_t)
+
+VECTOR_IMPLEMENTATION(uint32_t)
+
+VECTOR_DECLARATION_STATIC(float)
+
+VECTOR_IMPLEMENTATION(float)
+
+static Vector_Model *Models = Vector_Model_Create(100);
+static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
+static Vector_Mesh *UnshadedMeshes = Vector_Mesh_Create(100);
+static Vector_Texture *Textures = Vector_Texture_Create(100);
 
 static void SendLightUBOsToTheGPU();
 
@@ -334,13 +361,11 @@ int Renderer_RegisterPrimitiveMeshData(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    const int currentId = Meshes.size();
+    const int currentId = Meshes->length;
 
-    Meshes.emplace_back();
-    Mesh &m = Meshes.back();
+    Mesh m{};
 
-    m.indices = new uint32_t[index_count];
-    memset(m.indices, -1, sizeof(uint32_t) * index_count);
+    m.indices = (uint32_t *) malloc(index_count * sizeof(uint32_t));
     memcpy(m.indices, indices, sizeof(uint32_t) * index_count);
 
     m.index_count = index_count;
@@ -349,7 +374,8 @@ int Renderer_RegisterPrimitiveMeshData(
     const size_t actual_vertex_count = vertice_count / 3;
     constexpr size_t float_per_vertex = 8;
     const size_t totalFloats = actual_vertex_count * float_per_vertex;
-    m.vertices = new float[totalFloats]{};
+
+    m.vertices = (float *) malloc(totalFloats * sizeof(float));
     m.vertice_count = totalFloats;
     m.diffuse_texture_id = m.specular_texture_id = m.emission_texture_id = -1;
 
@@ -359,6 +385,10 @@ int Renderer_RegisterPrimitiveMeshData(
         m.vertices[v * float_per_vertex + 0] = vertices[v * 3 + 0];
         m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
         m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
+
+        m.vertices[v * float_per_vertex + 3] = 0;
+        m.vertices[v * float_per_vertex + 4] = 0;
+        m.vertices[v * float_per_vertex + 5] = 0;
 
         m.vertices[v * float_per_vertex + 6] = 1;
         m.vertices[v * float_per_vertex + 7] = 1;
@@ -424,6 +454,8 @@ int Renderer_RegisterPrimitiveMeshData(
 
     m.program_id = world_geometry_program;
 
+    Vector_Mesh_Add(Meshes, m);
+
     return currentId;
 }
 
@@ -433,12 +465,11 @@ int Renderer_RegisterUnshadedTexture(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    const int currentId = Lights.size();
+    const int currentId = UnshadedMeshes->length;
 
-    Lights.emplace_back();
-    Mesh &m = Lights.back();
+    Mesh m{};
 
-    m.indices = new uint32_t[index_count];
+    m.indices = (uint32_t *) malloc(index_count * sizeof(uint32_t));
     memcpy(m.indices, indices, index_count * sizeof(uint32_t));
 
     m.index_count = index_count;
@@ -447,7 +478,7 @@ int Renderer_RegisterUnshadedTexture(
     const size_t actual_vertex_count = vertice_count / 3;
     constexpr size_t float_per_vertex = 8;
     const size_t totalFloats = actual_vertex_count * float_per_vertex;
-    m.vertices = new float[totalFloats]{};
+    m.vertices = (float *) malloc(totalFloats * sizeof(float));
     m.vertice_count = totalFloats;
     m.diffuse_texture_id = m.specular_texture_id = m.emission_texture_id = -1;
 
@@ -463,6 +494,8 @@ int Renderer_RegisterUnshadedTexture(
     }
 
     m.program_id = world_unshaded_geometry_program;
+
+    Vector_Mesh_Add(UnshadedMeshes, m);
 
     return currentId;
 }
@@ -480,11 +513,10 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
     assert(("Texture path", data));
     assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
 
-    const int id = textures.size();
+    const int id = Textures->length;
 
-    char *texture_path = new char[strlen(path) + 1];
-    texture_path[0] = '\0';
-    strcat(texture_path, path);
+    char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
+    strcpy(texture_path, path);
     const Texture t{
         id,
         width,
@@ -495,7 +527,9 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
         wrap_mode_s,
         wrap_mode_t
     };
-    textures.push_back(t);
+
+    Vector_Texture_Add(Textures, t);
+
     return id;
 }
 
@@ -509,22 +543,21 @@ int Renderer_RegisterTexturedMesh(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    assert(("Texture should be indexable", diffuse_texture_id < textures.size()));
-    assert(("Texture should be indexable", specular_texture_id < textures.size()));
-    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id < textures.size()));
+    assert(("Texture should be indexable", diffuse_texture_id < Textures->length));
+    assert(("Texture should be indexable", specular_texture_id < Textures->length));
+    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Textures->length));
 
-    const int mesh_id = Meshes.size();
-    Meshes.emplace_back();
-    Mesh &m = Meshes.back();
+    const int mesh_id = Meshes->length;
+    Mesh m{};
 
-    m.vertices = new float[vertice_count];
-    memcpy(m.vertices, vertices, vertice_count * sizeof(float));
     m.vertice_count = vertice_count;
-
-    m.indices = new uint32_t[index_count];
-    memcpy(m.indices, indices, index_count * sizeof(uint32_t));
-
     m.index_count = index_count;
+
+    m.vertices = (float *) malloc(m.vertice_count * sizeof(float));
+    m.indices = (uint32_t *) malloc(m.index_count * sizeof(uint32_t));
+
+    memcpy(m.vertices, vertices, m.vertice_count * sizeof(float));
+    memcpy(m.indices, indices, m.index_count * sizeof(uint32_t));
 
     m.id = mesh_id;
     m.diffuse_texture_id = diffuse_texture_id;
@@ -532,6 +565,8 @@ int Renderer_RegisterTexturedMesh(
     m.emission_texture_id = emission_texture_id;
     m.program_id = world_geometry_program;
     m.outline_program_id = world_geometry_program_outlines;
+
+    Vector_Mesh_Add(Meshes, m);
 
     return mesh_id;
 }
@@ -543,7 +578,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 
     Mesh m{};
     m.vertice_count = quad::vertices_count_uv * total_quads;
-    m.vertices = new float[m.vertice_count];
+    m.vertices = (float *) malloc(m.vertice_count * sizeof(float));
 
     for (int i = 0; i < total_quads; ++i) {
         memcpy(
@@ -611,7 +646,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 
 
     m.index_count = quad::vertex_indices_count_uv * total_quads;;
-    m.indices = new uint32_t[m.index_count];
+    m.indices = (uint32_t *) malloc(m.index_count * sizeof(uint32_t));
 
     constexpr int total_elements_for_1_quad = (quad::vertices_count_uv / stride);
     for (int quad_idx = 0; quad_idx < total_quads; ++quad_idx) {
@@ -622,14 +657,14 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
         }
     }
 
-    const int currentId = Meshes.size();
+    const int currentId = Meshes->length;
     m.id = currentId;
 
     m.diffuse_texture_id = texture_id;
     m.program_id = world_geometry_program_cross_textures;
     m.outline_program_id = world_geometry_program_outlines;
 
-    Meshes.push_back(m);
+    Vector_Mesh_Add(Meshes, m);
 
     return currentId;
 }
@@ -643,6 +678,7 @@ int Renderer_Register_Model(const char *path) {
         aiProcess_FlipUVs |
         aiProcess_MakeLeftHanded
     );
+
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
         fprintf(stderr, "ERROR::ASSIMP:: %s", importer.GetErrorString());
         return -1;
@@ -652,30 +688,26 @@ int Renderer_Register_Model(const char *path) {
     // if we are here path is probably valid;
     const char *last_slash = strrchr(path, '/');
     const size_t chars_to_copy = last_slash ? (last_slash - path) : strlen(path);
-    char *directory = new char[chars_to_copy];
+    char *directory = (char *) malloc((chars_to_copy + 1) * sizeof(char));
     memcpy(directory, path, chars_to_copy * sizeof(char));
     directory[chars_to_copy] = '\0';
 
     // keep this bastard queue for now
     // remove later because I hate STL
-    std::queue<aiNode *> nodes_to_process{};
-    nodes_to_process.push(scene->mRootNode);
+    Queue_aiNodePtr *nodes_to_process = Queue_aiNodePtr_Create(100);
+    Queue_aiNodePtr_Enqueue(nodes_to_process, scene->mRootNode);
 
 
-    const int model_id = Models.size();
-    Models.emplace_back(new int[scene->mNumMeshes], scene->mNumMeshes);
-    const Model &model_to_register = Models.back();
-
+    const Model &model_to_register = {(int *) malloc(scene->mNumMeshes * sizeof(int)), scene->mNumMeshes};
     int count = 0;
+    aiNodePtr node;
 
-    while (!nodes_to_process.empty()) {
-        const aiNode *node = nodes_to_process.front();
-        nodes_to_process.pop();
+    Vector_uint32_t *index_data = Vector_uint32_t_Create(1024);
+    Vector_float *vertex_data = Vector_float_Create(1024);
+
+    while (Queue_aiNodePtr_Deque(nodes_to_process, &node)) {
         for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
             const aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-
-            const size_t total_floats = mesh->mNumVertices * 8;
-            float *vertex_data = new float[total_floats];
 
             // get the vertex data
             for (unsigned int j = 0; j < mesh->mNumVertices; ++j) {
@@ -699,30 +731,22 @@ int Renderer_Register_Model(const char *path) {
                     uv_y = mesh->mTextureCoords[0][j].y;
                 }
 
-                const unsigned int offset = j * 8;
-                // flip the axes so y swaps with z and open gl forward becomes backward
-                vertex_data[offset] = position.x;
-                vertex_data[offset + 1] = position.z;
-                vertex_data[offset + 2] = position.y;
-
-                vertex_data[offset + 3] = normal.x;
-                vertex_data[offset + 4] = normal.z;
-                vertex_data[offset + 5] = normal.y;
-
-                vertex_data[offset + 6] = uv_x;
-                vertex_data[offset + 7] = uv_y;
+                Vector_float_Add(vertex_data, position.x);
+                Vector_float_Add(vertex_data, position.z);
+                Vector_float_Add(vertex_data, position.y);
+                Vector_float_Add(vertex_data, normal.x);
+                Vector_float_Add(vertex_data, normal.z);
+                Vector_float_Add(vertex_data, normal.y);
+                Vector_float_Add(vertex_data, uv_x);
+                Vector_float_Add(vertex_data, uv_y);
             }
 
-            // get the indices data
-            size_t total_indices = 0;
-            for (unsigned int j = 0; j < mesh->mNumFaces; ++j) {
-                total_indices += mesh->mFaces[j].mNumIndices;
-            }
-            uint32_t *indice_data = new uint32_t[total_indices];
+
             for (size_t j = 0, indice_index = 0; j < mesh->mNumFaces; ++j) {
                 const aiFace face = mesh->mFaces[j];
-                for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index)
-                    indice_data[indice_index] = face.mIndices[k];
+                for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index) {
+                    Vector_uint32_t_Add(index_data, face.mIndices[k]);
+                }
             }
 
             const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
@@ -733,20 +757,29 @@ int Renderer_Register_Model(const char *path) {
                 diffuse_texture_id,
                 specular_texture_id,
                 -1,
-                vertex_data,
-                total_floats,
-                indice_data,
-                total_indices
+                vertex_data->data,
+                vertex_data->length,
+                index_data->data,
+                index_data->length
             );
 
-            delete[] indice_data;
-            delete[] vertex_data;
+            Vector_uint32_t_Clear(index_data);
+            Vector_float_Clear(vertex_data);
         }
 
         for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            nodes_to_process.push(node->mChildren[i]);
+            Queue_aiNodePtr_Enqueue(nodes_to_process, node->mChildren[i]);
         }
     }
+
+    Vector_uint32_t_Free(index_data);
+    Vector_float_Free(vertex_data);
+
+    Queue_aiNodePtr_Free(nodes_to_process);
+
+    Vector_Model_Add(Models, model_to_register);
+
+    const int model_id = Models->length;
 
     return model_id;
 }
@@ -795,7 +828,7 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
     glStencilMask(0xFF);
 
-    const Mesh mesh = Meshes[mesh_id];
+    const Mesh mesh = Meshes->data[mesh_id];
     Draw(mesh.program_id, mesh, pos, color, material);
 }
 
@@ -810,7 +843,7 @@ void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material m
     glDisable(GL_DEPTH_TEST);
 
 
-    const Mesh mesh = Meshes[mesh_id];
+    const Mesh mesh = Meshes->data[mesh_id];
     Draw(mesh.outline_program_id, mesh, pos, color, material);
 
     // reset to the previous state
@@ -822,14 +855,14 @@ void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material m
 
 
 void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material) {
-    const Model model = Models[model_id];
+    const Model model = Models->data[model_id];
     for (size_t i = 0; i < model.mesh_count; ++i) {
         Renderer_Draw(model.mesh_ids[i], pos, color, material);
     }
 }
 
 void Renderer_Draw_Model_Outline(int model_id, Vector3D pos, Vector3D color, Material material) {
-    const Model model = Models[model_id];
+    const Model model = Models->data[model_id];
     for (size_t i = 0; i < model.mesh_count; ++i) {
         Renderer_Draw_Outline(model.mesh_ids[i], pos, color, material);
     }
@@ -842,7 +875,7 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
     // don't write anything to the stenci buffer though ;)
     glStencilMask(0x00);
 
-    const Mesh light = Lights[light_id];
+    const Mesh light = UnshadedMeshes->data[light_id];
     const unsigned int program_to_use = light.program_id;
     glUseProgram(program_to_use);
 
@@ -851,7 +884,7 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
     const GLint position_id = glGetUniformLocation(program_to_use, "position");
     const GLuint diffuse_texture_id = light.diffuse_texture_id == -1
                                           ? defaultTexture
-                                          : textures[light.diffuse_texture_id].texture_id;
+                                          : Textures->data[light.diffuse_texture_id].texture_id;
 
 
     glActiveTexture(GL_TEXTURE0); // Add this
@@ -873,16 +906,34 @@ void Renderer_FrameEnd() {
 
 
 void Renderer_Destroy() {
-    for (auto &m: Meshes) {
+    for (size_t i = 0; i < Meshes->length; ++i) {
+        const Mesh m = Meshes->data[i];
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
+    }
+
+    for (size_t i = 0; i < UnshadedMeshes->length; ++i) {
+        const Mesh m = UnshadedMeshes->data[i];
+        glDeleteVertexArrays(1, &m.VAO);
+        glDeleteBuffers(1, &m.VBO);
+        glDeleteBuffers(1, &m.VBE);
+    }
+
+    for (size_t i = 0; i < Models->length; ++i) {
+        const Model m = Models->data[i];
+        free(m.mesh_ids);
     }
 
     glDeleteBuffers(1, &ViewMatricesBlock);
     SDL_DestroyWindow(window);
     SDL_GL_DestroyContext(open_gl_context);
     SDL_Quit();
+
+    Vector_Mesh_Free(Meshes);
+    Vector_Mesh_Free(UnshadedMeshes);
+    Vector_Model_Free(Models);
+    Vector_Texture_Free(Textures);
 }
 
 
@@ -905,7 +956,7 @@ void Renderer_CameraUpdate() {
 }
 
 void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
-    Meshes[mesh_id].emission_texture_id = emission_texture_id;
+    Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
 }
 
 void SendLightUBOsToTheGPU() {
@@ -923,8 +974,8 @@ void SendLightUBOsToTheGPU() {
 
 // this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
-    for (int i = 0; i < Meshes.size(); ++i) {
-        auto &m = Meshes[i];
+    for (int i = 0; i < Meshes->length; ++i) {
+        auto &m = Meshes->data[i];
 
         glGenVertexArrays(1, &m.VAO);
         glBindVertexArray(m.VAO);
@@ -950,18 +1001,18 @@ void SendGeometryDataToTheGPU() {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.VBE);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * m.index_count, m.indices, GL_STATIC_DRAW);
 
-        delete[] m.vertices;
+        free(m.vertices);
         m.vertices = nullptr;
 
-        delete[] m.indices;
+        free(m.indices);
         m.indices = nullptr;
     }
 }
 
 // this is for untextured meshes ;)
 void SendLightGeometryDataToTheGPU() {
-    for (int i = 0; i < Lights.size(); ++i) {
-        auto &light = Lights[i];
+    for (int i = 0; i < UnshadedMeshes->length; ++i) {
+        auto &light = UnshadedMeshes->data[i];
         glUseProgram(light.program_id);
 
         glGenVertexArrays(1, &light.VAO);
@@ -983,16 +1034,17 @@ void SendLightGeometryDataToTheGPU() {
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, light.VBE);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * light.index_count, light.indices, GL_STATIC_DRAW);
 
-        delete[] light.vertices;
+        free(light.vertices);
         light.vertices = nullptr;
 
-        delete[] light.indices;
+        free(light.indices);
         light.indices = nullptr;
     }
 }
 
 void SendTextureDataToTheGPU() {
-    for (auto &t: textures) {
+    for (size_t i = 0; i < Textures->length; ++i) {
+        Texture &t = Textures->data[i];
         glGenTextures(1, &t.texture_id);
         glBindTexture(GL_TEXTURE_2D, t.texture_id);
         // set the texture wrapping/filtering options (on the currently bound texture object)
@@ -1028,12 +1080,11 @@ int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *mat
     const size_t dir_name_len = strlen(directory);
     const size_t file_name_len = strlen(file_name);
 
-    char *relative_path = new char[dir_name_len + file_name_len + 2];
-    relative_path[0] = '\0';
+    char *relative_path = (char *) malloc((dir_name_len + file_name_len + 2) * sizeof(char));
     if (dir_name_len == 0) {
-        strcat(relative_path, file_name);
+        strcpy(relative_path, file_name);
     } else {
-        strcat(relative_path, directory);
+        strcpy(relative_path, directory);
         strcat(relative_path, "/");
         strcat(relative_path, file_name);
     }
@@ -1054,14 +1105,14 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Vector3D po
     const GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
     const GLuint diffuse_texture_id = mesh.diffuse_texture_id == -1
                                           ? defaultTexture
-                                          : textures[mesh.diffuse_texture_id].texture_id;
+                                          : Textures->data[mesh.diffuse_texture_id].texture_id;
     const GLuint specular_texture_id = mesh.specular_texture_id == -1
                                            ? defaultEmissionTexture
-                                           : textures[mesh.specular_texture_id].texture_id;
+                                           : Textures->data[mesh.specular_texture_id].texture_id;
 
     const GLuint emission_texture_id = mesh.emission_texture_id == -1
                                            ? defaultEmissionTexture
-                                           : textures[mesh.emission_texture_id].texture_id;
+                                           : Textures->data[mesh.emission_texture_id].texture_id;
 
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);

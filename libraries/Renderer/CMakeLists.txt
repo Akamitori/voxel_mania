@@ -17,4 +17,5 @@ target_link_libraries(Renderer
         Trigonometry       # Internal only
         math_ops           # Internal only
         assimp::assimp
+        Custom_Containers
 )
