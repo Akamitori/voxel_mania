@@ -27,6 +27,7 @@ add_executable(voxel_mania
         AppData.h
         RandomNumberGeneration.cpp
         Perlin.cpp
+        Main_Containers.cpp
 )
 
 target_link_libraries(voxel_mania
@@ -40,6 +41,7 @@ target_link_libraries(voxel_mania
         math_ops
         Renderer
         Trigonometry
+        Custom_Containers
 )
 
 # Copy shaders
