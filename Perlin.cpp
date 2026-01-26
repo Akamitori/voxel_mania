@@ -1,5 +1,4 @@
 ﻿#include "Perlin.h"
-#include <array>
 #include <cassert>
 
 
@@ -43,10 +42,11 @@ double Noise2D(const Perlin &p, float x, float y) {
     const int valueBottomRight = p.permutation[p.permutation[X + 1] + Y];
     const int valueBottomLeft = p.permutation[p.permutation[X] + Y];
 
-    const double dotTopRight = dot(&topRight, &p.GradientVectors[valueTopRight % p.GradientVectors.size()]);
-    const double dotTopLeft = dot(&topLeft, &p.GradientVectors[valueTopLeft % p.GradientVectors.size()]);
-    const double dotBottomRight = dot(&bottomRight, &p.GradientVectors[valueBottomRight % p.GradientVectors.size()]);
-    const double dotBottomLeft = dot(&bottomLeft, &p.GradientVectors[valueBottomLeft % p.GradientVectors.size()]);
+    const double dotTopRight = dot(&topRight, &p.GradientVectors[valueTopRight % Perlin::Gradient_Vector_Size]);
+    const double dotTopLeft = dot(&topLeft, &p.GradientVectors[valueTopLeft % Perlin::Gradient_Vector_Size]);
+    const double dotBottomRight = dot(&bottomRight,
+                                      &p.GradientVectors[valueBottomRight % Perlin::Gradient_Vector_Size]);
+    const double dotBottomLeft = dot(&bottomLeft, &p.GradientVectors[valueBottomLeft % Perlin::Gradient_Vector_Size]);
 
     const double u = fade(xf);
     const double v = fade(yf);
@@ -81,69 +81,134 @@ double FBMNoise2D(const Perlin &p, const float x, const float y) {
 }
 
 void CalculatePermutation(Perlin &p) {
-    std::array<int, 256> permutation{};
+    constexpr int permutation_half_size = Perlin::Permutation_Size / 2;
+    constexpr int last_element_index = permutation_half_size - 1;
 
-    for (int i = 0; i < permutation.size(); i++) {
+    int permutation[permutation_half_size]{};
+
+
+    for (int i = 0; i < permutation_half_size; i++) {
         permutation[i] = i;
     }
 
-    for (int i = permutation.size() - 1; i > 0; i--) {
+    for (int i = last_element_index; i > 0; i--) {
         const int random_i = RandomIntInclusive(p.rng, 0, i);
         const int temp = permutation[random_i];
         permutation[random_i] = permutation[i];
         permutation[i] = temp;
     }
 
-    for (int i = 0; i < permutation.size(); i++) {
-        p.permutation[256 + i] = p.permutation[i] = permutation[i];
+    for (int i = 0; i < permutation_half_size; i++) {
+        p.permutation[permutation_half_size + i] = p.permutation[i] = permutation[i];
     }
 }
 
 
 #ifndef NDEBUG
 
-#include <fstream>
-#include <iostream>
-
-void Write_noise_to_file(std::ofstream &file, const double noise) {
+int Write_noise_to_file(FILE *fp, const double noise) {
     int intensity = static_cast<int>((noise + 1.0f) * 127.5f); // Map [-1, 1] to [0, 255]
     intensity = intensity < 0 ? 0 : intensity > 255 ? 255 : intensity;
 
-    file << intensity << " " << intensity << " " << intensity << " ";
+    if (fprintf(fp, "%d %d %d ", intensity, intensity, intensity) < 0) {
+        return 0;
+    }
+
+
+    return 1;
 }
 
 // Generate a grayscale image from Perlin noise and save it as a PPM file
-void CreatePerlinNoiseImage(const Perlin &p, const std::string &filename, const int width, const int height) {
-    std::ofstream file(filename + ".ppm", std::ios::binary);
-    std::ofstream file2(filename + "_2.ppm", std::ios::binary);
-    if (!file) {
-        std::cerr << "Failed to open file: " << filename << std::endl;
+void CreatePerlinNoiseImage(const Perlin &p, const char *filename, const int width, const int height) {
+    const char *ext1 = ".ppm";
+    const char *ext2 = "_2.ppm";
+
+    char file_name_1[1024];
+    strcpy(file_name_1, filename);
+    strcat(file_name_1, ext1);
+
+    char file_name_2[1024];
+    strcpy(file_name_2, filename);
+    strcat(file_name_2, ext2);
+
+    FILE *fp1 = fopen(file_name_1, "wb+");
+
+    if (fp1 == nullptr) {
+        fprintf(stderr, "Cannot create/truncate file: %s, %s", file_name_1, strerror(errno));
         return;
     }
 
-    // Write PPM header for a grayscale image
-    file << "P3\n"; // P2 format for grayscale
-    file << width << " " << height << "\n"; // Image dimensions
-    file << "255\n"; // Max grayscale value
+    FILE *fp2 = fopen(file_name_2, "wb+");
+    if (fp2 == nullptr) {
+        fprintf(stderr, "Cannot create/truncate file: %s, %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_1;
+        return;
+    }
 
-    file2 << "P3\n"; // P2 format for grayscale
-    file2 << width << " " << height << "\n"; // Image dimensions
-    file2 << "255\n"; // Max grayscale value
+    if (fprintf(fp1, "P3\n") < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
+
+    if (fprintf(fp1, "%d %d\n", width, height) < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
+
+    if (fprintf(fp1, "255\n") < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
+
+    if (fprintf(fp2, "P3\n") < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
+
+    if (fprintf(fp2, "%d %d\n", width, height) < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
+
+    if (fprintf(fp2, "255\n") < 0) {
+        fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+        goto CLOSE_FILE_2;
+    }
 
     // Generate Perlin noise and write pixel values
     for (int j = 0; j < height; ++j) {
         for (int i = 0; i < width; ++i) {
             // Map noise value to RGB
-            Write_noise_to_file(file, Noise2D(p, i, j));
-            Write_noise_to_file(file2, FBMNoise2D(p, i, j));
+            if (!Write_noise_to_file(fp1, Noise2D(p, i, j))) {
+                fprintf(stderr, "Error during writing noise at %s: %s", file_name_1, strerror(errno));
+                goto CLOSE_FILE_2;
+            }
+
+            if (!Write_noise_to_file(fp2, FBMNoise2D(p, i, j))) {
+                fprintf(stderr, "Error during writing noise at %s: %s", file_name_2, strerror(errno));
+                goto CLOSE_FILE_1;
+            }
         }
-        file << "\n";
-        file2 << "\n";
+
+        if (fprintf(fp1, "\n") < 0) {
+            fprintf(stderr, "Error during writing at %s: %s", file_name_1, strerror(errno));
+            goto CLOSE_FILE_2;
+        }
+
+        if (fprintf(fp2, "\n") < 0) {
+            fprintf(stderr, "Error during writing at %s: %s", file_name_2, strerror(errno));
+            goto CLOSE_FILE_2;
+        }
     }
 
-
-    file.close();
-    file2.close();
+CLOSE_FILE_2:
+    if (fclose(fp2) == EOF) {
+        fprintf(stderr, "Failed to close %s", file_name_2);
+    };
+CLOSE_FILE_1:
+    if (fclose(fp1) == EOF) {
+        fprintf(stderr, "Failed to close %s", file_name_1);
+    };
 }
 
 #endif
