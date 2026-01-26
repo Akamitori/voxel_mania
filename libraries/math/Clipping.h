@@ -1,7 +1,7 @@
 ﻿#ifndef CLIPPING_H
 #define CLIPPING_H
 
-#include <cstdint>
+#include <stdint.h>
 
 #include "export.h"
 #include "Plane.h"

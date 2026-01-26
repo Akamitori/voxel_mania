@@ -3,6 +3,7 @@
 //
 
 #include "math_ops.h"
+
 #include <math.h>
 
 // TODO revisit this function
@@ -26,5 +27,9 @@ double math_ops::lerp(const double value, const double start, const double end) 
 }
 
 double math_ops::clamp(const double value, const double lower, const double upper) {
-    return fmin(upper, fmax(lower,value));    
+    return fmin(upper, fmax(lower, value));
+}
+
+uint8_t math_ops::max(const uint8_t a, const uint8_t b) {
+    return a > b ? a : b;
 }

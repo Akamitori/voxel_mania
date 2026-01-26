@@ -3,7 +3,7 @@
 
 #include "export.h"
 
-#include <cstdint>
+#include <stdint.h>
 #include "Vector3D.h"
 
 struct Vector3D;

@@ -11,4 +11,7 @@ add_and_export_library(LinearAlgebra TYPE SHARED FILES
         Clipping.cpp
         Bounding.cpp
 )
+
+target_link_libraries(LinearAlgebra PRIVATE math_ops)
+
 add_and_export_library(Trigonometry TYPE SHARED FILES Trigonometry.cpp)

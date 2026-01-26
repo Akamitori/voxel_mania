@@ -4,9 +4,10 @@
 #include "Bounding.h"
 #include "Vector3D.h"
 
-#include <algorithm>
 #include <Matrix4D.h>
-#include <cmath>
+#include <math.h>
+
+#include "math_ops/math_ops.h"
 
 
 constexpr float k_polygon_epsilon = 0.001F;
@@ -226,7 +227,7 @@ bool clip_polyhedron(const Polyhedron *polyhedron, const Plane &plane, Polyhedro
             }
 
 
-            if (new_edge && std::max(new_edge->vertex_index[0], new_edge->vertex_index[1]) == 0xFF) {
+            if (new_edge && math_ops::max(new_edge->vertex_index[0], new_edge->vertex_index[1]) == 0xFF) {
                 // The input polyhedron was invalid.
                 *result = *polyhedron;
                 return (true);
@@ -260,7 +261,7 @@ bool clip_polyhedron(const Polyhedron *polyhedron, const Plane &plane, Polyhedro
 }
 
 
-/// @param m_cam the object space to world space tranformation for the camera
+/// @param m_cam the object space to world space transformation for the camera
 /// @param g projection distance
 /// @param s aspect ratio
 /// @remark this method assumes direct x conventions, hence we need to account for that
@@ -288,8 +289,8 @@ void build_frustum_polyhedron(const Matrix4D &m_cam, float g, float s, const flo
 
     // generate lateral planes
     const Matrix4D inverse_m_cam = inverse(m_cam);
-    const float mx = 1.f / std::sqrt(g * g + s * s);
-    const float my = 1.f / std::sqrt(g * g + 1.f);
+    const float mx = 1.0 / sqrt(g * g + s * s);
+    const float my = 1.0 / sqrt(g * g + 1.f);
     polyhedron->plane[0] = transform_plane(inverse_m_cam, Plane{-g * mx, 0, s * mx, 0.f});
     polyhedron->plane[1] = transform_plane(inverse_m_cam, Plane{0, g * my, my, 0.f});
     polyhedron->plane[2] = transform_plane(inverse_m_cam, Plane{g * mx, 0, s * mx, 0.f});
@@ -356,9 +357,9 @@ bool sphere_visible(int32_t plane_count, const Plane *planeArray, const Vector3D
 bool oriented_box_visible(int32_t plane_count, const Plane *plane_array, const OBB &box) {
     for (int32_t i = 0; i < plane_count; i++) {
         const Plane &g = plane_array[i];
-        float rg = std::fabs(dot_vector(g, box.axis[0]) * box.size.x) +
-                   std::fabs(dot_vector(g, box.axis[1]) * box.size.y) +
-                   std::fabs(dot_vector(g, box.axis[2]) * box.size.z);
+        float rg = fabs(dot_vector(g, box.axis[0]) * box.size.x) +
+                   fabs(dot_vector(g, box.axis[1]) * box.size.y) +
+                   fabs(dot_vector(g, box.axis[2]) * box.size.z);
 
         if (dot_point(g, box.center) <= -rg) return false;
     }
@@ -368,9 +369,9 @@ bool oriented_box_visible(int32_t plane_count, const Plane *plane_array, const O
 bool AxisAlignedBoxVisible(int32_t plane_count, const Plane *plane_array, const AABB &box) {
     for (int32_t i = 0; i < plane_count; i++) {
         const Plane &g = plane_array[i];
-        float rg = std::fabs(g.normal.x * box.size.x) +
-                   std::fabs(g.normal.y * box.size.y) +
-                   std::fabs(g.normal.z * box.size.z);
+        float rg = fabs(g.normal.x * box.size.x) +
+                   fabs(g.normal.y * box.size.y) +
+                   fabs(g.normal.z * box.size.z);
         if (dot_point(g, box.center) <= -rg) return false;
     }
     return true;
