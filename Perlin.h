@@ -1,17 +1,18 @@
 ﻿#ifndef PERLIN_H
 #define PERLIN_H
-#include <array>
+
 
 #include "RandomNumberGeneration.h"
 #include "libraries/math/Vector2D.h"
 
 class Perlin {
-    std::array<int, 512> permutation{};
+    static constexpr int Permutation_Size=512;
+    int permutation[Permutation_Size]{};
     float frequency{};
     int octaves{};
     RandomNumberGeneration rng;
-    std::array<Vector2D, 12> GradientVectors = {
-        {
+    static constexpr int Gradient_Vector_Size=12;
+    Vector2D GradientVectors[Gradient_Vector_Size] = {
             Vector2D{1.0f, 0.0f}, // Right
             Vector2D{0.0f, 1.0f}, // Up
             Vector2D{-1.0f, 0.0f}, // Left
@@ -24,7 +25,6 @@ class Perlin {
             Vector2D{-0.8944f, 0.4472f}, // Slightly angled: (-1, 0.5) normalized
             Vector2D{-0.8944f, -0.4472f}, // Slightly angled: (-1, -0.5) normalized
             Vector2D{0.8944f, -0.4472f}, // Slightly angled: (1, -0.5) normalized
-        }
     };
 
     explicit Perlin(const unsigned int seed, const float frequency) : frequency{frequency}, rng{CreateRandomEngine(seed)} {
@@ -53,7 +53,7 @@ double FBMNoise2D(const Perlin &p, float x, float y);
 
 
 #ifndef NDEBUG
-void CreatePerlinNoiseImage(const Perlin &p, const std::string &filename, int width, int height);
+void CreatePerlinNoiseImage(const Perlin &p, const char* filename, int width, int height);
 #endif
 
 
