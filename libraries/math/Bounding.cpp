@@ -1,14 +1,14 @@
-﻿#include <cstdint>
-#include <cmath>
+﻿#include <math.h>
 
 #include "Bounding.h"
 
-#include <algorithm>
-#include <cfloat>
+
 #include <Plane.h>
 #include <Vector2D.h>
+#include <float.h>
 
 #include "Vector3D.h"
+#include "math_ops/math_ops.h"
 
 
 Sphere calculate_bounding_sphere(const int32_t vertex_count, const Vector3D *vertices) {
@@ -16,13 +16,13 @@ Sphere calculate_bounding_sphere(const int32_t vertex_count, const Vector3D *ver
 
     const float d2 = calculate_diameter(vertex_count, vertices, &a, &b);
     Vector3D center_p = (vertices[a] + vertices[b]) * 0.5f;
-    float radius = std::sqrt(d2) * 0.5f;
+    float radius = sqrt(d2) * 0.5f;
 
     for (int32_t i = 0; i < vertex_count; i++) {
         Vector3D pv = vertices[i] - center_p;
         const float m2 = magnitude_squared(pv);
         if (m2 > radius * radius) {
-            Vector3D q_p = center_p - (pv * (radius / std::sqrt(m2)));
+            Vector3D q_p = center_p - (pv * (radius / sqrt(m2)));
             center_p = (q_p + vertices[i]) * 0.5f;
             radius = magnitude(q_p - center_p);
         }
@@ -91,19 +91,19 @@ AABB calculate_axis_aligned_bounding_box(int32_t vertex_count, const Vector3D *v
 }
 
 Vector3D min_per_component(const Vector3D &v1, const Vector3D &v2) {
-    return {std::min(v1.x, v2.x), std::min(v1.y, v2.y), std::min(v1.z, v2.z)};
+    return {(float) fmin(v1.x, v2.x), (float) fmin(v1.y, v2.y), (float) fmin(v1.z, v2.z)};
 }
 
 Vector3D max_per_component(const Vector3D &v1, const Vector3D &v2) {
-    return {std::max(v1.x, v2.x), std::max(v1.y, v2.y), std::max(v1.z, v2.z)};
+    return {(float) fmax(v1.x, v2.x), (float) fmax(v1.y, v2.y), (float) fmax(v1.z, v2.z)};
 }
 
 Vector3D make_perpendicular_vector(const Vector3D &v) {
-    const float x = std::fabs(v.x);
-    const float y = std::fabs(v.y);
-    const float z = std::fabs(v.z);
+    const float x = fabs(v.x);
+    const float y = fabs(v.y);
+    const float z = fabs(v.z);
 
-    if (z < std::min(x, y)) {
+    if (z < fmin(x, y)) {
         return Vector3D{v.y, -v.x, 0.0f};
     }
 
@@ -141,14 +141,14 @@ OBB calculate_oriented_bounding_box(int32_t vertex_count, const Vector3D *vertic
                 float dt = dot(t, vertices[i]);
                 float du = dot(u, vertices[i]);
 
-                s_min = std::min(s_min, ds);
-                s_max = std::max(s_max, ds);
+                s_min = fmin(s_min, ds);
+                s_max = fmax(s_max, ds);
 
-                t_min = std::min(t_min, dt);
-                t_max = std::max(t_max, dt);
+                t_min = fmin(t_min, dt);
+                t_max = fmax(t_max, dt);
 
-                u_min = std::min(u_min, du);
-                u_max = std::max(u_max, du);
+                u_min = fmin(u_min, du);
+                u_max = fmax(u_max, du);
             }
 
             const float hx = (s_max - s_min) * 0.5f;
