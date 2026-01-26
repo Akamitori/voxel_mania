@@ -44,6 +44,8 @@ EXPORTED void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, float FOV, fl
 
 EXPORTED void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
 
+EXPORTED void PrintPosition(const Camera &camera); 
+
 
 
 

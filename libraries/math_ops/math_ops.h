@@ -10,6 +10,7 @@ namespace math_ops {
 
     EXPORTED float lerp(float value, float start, float end);
     EXPORTED double lerp(double value, double start, double end);
+    EXPORTED double clamp(double value, double lower,double upper);
 }
 
 

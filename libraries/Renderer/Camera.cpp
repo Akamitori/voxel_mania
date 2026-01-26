@@ -2,34 +2,32 @@
 // Created by PETROS on 15/10/2024.
 //
 #include "Camera.h"
-#include <algorithm>
 #include <cassert>
-#include <cmath>
-#include <iostream>
+#include <math.h>
 
 #include "Matrix4D.h"
 #include "math_ops.h"
 #include "Trigonometry.h"
-
-std::ostream &operator<<(std::ostream &lhs, const Vector3D &vector) {
-    lhs << "(" << vector.x << ", " << vector.y << ", " << vector.z << ")";
-    return lhs;
-}
+#include "stdio.h"
 
 //TODO unify those functions after I move to SDL2
 void MoveCameraZ(Camera &camera, const float modifier) {
     camera.position += camera.forward * modifier * camera.camera_speed;
-    std::cout << camera.position << std::endl;
+    PrintPosition(camera);
 }
 
 void MoveCameraX(Camera &camera, const float modifier) {
     camera.position += camera.right * modifier * camera.camera_speed;
-    std::cout << camera.position << std::endl;
+    PrintPosition(camera);
 }
 
 void MoveCameraY(Camera &camera, const float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
-    std::cout << camera.position << std::endl;
+    PrintPosition(camera);
+}
+
+void PrintPosition(const Camera &camera) {
+    fprintf(stdout, "Camera position: (%f, %f,%f) \n", camera.position.x, camera.position.y, camera.position.z);
 }
 
 
@@ -48,7 +46,7 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
     if (elevation_modifier != 0) {
         camera.elevation += static_cast<float>(elevation_modifier) * camera.rotation_speed_x;
         camera.elevation = normalize_radians(camera.elevation);
-        camera.elevation = std::clamp(camera.elevation, -camera.max_elevation_rotation, camera.max_elevation_rotation);
+        camera.elevation = math_ops::clamp(camera.elevation, -camera.max_elevation_rotation, camera.max_elevation_rotation);
     }
 
     if (math_ops::is_equal(camera.azimuth, 0) && math_ops::is_equal(camera.elevation, 0)) {
@@ -58,11 +56,11 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
         return;
     }
 
-    const float cos_azi = std::cos(camera.azimuth);
-    const float sin_azi = std::sin(camera.azimuth);
+    const double cos_azi = cosf(camera.azimuth);
+    const double sin_azi = sin(camera.azimuth);
 
-    const float cos_elev = std::cos(camera.elevation);
-    const float sin_elev = std::sin(camera.elevation);
+    const double cos_elev = cos(camera.elevation);
+    const double sin_elev = sin(camera.elevation);
 
     camera.forward = normalize(
         (camera.basis_forward * cos_azi + camera.basis_right * sin_azi) * cos_elev + camera.basis_up * sin_elev
@@ -94,7 +92,7 @@ Matrix4D CameraLookAtMatrix(const Camera &camera) {
 Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
     Matrix4D perspectiveMatrix(0);
 
-    const float tan_fov_2_invert = 1 / std::tan(DegreeToRadians(FOV) * 0.5f);
+    const float tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
 
     const float z_diff = 1 / (z_near - z_far);
     perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
@@ -134,7 +132,7 @@ Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float 
 
 void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, const float FOV, const float aspect) {
     const float aspect_inverse = 1 / aspect;
-    const float tan_fov_2_invert = 1.f / std::tan(DegreeToRadians(FOV / 2));
+    const float tan_fov_2_invert = 1.f / tan(DegreeToRadians(FOV / 2));
     perspectiveMatrix[0].x = tan_fov_2_invert * aspect_inverse;
     perspectiveMatrix[1].y = -tan_fov_2_invert;
 }
