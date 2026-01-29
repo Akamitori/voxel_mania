@@ -61,7 +61,7 @@ void Queue_##T##_Free(Queue_##T*);
 #define QUEUE_IMPLEMENTATION(T)                                             \
 static bool Queue_##T##_Resize(Queue_##T *q) {                              \
     int new_capacity = q->capacity * 2;                                     \
-    T *new_data = (T *)calloc(new_capacity, sizeof(T));                     \
+    T *new_data = (T *)malloc(new_capacity * sizeof(T));                     \
                                                                             \
     if (!new_data) return false;                                            \
                                                                             \
@@ -104,7 +104,7 @@ Queue_##T *Queue_##T##_Create(int min_capacity) {                           \
                                                                             \
     q->capacity = cap;                                                      \
     q->mask = cap - 1;                                                      \
-    q->data =(T *) calloc(cap, sizeof(T));                                       \
+    q->data =(T *) malloc(cap * sizeof(T));                                       \
     if (!q->data) {                                                         \
         free(q);                                                            \
         return NULL;                                                        \
