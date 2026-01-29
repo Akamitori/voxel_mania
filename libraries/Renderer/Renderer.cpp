@@ -25,6 +25,7 @@
 
 typedef aiNode *aiNodePtr;
 QUEUE_DECLARATION_STATIC(aiNodePtr)
+
 QUEUE_IMPLEMENTATION(aiNodePtr)
 
 
@@ -146,25 +147,11 @@ static Point_Lights Point_Lights{};
 static Directional_Lights Directional_Lights{};
 static Spot_Lights Spot_Lights{};
 
-VECTOR_DECLARATION_STATIC(Mesh)
-
-VECTOR_IMPLEMENTATION(Mesh)
-
-VECTOR_DECLARATION_STATIC(Model)
-
-VECTOR_IMPLEMENTATION(Model)
-
-VECTOR_DECLARATION_STATIC(Texture)
-
-VECTOR_IMPLEMENTATION(Texture)
-
-VECTOR_DECLARATION_STATIC(uint32_t)
-
-VECTOR_IMPLEMENTATION(uint32_t)
-
-VECTOR_DECLARATION_STATIC(float)
-
-VECTOR_IMPLEMENTATION(float)
+VECTOR_IMPLEMENTATION_STATIC(Mesh);
+VECTOR_IMPLEMENTATION_STATIC(Model);
+VECTOR_IMPLEMENTATION_STATIC(Texture);
+VECTOR_IMPLEMENTATION_STATIC(uint32_t);
+VECTOR_IMPLEMENTATION_STATIC(float);
 
 static Vector_Model *Models = Vector_Model_Create(100);
 static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
@@ -424,7 +411,7 @@ int Renderer_RegisterPrimitiveMeshData(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    const int currentId = Meshes->length;
+    const int currentId = Vector_Mesh_Length(Meshes);
 
     Mesh m{};
 
@@ -528,7 +515,7 @@ int Renderer_RegisterUnshadedTexture(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    const int currentId = UnshadedMeshes->length;
+    const int currentId = Vector_Mesh_Length(UnshadedMeshes);
 
     Mesh m{};
 
@@ -576,7 +563,7 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
     assert(("Texture path", data));
     assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
 
-    const int id = Textures->length;
+    const int id = Vector_Texture_Length(Textures);
 
     char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
     strcpy(texture_path, path);
@@ -606,11 +593,11 @@ int Renderer_RegisterTexturedMesh(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    assert(("Texture should be indexable", diffuse_texture_id < Textures->length));
-    assert(("Texture should be indexable", specular_texture_id < Textures->length));
-    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Textures->length));
+    assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Vector_Texture_Length(Textures)));
 
-    const int mesh_id = Meshes->length;
+    const int mesh_id = Vector_Mesh_Length(Meshes);
     Mesh m{};
 
     m.vertice_count = vertice_count;
@@ -720,7 +707,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
         }
     }
 
-    const int currentId = Meshes->length;
+    const int currentId = Vector_Mesh_Length(Meshes);
     m.id = currentId;
 
     m.diffuse_texture_id = texture_id;
@@ -821,9 +808,9 @@ int Renderer_Register_Model(const char *path) {
                 specular_texture_id,
                 -1,
                 vertex_data->data,
-                vertex_data->length,
+                Vector_float_Length(vertex_data),
                 index_data->data,
-                index_data->length
+                Vector_uint32_t_Length(index_data)
             );
 
             Vector_uint32_t_Clear(index_data);
@@ -842,7 +829,7 @@ int Renderer_Register_Model(const char *path) {
 
     Vector_Model_Add(Models, model_to_register);
 
-    const int model_id = Models->length;
+    const int model_id = Vector_Model_Length(Models);
 
     return model_id;
 }
@@ -968,18 +955,18 @@ void Renderer_FrameEnd() {
     // point back to the default buffer
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
-    
+
     // clear the color of the screen buffer
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-    
+
     // since we are only drawin on the screen we don't need any of those things so we disable them
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
 
-    
+
     //draw the quad here
     glUseProgram(Screen_Texture.screen_texture_program);
     glBindVertexArray(Screen_Texture.VAO);
@@ -998,21 +985,21 @@ void Renderer_FrameEnd() {
 
 
 void Renderer_Destroy() {
-    for (size_t i = 0; i < Meshes->length; ++i) {
+    for (size_t i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         const Mesh m = Meshes->data[i];
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
     }
 
-    for (size_t i = 0; i < UnshadedMeshes->length; ++i) {
+    for (size_t i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
         const Mesh m = UnshadedMeshes->data[i];
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
     }
 
-    for (size_t i = 0; i < Models->length; ++i) {
+    for (size_t i = 0; i < Vector_Model_Length(Models); ++i) {
         const Model m = Models->data[i];
         free(m.mesh_ids);
     }
@@ -1068,7 +1055,8 @@ void SendLightUBOsToTheGPU() {
 
 // this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
-    for (int i = 0; i < Meshes->length; ++i) {
+    volatile int a=Vector_Model_Length(Models);
+    for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         auto &m = Meshes->data[i];
 
         glGenVertexArrays(1, &m.VAO);
@@ -1105,7 +1093,7 @@ void SendGeometryDataToTheGPU() {
 
 // this is for untextured meshes ;)
 void SendLightGeometryDataToTheGPU() {
-    for (int i = 0; i < UnshadedMeshes->length; ++i) {
+    for (int i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
         auto &light = UnshadedMeshes->data[i];
         glUseProgram(light.program_id);
 
@@ -1139,7 +1127,7 @@ void SendLightGeometryDataToTheGPU() {
 }
 
 void SendTextureDataToTheGPU() {
-    for (size_t i = 0; i < Textures->length; ++i) {
+    for (size_t i = 0; i < Vector_Texture_Length(Textures); ++i) {
         Texture &t = Textures->data[i];
         glGenTextures(1, &t.texture_id);
         glBindTexture(GL_TEXTURE_2D, t.texture_id);

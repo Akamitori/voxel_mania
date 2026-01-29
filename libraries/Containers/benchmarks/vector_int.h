@@ -1,0 +1,11 @@
+#ifndef VOXEL_MANIA_VECTOR_INT_H
+#define VOXEL_MANIA_VECTOR_INT_H
+
+
+#include "vector_container.h"
+
+
+VECTOR_DECLARATION_LIBRARY(int)
+
+
+#endif //VOXEL_MANIA_VECTOR_INT_H

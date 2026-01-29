@@ -266,7 +266,7 @@ int main() {
 
 
         Vector3D light_color = {1, 1, 1};
-
+                           
 
         Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
         Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
@@ -367,20 +367,20 @@ int main() {
                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
             }
 
-            for (size_t i = 0; i < opaque_models->length; ++i) {
+            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
                 const model_instance m = opaque_models->data[i];
                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
-            for (size_t i = 0; i < opaque_models->length; ++i) {
+            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
                 const model_instance m = opaque_models->data[i];
                 Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
 
-            sort_objects_based_on_camera_distance(transparent_models->data, transparent_models->length);
+            sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
 
-            for (size_t i = 0; i < transparent_models->length; ++i) {
+            for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
                 const model_instance m = transparent_models->data[i];
                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }

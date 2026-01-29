@@ -13,6 +13,7 @@ struct model_instance {
     Vector3D pos{};
 };
 
-VECTOR_DECLARATION_STATIC(model_instance);
+VECTOR_IMPLEMENTATION_STATIC(model_instance)
+
 
 #endif //VOXEL_MANIA_MAIN_CONTAINERS_H
