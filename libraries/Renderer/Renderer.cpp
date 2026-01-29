@@ -53,9 +53,12 @@ struct screen {
     GLuint VBE{0};
     int IndexCount{0};
 
+    int Samples{0};
 
     GLuint frame_buffer{0};
-    GLuint texture_color_buffer{0};
+    GLuint frame_buffer_multisample_result{0};
+    GLuint texture_multisample{0};
+    GLuint screen_texture{0};
     GLuint texture_render_buffer_object{0};
 };
 
@@ -213,8 +216,13 @@ void OpenGLGlobalSetup() {
 }
 
 
-void Renderer_Init(const int screen_width, const int screen_height, const float fov, const float z_near,
-                   const float z_far) {
+void Renderer_Init(const int screen_width,
+                   const int screen_height,
+                   const float fov,
+                   const float z_near,
+                   const float z_far,
+                   const int anti_aliasing_samples
+) {
     // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "%s\n", SDL_GetError());
@@ -223,9 +231,17 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     ProjectionParams.FOV = fov;
     ProjectionParams.Z_near = z_near;
     ProjectionParams.Z_far = z_far;
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+
+
+    Screen_Texture.Samples = anti_aliasing_samples;
+
+    if (Screen_Texture.Samples > 0) {
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
+        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, Screen_Texture.Samples);
+    }
 
     // add a stencil buffer
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
@@ -359,30 +375,81 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer);
 
     // generate texture for which we sample the colors
-    glGenTextures(1, &Screen_Texture.texture_color_buffer);
-    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-    glBindTexture(GL_TEXTURE_2D, 0);
 
-    //attach it to the currently bound framebuffer object
-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.texture_color_buffer, 0);
+    if (Screen_Texture.Samples > 0) {
+        // setup for the anti alias buffer
+        // it should be using both a 
+        glGenTextures(1, &Screen_Texture.texture_multisample);
+        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.texture_multisample);
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.Samples, GL_RGB,
+                                Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, GL_TRUE
+        );
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.texture_multisample, 0);
 
-    // generate a renderbuffer object object for which we only do write ops
-    // this is done for depth and stencil testing
-    glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
-    glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
-    glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+        glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
+        glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+        glRenderbufferStorageMultisample(GL_RENDERBUFFER, Screen_Texture.Samples, GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width,
+                                         Screen_Texture.Internal_Height);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
 
-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
-        fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
-        exit(1);
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            exit(1);
+        }
+
+        // now we need to create the actual screen buffer
+        // since the anti-alias buffer already does the depth and stencil test we are free to just use it as a color attachment and call it a day
+
+        glGenFramebuffers(1, &Screen_Texture.frame_buffer_multisample_result);
+        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer_multisample_result);
+
+        // simple screen texture with no samples
+        glGenTextures(1, &Screen_Texture.screen_texture);
+        glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.screen_texture, 0);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            exit(1);
+        }
+    } else {
+        // simple screen texture with no samples
+        glGenTextures(1, &Screen_Texture.screen_texture);
+        glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glBindTexture(GL_TEXTURE_2D, 0);
+
+        //attach it to the currently bound framebuffer object
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.screen_texture, 0);
+
+        // generate a renderbuffer object object for which we only do write ops
+        // this is done for depth and stencil testing
+        glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
+        glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+        glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
+        glBindRenderbuffer(GL_RENDERBUFFER, 0);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+            exit(1);
+        }
     }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -953,6 +1020,12 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
 
 void Renderer_FrameEnd() {
     // point back to the default buffer
+    if (Screen_Texture.Samples > 0) {
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, Screen_Texture.frame_buffer);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Screen_Texture.frame_buffer_multisample_result);
+        glBlitFramebuffer(0, 0, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0, 0, Screen_Texture.Internal_Width,
+                          Screen_Texture.Internal_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    }
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
 
@@ -972,7 +1045,7 @@ void Renderer_FrameEnd() {
     glBindVertexArray(Screen_Texture.VAO);
 
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
+    glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
     glDrawElements(GL_TRIANGLES, static_cast<int>(quad::vertex_indices_count_uv_single_faced),GL_UNSIGNED_INT, nullptr);
 
     // restore the flags now that we are done drawing on the screen
@@ -1055,7 +1128,6 @@ void SendLightUBOsToTheGPU() {
 
 // this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
-    volatile int a=Vector_Model_Length(Models);
     for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         auto &m = Meshes->data[i];
 
