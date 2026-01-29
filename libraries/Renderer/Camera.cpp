@@ -103,7 +103,7 @@ Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_fa
     // map from [0,1] with 1 being the closest for better precision
     perspectiveMatrix[2].z = z_near * z_diff;
     perspectiveMatrix[2].w = 1;
-    perspectiveMatrix[3].z = -z_near * z_far * z_diff;
+    perspectiveMatrix[3].z = - z_far * z_diff;
 
     return perspectiveMatrix;
 }
