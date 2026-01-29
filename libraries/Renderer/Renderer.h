@@ -55,7 +55,7 @@ enum class TextureWrapMode : uint32_t {
 };
 
 
-EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far);
+EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
 EXPORTED int Renderer_RegisterPrimitiveMeshData(
     const float *vertices,
