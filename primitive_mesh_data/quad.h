@@ -38,8 +38,8 @@ struct quad {
         0, 2, 3,
 
         //back face
-        6,5,4,
-        7,6,4
+        6, 5, 4,
+        7, 6, 4
     };
 
     static constexpr int vertices_count_uv_single_faced = 8 * 4;
@@ -52,6 +52,23 @@ struct quad {
 
     static constexpr int vertex_indices_count_uv_single_faced = 6;
     static constexpr uint32_t vertex_indices_uvs_single_faced[vertex_indices_count_uv_single_faced]{
+        // front face
+        0, 1, 2,
+        0, 2, 3,
+    };
+
+    ;
+
+    static constexpr int vertices_count_uv_single_faced_ndc = 5 * 4;
+    static constexpr float vertex_data_uv_1_part_texture_single_faced_ndc[vertices_count_uv_single_faced_ndc]{
+        -1,  1, 1,    0,1,
+        -1, -1, 1,    0,0.f,
+        1,  -1, 1,    1,0.f,
+        1,   1, 1,    1,1.0f,
+    };
+
+    static constexpr int vertex_indices_count_uv_single_faced_ndc = 6;
+    static constexpr uint32_t vertex_indices_uvs_single_faced_ndc[vertex_indices_count_uv_single_faced_ndc]{
         // front face
         0, 1, 2,
         0, 2, 3,

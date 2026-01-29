@@ -44,7 +44,6 @@ struct SpotLight{
     float quadric_factor;//4
     float inner_cutoff;//4
     float outer_cutoff;//4
-// 4 padding
 };
 
 const int MAX_DIRECTIONAL_LIGHTS=4;
