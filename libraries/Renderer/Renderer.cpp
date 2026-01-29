@@ -38,6 +38,28 @@ static unsigned int world_geometry_program_cross_textures;
 static unsigned int world_geometry_program_outlines;
 static unsigned int world_geometry_program_outlines_cross_textures;
 
+
+struct screen {
+    unsigned int screen_texture_program{0};
+    int Width{};
+    int Height{};
+
+    int Internal_Width{};
+    int Internal_Height{};
+
+    GLuint VAO{0};
+    GLuint VBO{0};
+    GLuint VBE{0};
+    int IndexCount{0};
+
+
+    GLuint frame_buffer{0};
+    GLuint texture_color_buffer{0};
+    GLuint texture_render_buffer_object{0};
+};
+
+static screen Screen_Texture{};
+
 static unsigned int ViewMatricesBlock;
 static unsigned int Point_Lights_Block;
 static unsigned int Directional_Lights_Block;
@@ -157,6 +179,8 @@ static void SendLightGeometryDataToTheGPU();
 
 static void SendTextureDataToTheGPU();
 
+static void SendScreenTextureDataToTheGPU();
+
 static void Draw(
     unsigned int program_to_use,
     const Mesh &mesh,
@@ -174,9 +198,11 @@ void OpenGLGlobalSetup() {
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
     world_geometry_program_outlines = InitializeProgram("program_for_regular_texture_outlines");
-    // no special impl for this
-    // added just for completion's sake
+
+    // no special impl for this. it was added just for completion's sake
     world_geometry_program_outlines_cross_textures = world_geometry_program_outlines;
+
+    Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
 
 
     const unsigned char whitePixel[4] = {255, 255, 255, 255};
@@ -202,7 +228,7 @@ void OpenGLGlobalSetup() {
 
 void Renderer_Init(const int screen_width, const int screen_height, const float fov, const float z_near,
                    const float z_far) {
-    // Initialize GLFW
+    // Initialize SDL
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         fprintf(stderr, "%s\n", SDL_GetError());
     }
@@ -220,9 +246,11 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     SceneCamera = new Camera{};
 
 
+    auto display_properties = SDL_GetCurrentDisplayMode(1);
+
     // Create window
-    window = SDL_CreateWindow("Hello World - VAO and VBO", screen_width, screen_height,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+    window = SDL_CreateWindow("Hello World - VAO and VBO", display_properties->w, display_properties->h,
+                              SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS);
     if (!window) {
         fprintf(stderr, "Failed to create SDL window. Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -246,8 +274,6 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
-
-    glViewport(0, 0, screen_width, screen_height);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -288,8 +314,7 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
 
     OpenGLGlobalSetup();
 
-    // bind the buffers and fill them with nothing
-    // then bind them to the proper binding point
+    // UBO setup part 1 : bind the buffers. bind them to the proper binding point. fill them with nothing
     glGenBuffers(1, &ViewMatricesBlock);
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
     glBufferData(GL_UNIFORM_BUFFER, 2 * sizeof(Matrix4D), nullptr, GL_DYNAMIC_DRAW);
@@ -312,7 +337,7 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
-    Renderer_ResolutionChanged(screen_width, screen_height);
+    Renderer_ResolutionChanged(display_properties->w, display_properties->h);
     Renderer_CameraUpdate();
 
 
@@ -322,14 +347,11 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
         world_unshaded_geometry_program,
         world_geometry_program_outlines
     };
-    // this is run per shader
-    // for now we have only one shader to worry about
-    // get the index of that block out of our shader
+    // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
         const unsigned int ViewMatrices_Index = glGetUniformBlockIndex(program_to_initialize, "ViewMatrices");
         const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
-        const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(
-            program_to_initialize, "Directional_Lights");
+        const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
         const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
 
         //bind it to the buffer we made at a specific binding point
@@ -340,17 +362,58 @@ void Renderer_Init(const int screen_width, const int screen_height, const float 
         glUniformBlockBinding(program_to_initialize, Directional_Lights_Index, Directional_Lights_binding_point);
         glUniformBlockBinding(program_to_initialize, Spot_Lights_Index, Spot_Lights_binding_point);
     }
+
+    // set the internal buffer width
+    Screen_Texture.Internal_Width = screen_width;
+    Screen_Texture.Internal_Height = screen_height;
+
+    // create and bind the frame buffer
+    glGenFramebuffers(1, &Screen_Texture.frame_buffer);
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer);
+
+    // generate texture for which we sample the colors
+    glGenTextures(1, &Screen_Texture.texture_color_buffer);
+    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glBindTexture(GL_TEXTURE_2D, 0);
+
+    //attach it to the currently bound framebuffer object
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.texture_color_buffer, 0);
+
+    // generate a renderbuffer object object for which we only do write ops
+    // this is done for depth and stencil testing
+    glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
+    glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+    glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
+    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        exit(1);
+    }
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Renderer_FrameStart() {
-    // Clear the screen
+    // bind to the buffer we are drawing
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer);
+    // set the viewport to be the size of the buffer we are drawing to
+    glViewport(0, 0, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
+
+    // set clear color
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
-    // set the clear value to the value associated with the "furthest" object
+    // set the clear value for the depth buffer to the value associated with the "furthest" object(it's 0 due to reverse z mapping)
     glClearDepth(0.0f);
-
-    // clear the stencil buffer
+    // set the clear value for the stencil buffer
     glClearStencil(0);
+    // clear the buffers
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
 }
 
@@ -815,6 +878,7 @@ void Renderer_FinalizeMeshLoading() {
     SendLightGeometryDataToTheGPU();
     SendTextureDataToTheGPU();
     SendLightUBOsToTheGPU();
+    SendScreenTextureDataToTheGPU();
 }
 
 
@@ -901,6 +965,34 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
 }
 
 void Renderer_FrameEnd() {
+    // point back to the default buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
+    
+    // clear the color of the screen buffer
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    
+    // since we are only drawin on the screen we don't need any of those things so we disable them
+    glDisable(GL_DEPTH_TEST);
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_BLEND);
+
+    
+    //draw the quad here
+    glUseProgram(Screen_Texture.screen_texture_program);
+    glBindVertexArray(Screen_Texture.VAO);
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
+    glDrawElements(GL_TRIANGLES, static_cast<int>(quad::vertex_indices_count_uv_single_faced),GL_UNSIGNED_INT, nullptr);
+
+    // restore the flags now that we are done drawing on the screen
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_STENCIL_TEST);
+    glEnable(GL_BLEND);
+
     SDL_GL_SwapWindow(window);
 }
 
@@ -926,6 +1018,7 @@ void Renderer_Destroy() {
     }
 
     glDeleteBuffers(1, &ViewMatricesBlock);
+    glDeleteFramebuffers(1, &Screen_Texture.frame_buffer);
     SDL_DestroyWindow(window);
     SDL_GL_DestroyContext(open_gl_context);
     SDL_Quit();
@@ -941,11 +1034,12 @@ void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen
     auto m = PerspectiveMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
                                static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height));
 
-    glViewport(0, 0, new_screen_width, new_screen_height);
-
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Matrix4D), &m[0].x);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    Screen_Texture.Height = new_screen_height;
+    Screen_Texture.Width = new_screen_width;
 }
 
 void Renderer_CameraUpdate() {
@@ -1027,8 +1121,10 @@ void SendLightGeometryDataToTheGPU() {
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
 
         glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
-                              reinterpret_cast<void *>(4 * sizeof(float)));
+        glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,
+                              float_per_vertex * sizeof(float),
+                              reinterpret_cast<void *>(5 * sizeof(float))
+        );
 
         glGenBuffers(1, &light.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, light.VBE);
@@ -1146,4 +1242,34 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Vector3D po
 
     assert(mesh.index_count <= INT_MAX); // this should never happen 
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
+}
+
+void SendScreenTextureDataToTheGPU() {
+    glGenVertexArrays(1, &Screen_Texture.VAO);
+    glBindVertexArray(Screen_Texture.VAO);
+
+
+    glGenBuffers(1, &Screen_Texture.VBO);
+    glBindBuffer(GL_ARRAY_BUFFER, Screen_Texture.VBO);
+
+    constexpr auto vertice_count = quad::vertices_count_uv_single_faced_ndc;
+    constexpr auto vertices = quad::vertex_data_uv_1_part_texture_single_faced_ndc;
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertice_count, vertices, GL_STATIC_DRAW);
+
+    constexpr int float_per_vertex = 5;
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+                          reinterpret_cast<void *>(3 * sizeof(float)));
+
+    constexpr auto indices = quad::vertex_indices_uvs_single_faced_ndc;
+    constexpr auto indices_count = quad::vertex_indices_count_uv_single_faced_ndc;
+
+    Screen_Texture.IndexCount = indices_count;
+
+    glGenBuffers(1, &Screen_Texture.VBE);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Screen_Texture.VBE);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * indices_count, indices, GL_STATIC_DRAW);
 }

@@ -30,11 +30,13 @@ float normalize_coord(const float value, const float max) {
 }
 
 void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao) {
+    glDisable(GL_STENCIL_TEST);
     glUseProgram(cursorProgram);
     glBindVertexArray(cursor_vao);
     glDrawArrays(GL_LINES, 0, 8);
     glBindVertexArray(0);
     glUseProgram(0);
+    glEnable(GL_STENCIL_TEST);
 }
 
 void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &cursor_vao, unsigned int &cursor_vbo) {
@@ -152,8 +154,8 @@ void sort_objects_based_on_camera_distance(model_instance *models, const size_t 
 
 int main() {
     try {
-        constexpr int initial_screen_width = 800, initial_screen_height = 600;
-        Renderer_Init(initial_screen_width, initial_screen_height, 45, 0.1, 100);
+        constexpr int game_resolution_width = 800, game_resolution_height = 600;
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
@@ -237,23 +239,23 @@ int main() {
         glUseProgram(cursorProgram);
         glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
 
-        constexpr float centerX = static_cast<float>(initial_screen_width) / 2.0f;
-        constexpr float centerY = static_cast<float>(initial_screen_height) / 2.0f;
+        constexpr float centerX = static_cast<float>(game_resolution_width) / 2.0f;
+        constexpr float centerY = static_cast<float>(game_resolution_height) / 2.0f;
         const std::array cursor{
-            normalize_coord(centerX - 10, static_cast<float>(initial_screen_width)),
-            normalize_coord(centerY, static_cast<float>(initial_screen_height)),
+            normalize_coord(centerX - 10, static_cast<float>(game_resolution_width)),
+            normalize_coord(centerY, static_cast<float>(game_resolution_height)),
             1.0f,
 
-            normalize_coord(centerX + 10, static_cast<float>(initial_screen_width)),
-            normalize_coord(centerY, static_cast<float>(initial_screen_height)),
+            normalize_coord(centerX + 10, static_cast<float>(game_resolution_width)),
+            normalize_coord(centerY, static_cast<float>(game_resolution_height)),
             1.0f,
 
-            normalize_coord(centerX, static_cast<float>(initial_screen_width)),
-            normalize_coord(centerY - 10, static_cast<float>(initial_screen_height)),
+            normalize_coord(centerX, static_cast<float>(game_resolution_width)),
+            normalize_coord(centerY - 10, static_cast<float>(game_resolution_height)),
             1.0f,
 
-            normalize_coord(centerX, static_cast<float>(initial_screen_width)),
-            normalize_coord(centerY + 10, static_cast<float>(initial_screen_height)),
+            normalize_coord(centerX, static_cast<float>(game_resolution_width)),
+            normalize_coord(centerY + 10, static_cast<float>(game_resolution_height)),
             1.0f,
         };
 
