@@ -280,26 +280,32 @@ int main() {
         //         });
         //     }
         // }
+        
+        for (int x=0;x<10;++x) {
+            for (int y=0;y<10;++y) {
+                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float)x, (float)y+2, -1}});            
+            }
+        }
 
         // Target cube πιο μακριά
-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
+        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
+        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
+        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
 
-        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
-        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
+        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
+        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
 
         Material our_material{
-            32
+            2
         };
 
         PointLight our_light{
-            Vector3D{3, 4, 2}, // Πιο κοντά στα cubes (ήταν 5,5,2.2)
-            {0.05f, 0.05f, 0.05f}, // Minimal ambient
-            {0.8f, 0.6f, 0.3f}, // Ζεστό πορτοκαλί/κίτρινο (ήταν 0.4)
-            {1.0f, 1.0f, 1.0f}, // Full specular
-            0.14f, // Λίγο πιο γρήγορο falloff (ήταν 0.22)
-            0.07f // Λιγότερο quadratic (ήταν 0.20)
+            Vector3D{-5, 5, 2},      // Αντίθετη πλευρά από την κάμερα
+            {0.0f, 0.0f, 0.0f},   // Πολύ χαμηλό ambient
+            {0.1f, 0.1f, 0.1f},      // Χαμηλό diffuse για να μην κρύβει το specular
+            {1.0f, 1.0f, 1.0f},      // Full specular
+            0.09f,                    // Πιο αργό falloff για να φτάνει μακρύτερα
+            0.032f
         };
 
         model_instance lights[]{
@@ -309,11 +315,11 @@ int main() {
         Vector3D spotLightpos = SceneCamera->position;
         spotLightpos.z += 0.5f;
         SpotLight our_spot_light{
-            spotLightpos,
-            SceneCamera->forward,
-            {0.0f, 0.0f, 0.0f}, // Καθόλου ambient (ήταν 0.01)
+            {5,5,3},
+            {0,0,-1},
+            {0.1f, 0.1f, 0.1f}, // Καθόλου ambient (ήταν 0.01)
             {0.8f, 0.8f, 0.8f}, // Πολύ πιο δυνατό (ήταν 0.3)
-            {1.0f, 1.0f, 1.0f},
+            {0.1f, 0.1f, 0.1f},
             0.09f,
             0.032f,
             (float) cos(DegreeToRadians(12.5f)),
@@ -327,8 +333,8 @@ int main() {
         };
 
         Renderer_Register_Point_Light(our_light);
-        Renderer_Register_Spot_Light(our_spot_light);
-        Renderer_Register_Directional_Light(our_dir_light);
+        //Renderer_Register_Spot_Light(our_spot_light);
+        //Renderer_Register_Directional_Light(our_dir_light);
 
         Renderer_FinalizeMeshLoading();
 
@@ -372,18 +378,18 @@ int main() {
                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             }
 
-            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
-                const model_instance m = opaque_models->data[i];
-                Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
-            }
-
-
-            sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
-
-            for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
-                const model_instance m = transparent_models->data[i];
-                Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
-            }
+            // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
+            //     const model_instance m = opaque_models->data[i];
+            //     Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+            // }
+            //
+            //
+            // sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
+            //
+            // for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
+            //     const model_instance m = transparent_models->data[i];
+            //     Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+            // }
 
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});

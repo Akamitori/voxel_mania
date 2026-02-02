@@ -109,8 +109,8 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
 
         // specular
-        vec3 reflectionDirection=reflect(-light_direction, norm);
-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
+        vec3 halfwayDir = normalize(light_direction + viewDir);
+        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
         vec3 specular= light.specular * spec* specularTexMap;
 
         float distance= length(light_direction_vector);
@@ -136,8 +136,8 @@ vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 no
         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
 
         // specular
-        vec3 reflectionDirection=reflect(-light_direction, norm);
-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
+        vec3 halfwayDir = normalize(light_direction + viewDir);
+        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
         vec3 specular= light.specular * spec* specularTexMap;
 
         output_color+= ambient+ diffuse + specular;
@@ -165,8 +165,8 @@ vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
 
         // specular
-        vec3 reflectionDirection=reflect(-light_direction, norm);
-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
+        vec3 halfwayDir = normalize(light_direction + viewDir);
+        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
         vec3 specular= light.specular * spec* specularTexMap;
 
         float distance= length(light_direction_vector);
