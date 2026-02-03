@@ -155,19 +155,21 @@ void sort_objects_based_on_camera_distance(model_instance *models, const size_t 
 int main() {
     try {
         constexpr int game_resolution_width = 800, game_resolution_height = 600;
-        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100);
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
 
-        const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
-        const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
-        const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
-        const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png");
-        const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png");
-        const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png");
-        const int crate_Texture_emission_id = Renderer_RegisterTexture("data/textures/box_container_emission.png");
+        const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
+        const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
+        const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
+        const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
+        const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png", {.convert_from_srgb_to_linear_space = true});
+        const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png"); // specular stays as is
         const int tranrsparent_window_texture = Renderer_RegisterTexture(
             "data/textures/blending_transparent_window.png",
-            TextureWrapMode::CLAMP_TO_EDGE,
-            TextureWrapMode::CLAMP_TO_EDGE
+            {
+                TextureWrapMode::CLAMP_TO_EDGE,
+                TextureWrapMode::CLAMP_TO_EDGE,
+                true
+            }
         );
 
         // if our problem is wrapping cubes and data like that
@@ -266,7 +268,7 @@ int main() {
 
 
         Vector3D light_color = {1, 1, 1};
-                           
+
 
         Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
         Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
@@ -280,10 +282,10 @@ int main() {
         //         });
         //     }
         // }
-        
-        for (int x=0;x<10;++x) {
-            for (int y=0;y<10;++y) {
-                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float)x, (float)y+2, -1}});            
+
+        for (int x = 0; x < 10; ++x) {
+            for (int y = 0; y < 10; ++y) {
+                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float) x, (float) y + 2, -1}});
             }
         }
 
@@ -299,24 +301,21 @@ int main() {
             2
         };
 
-        PointLight our_light{
-            Vector3D{-5, 5, 2},      // Αντίθετη πλευρά από την κάμερα
-            {0.0f, 0.0f, 0.0f},   // Πολύ χαμηλό ambient
-            {0.1f, 0.1f, 0.1f},      // Χαμηλό diffuse για να μην κρύβει το specular
-            {1.0f, 1.0f, 1.0f},      // Full specular
-            0.09f,                    // Πιο αργό falloff για να φτάνει μακρύτερα
-            0.032f
-        };
+        //         PointLight our_light{
+        //             Vector3D{-5, 5, 2}, // Αντίθετη πλευρά από την κάμερα
+        // {0.03f, 0.03f, 0.03f},  // ambient - πολύ χαμηλό
+        // {0.8f, 0.8f, 0.8f},      // diffuse - δυνατό, τώρα θα φαίνεται σωστά
+        // {1.0f, 1.0f, 1.0f},      // specular
+        // 0.045f,                   // linear - χαμηλότερο, πιο soft falloff
+        // 0.0075f 
+        //         };
 
-        model_instance lights[]{
-            light_source, our_light.position,
-        };
 
         Vector3D spotLightpos = SceneCamera->position;
         spotLightpos.z += 0.5f;
         SpotLight our_spot_light{
-            {5,5,3},
-            {0,0,-1},
+            {5, 5, 3},
+            {0, 0, -1},
             {0.1f, 0.1f, 0.1f}, // Καθόλου ambient (ήταν 0.01)
             {0.8f, 0.8f, 0.8f}, // Πολύ πιο δυνατό (ήταν 0.3)
             {0.1f, 0.1f, 0.1f},
@@ -325,16 +324,37 @@ int main() {
             (float) cos(DegreeToRadians(12.5f)),
             (float) cos(DegreeToRadians(17.5f)),
         };
+        // DirectionalLight our_dir_light{
+        //     {0, -1, 0.2f}, // Από πάνω προς τα κάτω
+        //     {0.1f, 0.1f, 0.1f}, // Minimal ambient (ήταν 0.1)
+        //     {0.15f, 0.15f, 0.15f}, // Πολύ αχνό diffuse (ήταν 0.7)
+        //     {0.3f, 0.3f, 0.3f}
+        // };
+
         DirectionalLight our_dir_light{
-            {0, -1, 0.2f}, // Από πάνω προς τα κάτω
-            {0.1f, 0.1f, 0.1f}, // Minimal ambient (ήταν 0.1)
-            {0.15f, 0.15f, 0.15f}, // Πολύ αχνό diffuse (ήταν 0.7)
-            {0.3f, 0.3f, 0.3f}
+            {0.8f, 0.2f, -0.5f},
+            {0.01f, 0.01f, 0.015f}, // ambient - ελάχιστο, μόνο για να μην είναι pitch black
+            {0.08f, 0.08f, 0.1f}, // diffuse - πολύ αδύναμο fill, σαν indirect light
+            {0.0f, 0.0f, 0.0f}
+        };
+
+        PointLight our_light{
+            Vector3D{5, 5, 1}, // κέντρο-ish του scene
+            {0.0f, 0.0f, 0.0f},
+            {1.0f, 0.9f, 0.7f}, // warm λάμπα
+            {1.0f, 1.0f, 1.0f},
+            0.22f, // aggressive linear falloff
+            0.20f // aggressive quadratic
         };
 
         Renderer_Register_Point_Light(our_light);
         //Renderer_Register_Spot_Light(our_spot_light);
-        //Renderer_Register_Directional_Light(our_dir_light);
+        Renderer_Register_Directional_Light(our_dir_light);
+
+
+        model_instance lights[]{
+            light_source, our_light.position,
+        };
 
         Renderer_FinalizeMeshLoading();
 

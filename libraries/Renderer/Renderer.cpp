@@ -80,14 +80,22 @@ static unsigned int defaultEmissionTexture;
 
 enum class TextureType {
     RGB,
-    RGBA
+    RGB_ALPHA,
+    SRGB,
+    SRGB_ALPHA
+};
+
+enum class TextureInternalStorageConversion {
+    None,
+    Linear,
 };
 
 struct Texture {
     int id{};
     int width{};
     int height{};
-    TextureType texture_type{};
+    TextureType loaded_texture_type{};
+    TextureType stored_texture_storage{};
     unsigned char *data{};
     char *path{};
     TextureWrapMode WrapMode_S{};
@@ -381,7 +389,7 @@ void Renderer_Init(const int screen_width,
         // it should be using both a 
         glGenTextures(1, &Screen_Texture.texture_multisample);
         glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.texture_multisample);
-        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.Samples, GL_RGB,
+        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.Samples, GL_RGB16F,
                                 Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, GL_TRUE
         );
         glBindTexture(GL_TEXTURE_2D, 0);
@@ -618,7 +626,7 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, TextureWrapMode wrap_mode_t) {
+int Renderer_RegisterTexture(const char *path, Texture_Parameters parameters) {
     int width;
     int height;
     int nrChannels;
@@ -634,15 +642,23 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
 
     char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
     strcpy(texture_path, path);
+
+    TextureType loaded_format = nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
+    TextureType internal_format = loaded_format;
+    if (parameters.convert_from_srgb_to_linear_space) {
+        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
+    }
+
     const Texture t{
         id,
         width,
         height,
-        nrChannels == 3 ? TextureType::RGB : TextureType::RGBA,
+        loaded_format,
+        internal_format,
         data,
         texture_path,
-        wrap_mode_s,
-        wrap_mode_t
+        parameters.wrap_mode_s,
+        parameters.wrap_mode_t
     };
 
     Vector_Texture_Add(Textures, t);
@@ -1211,8 +1227,27 @@ void SendTextureDataToTheGPU() {
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
-        const int mode = t.texture_type == TextureType::RGB ? GL_RGB : GL_RGBA;
-        glTexImage2D(GL_TEXTURE_2D, 0, mode, t.width, t.height, 0, mode, GL_UNSIGNED_BYTE, t.data);
+        const int format = t.loaded_texture_type == TextureType::RGB ? GL_RGB : GL_RGBA;
+
+        int internal_format = 0;
+        switch (t.stored_texture_storage) {
+            case TextureType::SRGB_ALPHA:
+                internal_format = GL_SRGB8_ALPHA8;
+                break;
+            case TextureType::SRGB:
+                internal_format = GL_SRGB8;
+                break;
+            case TextureType::RGB:
+                internal_format = GL_RGB;
+                break;
+            case TextureType::RGB_ALPHA:
+                internal_format = GL_RGBA;
+                break;
+        }
+
+        assert(internal_format!=0);
+
+        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, t.width, t.height, 0, format, GL_UNSIGNED_BYTE, t.data);
         glGenerateMipmap(GL_TEXTURE_2D);
         stbi_image_free(t.data);
         t.data = nullptr;

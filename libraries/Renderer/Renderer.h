@@ -54,6 +54,12 @@ enum class TextureWrapMode : uint32_t {
     CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
 };
 
+ struct EXPORTED Texture_Parameters {
+    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
+    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
+    bool convert_from_srgb_to_linear_space = false;
+};
+
 
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
@@ -73,8 +79,7 @@ EXPORTED int Renderer_RegisterUnshadedTexture(
 
 EXPORTED int Renderer_RegisterTexture(
     const char *path,
-    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT,
-    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT
+    Texture_Parameters texture_parameters = {}
 );
 
 EXPORTED int Renderer_RegisterTexturedMesh(
