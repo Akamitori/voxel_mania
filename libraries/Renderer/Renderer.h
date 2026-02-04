@@ -60,6 +60,12 @@ enum class TextureWrapMode : uint32_t {
     bool convert_from_srgb_to_linear_space = false;
 };
 
+struct EXPORTED Transform {
+    Vector3D Position{0, 0, 0};
+    Vector3D Rotation{0, 0, 0};
+    Vector3D Scale{1, 1, 1};
+};
+
 
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
@@ -112,15 +118,15 @@ EXPORTED void Renderer_FrameEnd();
 
 // for now this assumes everything has potentially an outline
 // if it doesn't just don't invoke Renderer_Draw_Model_Outline
-EXPORTED void Renderer_Draw(int mesh_id, Vector3D pos, Vector3D color, Material material);
+EXPORTED void Renderer_Draw(int mesh_id, const Transform& transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Model(int model_id, const Transform& transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material);
+EXPORTED void Renderer_DrawUnshadedTexture(int light_id, const Transform& transform, Vector3D color);
 
-EXPORTED void Renderer_Draw_Model_Outline(int model_id, Vector3D pos, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Outline(int mesh_id,  const Transform& transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_DrawUnshadedTexture(int light_id, Vector3D pos, Vector3D color);
+EXPORTED void Renderer_Draw_Model_Outline(int model_id, const Transform& transform, Vector3D color, Material material);
 
 EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 

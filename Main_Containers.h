@@ -6,11 +6,11 @@
 #define VOXEL_MANIA_MAIN_CONTAINERS_H
 
 #include "vector_container.h"
-#include "Vector3D.h"
+#include "Renderer.h"
 
 struct model_instance {
     int mesh_id{};
-    Vector3D pos{};
+    Transform transform{};
 };
 
 VECTOR_IMPLEMENTATION_STATIC(model_instance)

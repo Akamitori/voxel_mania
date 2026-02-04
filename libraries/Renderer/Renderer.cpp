@@ -5,13 +5,13 @@
 #include "GL/glew.h"
 #include "Camera.h"
 #include "quad.h"
+#include "Matrix3D.h"
 #include "Matrix4D.h"
 #include "vector"
 #include <cstddef>
 #include <cstdint>
 
 #define STB_IMAGE_IMPLEMENTATION
-
 
 #include "stb_image.h"
 #include "Transformations.h"
@@ -182,10 +182,16 @@ static void SendScreenTextureDataToTheGPU();
 static void Draw(
     unsigned int program_to_use,
     const Mesh &mesh,
-    Vector3D pos,
+    const Transform &transform,
     Vector3D color,
     Material material
 );
+
+static Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians);
+
+static Matrix4D calculate_model_matrix_from_transform(const Transform &transform);
+
+static Matrix3D calculate_matrix3d_for_normals_from_model_matrix(const Matrix4D &model_matrix);
 
 static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
 
@@ -953,7 +959,7 @@ void Renderer_FinalizeMeshLoading() {
 
 
 // TODO we can probably work with a Matrix4D eventually
-void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, const Material material) {
+void Renderer_Draw(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
     // 1st stencil pass
     // write 1 to stencil buffer where fragments are drawn
     // for now assume everything has an outline
@@ -963,10 +969,10 @@ void Renderer_Draw(const int mesh_id, const Vector3D pos, const Vector3D color, 
     glStencilMask(0xFF);
 
     const Mesh mesh = Meshes->data[mesh_id];
-    Draw(mesh.program_id, mesh, pos, color, material);
+    Draw(mesh.program_id, mesh, transform, color, material);
 }
 
-void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material material) {
+void Renderer_Draw_Outline(int mesh_id, const Transform &transform, Vector3D color, Material material) {
     // now that we have written to the stencil buffer we need to draw an outline
     // therefore everywhere where stencil passed shouldn't be drawn
     // we also disable writing to the stencil buffer because we don't want outlines to write there
@@ -978,7 +984,7 @@ void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material m
 
 
     const Mesh mesh = Meshes->data[mesh_id];
-    Draw(mesh.outline_program_id, mesh, pos, color, material);
+    Draw(mesh.outline_program_id, mesh, transform, color, material);
 
     // reset to the previous state
     glStencilMask(0xFF);
@@ -988,22 +994,22 @@ void Renderer_Draw_Outline(int mesh_id, Vector3D pos, Vector3D color, Material m
 }
 
 
-void Renderer_Draw_Model(int model_id, Vector3D pos, Vector3D color, Material material) {
+void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material) {
     const Model model = Models->data[model_id];
     for (size_t i = 0; i < model.mesh_count; ++i) {
-        Renderer_Draw(model.mesh_ids[i], pos, color, material);
+        Renderer_Draw(model.mesh_ids[i], transform, color, material);
     }
 }
 
-void Renderer_Draw_Model_Outline(int model_id, Vector3D pos, Vector3D color, Material material) {
+void Renderer_Draw_Model_Outline(int model_id, const Transform &transform, Vector3D color, Material material) {
     const Model model = Models->data[model_id];
     for (size_t i = 0; i < model.mesh_count; ++i) {
-        Renderer_Draw_Outline(model.mesh_ids[i], pos, color, material);
+        Renderer_Draw_Outline(model.mesh_ids[i], transform, color, material);
     }
 }
 
 
-void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const Vector3D color) {
+void Renderer_DrawUnshadedTexture(const int light_id, const Transform &transform, const Vector3D color) {
     // always pass the test so we can draw
     glStencilFunc(GL_ALWAYS, 0, 0xFF);
     // don't write anything to the stenci buffer though ;)
@@ -1026,9 +1032,11 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const 
     glBindVertexArray(light.VAO);
 
     const Vector4D color_4{color.x, color.y, color.z, 1};
-
-    glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
+    
+    const Matrix4D model_matrix = calculate_model_matrix_from_transform(transform);
+    const GLint model_matrix_id = glGetUniformLocation(program_to_use, "model_matrix");
+    glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
 
     assert(light.index_count <= INT_MAX); // this should never happen
     glDrawElements(GL_TRIANGLES, static_cast<int>(light.index_count),GL_UNSIGNED_INT, nullptr);
@@ -1286,13 +1294,36 @@ int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *mat
     return texture_id;
 }
 
-void Draw(const unsigned int program_to_use, const Mesh &mesh, const Vector3D pos, const Vector3D color,
+Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians) {
+    const Matrix4D m_z = rotation_z_matrix4D(v_comps_in_radians.z);
+    const Matrix4D m_y = rotation_y_matrix4D(v_comps_in_radians.y);
+    const Matrix4D m_x = rotation_x_matrix4D(v_comps_in_radians.x);
+
+    return m_z * m_x * m_y;
+}
+
+Matrix4D calculate_model_matrix_from_transform(const Transform &transform) {
+    const Matrix4D rotation_matrix = rotation_by_vector_matrix4D(transform.Rotation);
+    const Matrix4D scale_matrix = scale_matrix4D(transform.Scale);
+    const Matrix4D translation_matrix = translation_matrix4D(transform.Position);
+
+    return translation_matrix * rotation_matrix * scale_matrix;
+}
+
+Matrix3D calculate_matrix3d_for_normals_from_model_matrix(const Matrix4D &model_matrix) {
+    return transpose(inverse(Matrix3D{
+        {model_matrix[0].x, model_matrix[0].y, model_matrix[0].z},
+        {model_matrix[1].x, model_matrix[1].y, model_matrix[1].z},
+        {model_matrix[2].x, model_matrix[2].y, model_matrix[2].z},
+    }));
+}
+
+void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &transform, const Vector3D color,
           const Material material) {
     glUseProgram(program_to_use);
 
     // this means all programs need this uniform
     const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
-    const GLint position_id = glGetUniformLocation(program_to_use, "position");
     const GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
     const GLuint diffuse_texture_id = mesh.diffuse_texture_id == -1
                                           ? defaultTexture
@@ -1314,14 +1345,17 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Vector3D po
     glBindVertexArray(mesh.VAO);
 
     const Vector4D color_4{color.x, color.y, color.z, 1};
-
-    glUniform3fv(position_id, 1, &pos.x);
     glUniform4fv(voxel_color, 1, &color_4.x);
-
     glUniform3fv(view_pos_id, 1, &SceneCamera->position.x);
 
-    // TODO set slot to zero
+    const Matrix4D model_matrix = calculate_model_matrix_from_transform(transform);
+    const Matrix3D model_matrix_for_normals = calculate_matrix3d_for_normals_from_model_matrix(model_matrix);
 
+    const GLint model_matrix_id = glGetUniformLocation(program_to_use, "model_matrix");
+    glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
+
+    const GLint model_matrix_for_normals_id = glGetUniformLocation(program_to_use, "model_matrix_for_normals");
+    glUniformMatrix3fv(model_matrix_for_normals_id, 1, GL_FALSE, &model_matrix_for_normals[0].x);
 
     const GLint material_diffuse_id = glGetUniformLocation(program_to_use, "material.diffuse");
     glUniform1i(material_diffuse_id, 0);
