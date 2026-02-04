@@ -1,5 +1,8 @@
 ﻿#include <cmath>
 #include "Transformations.h"
+
+#include <cassert>
+
 #include "Matrix4D.h"
 #include "Matrix3D.h"
 #include "Vector3D.h"
@@ -177,22 +180,23 @@ EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D obverver_for
     return mat;
 }
 
-Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f) {
-    float w_inv = 1.f / (r - l);
-    float h_inv = 1.f / (b - t);
-    float d_inv = 1.f / (f - n);
+Matrix4D MakeOrthoProjection(const float left, const float right, const float top, const float bottom, const float near, const float far) {
+    assert(top < bottom && "top must be < bottom for Y+ down camera space");
+    const float w_inv = 1.f / (right - left);
+    const float h_inv = 1.f / (-bottom + top); //flip so we map small camera y to higher NDC ys
+    const float d_inv = 1.f / (far - near);
 
     Matrix4D ortho_matrix(0);
 
     ortho_matrix[0].x = 2 * w_inv;
 
-    ortho_matrix[1].y = -2.f * h_inv; // flip y because we need to
+    ortho_matrix[1].y = 2.f * h_inv; 
     ortho_matrix[2].z = d_inv;
 
 
-    ortho_matrix[3].x = -(r + l) * w_inv;
-    ortho_matrix[3].y = -(b + t) * h_inv; // flip y cause we need to 
-    ortho_matrix[3].z = -n * d_inv;
+    ortho_matrix[3].x = -(right + left) * w_inv;
+    ortho_matrix[3].y = -(bottom + top) * h_inv;
+    ortho_matrix[3].z = -near * d_inv;
     ortho_matrix[3].w = 1;
 
     return ortho_matrix;
