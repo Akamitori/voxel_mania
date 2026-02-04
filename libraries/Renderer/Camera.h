@@ -22,7 +22,7 @@ struct EXPORTED Camera {
     Matrix4D Camera_Matrix{};
     Matrix4D Camera_Matrix_Inverse{};
 
-    float camera_speed{0.05f};
+    float camera_speed{0.15f};
     float azimuth = 0;
     float elevation = 0;
     float rotation_speed_y{0.05};

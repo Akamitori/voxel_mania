@@ -14,17 +14,17 @@
 //TODO unify those functions after I move to SDL2
 void MoveCameraZ(Camera &camera, const float modifier) {
     camera.position += camera.forward * modifier * camera.camera_speed;
-    PrintPosition(camera);
+    //PrintPosition(camera);
 }
 
 void MoveCameraX(Camera &camera, const float modifier) {
     camera.position += camera.right * modifier * camera.camera_speed;
-    PrintPosition(camera);
+    //PrintPosition(camera);
 }
 
 void MoveCameraY(Camera &camera, const float modifier) {
     camera.position += camera.up * modifier * camera.camera_speed;
-    PrintPosition(camera);
+    //PrintPosition(camera);
 }
 
 void PrintPosition(const Camera &camera) {

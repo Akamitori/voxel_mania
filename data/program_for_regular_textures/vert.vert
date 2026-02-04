@@ -11,22 +11,38 @@ layout (std140) uniform ViewMatrices{
 
 uniform mat4 model_matrix;
 uniform mat3 model_matrix_for_normals;
+uniform vec4[3] cascade_planes_object_space;
+uniform mat4 m_0_shadow;
 
-out vec2 TexCoord;
-out vec3 Normal;
-out vec3 FragPos;
+out VS_OUT{
+    vec2 TexCoord;
+    vec3 Normal;
+    vec3 FragPosWorldSpace;
+    vec3 u_products_for_interpolation;
+    vec3 cascade_coord_0;
+} vs_out;
 
 void main() {
-
     gl_Position = perspective_projection_matrix*look_at_matrix*model_matrix * vec4(aPos, 1.0);
 
     // this is important for light calculations
-    FragPos=vec3(model_matrix*vec4(aPos, 1.0));
-    TexCoord = aTexCoord;
-    Normal= model_matrix_for_normals*aNormal;
+    vs_out.FragPosWorldSpace=vec3(model_matrix*vec4(aPos, 1.0));
+    vs_out.TexCoord = aTexCoord;
 
-    // this works fine if we don't scale things
-    // use a different shader if we do!
     // Normal = mat3(transpose(inverse(model_matrix))) * anormal;
-    //Normal= mat3(model_matrix)*aNormal;
+    // we could use the inverse transpose blah blah but we just get the matrix from the CPU
+    vs_out.Normal= model_matrix_for_normals*aNormal;
+
+    float[3] u_products_for_interpolation;
+
+    for (int i=0;i< 3;++i){
+        vec4 plane=cascade_planes_object_space[i];
+        u_products_for_interpolation[i]=dot(plane, vec4(aPos, 1));
+    }
+
+    vs_out.u_products_for_interpolation.x=u_products_for_interpolation[0];
+    vs_out.u_products_for_interpolation.y=u_products_for_interpolation[1];
+    vs_out.u_products_for_interpolation.z=u_products_for_interpolation[2];
+
+    vs_out.cascade_coord_0=  vec3(m_0_shadow * model_matrix * vec4(aPos, 1.0));
 }

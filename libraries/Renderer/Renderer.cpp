@@ -9,7 +9,6 @@
 #include "Matrix4D.h"
 #include "vector"
 #include <cstddef>
-#include <cstdint>
 
 #define STB_IMAGE_IMPLEMENTATION
 
@@ -20,6 +19,9 @@
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
 #include <assimp/postprocess.h>
+
+#include "math_ops.h"
+#include "Plane.h"
 #include "queue_container.h"
 #include "vector_container.h"
 
@@ -29,8 +31,7 @@ QUEUE_DECLARATION_STATIC(aiNodePtr)
 
 QUEUE_IMPLEMENTATION(aiNodePtr)
 
-
-Camera *SceneCamera = nullptr;
+static Camera *SceneCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
@@ -51,7 +52,17 @@ struct screen {
     int IndexCount{0};
 
     int Samples{0};
-    
+
+    // shadow pass
+    // TODO this should be refactored and move to directional lights
+    // TODO this should be done once we are done with cascaded shadow map
+    unsigned int shadow_map_program;
+    GLuint buffer_shadow_map{0};
+    GLuint texture_shadow_map{0};
+    const int shadow_map_size = 1024;
+    int texture_shadow_map_depthMap_Width{shadow_map_size};
+    int texture_shadow_map_Height{shadow_map_size};
+
     // anti alias pass 
     GLuint buffer_multisampling{0};
     GLuint texture_multisampling{0};
@@ -76,7 +87,6 @@ static unsigned int Point_Lights_binding_point = 1;
 static unsigned int Directional_Lights_binding_point = 2;
 static unsigned int Spot_Lights_binding_point = 3;
 
-
 static unsigned int defaultTexture;
 static unsigned int defaultEmissionTexture;
 
@@ -100,11 +110,6 @@ enum class TextureType {
     RGB_ALPHA,
     SRGB,
     SRGB_ALPHA
-};
-
-enum class TextureInternalStorageConversion {
-    None,
-    Linear,
 };
 
 struct Texture {
@@ -150,11 +155,13 @@ struct {
     float FOV;
     float Z_near;
     float Z_far;
+    float aspect_ratio;
 } ProjectionParams;
+
 
 constexpr int MAX_POINT_LIGHTS = 4;
 
-constexpr int MAX_DIRECTIONAL_LIGHTS = 4;
+constexpr int MAX_DIRECTIONAL_LIGHTS = 1;
 
 constexpr int MAX_SPOT_LIGHTS = 4;
 
@@ -163,13 +170,42 @@ struct Point_Lights {
     PointLight Lights[MAX_POINT_LIGHTS]{};
 };
 
+
+constexpr int SHADOW_CASCADE_COUNT = 4;
+
+typedef struct frustum_splits {
+    float near;
+    float far;
+    Vector3D camera_space_corners[8];
+    float shadow_map_size_d;
+    float physica_texel_size_t;
+
+    Vector3D camera_pos_light_space;
+    float bounding_box_z_min;
+    float bounding_box_z_max;
+} frustum_split;
+
+typedef struct cascade_mapping_data {
+    Matrix4D world_space_to_0th_cascade_texture_space;
+    Plane frustum_front_plane_world_space[3];
+    Vector3D scales[3];
+    Vector3D offsets[3];
+} data_for_cascade_mapping;
+
+
+static frustum_split frustum_splits[SHADOW_CASCADE_COUNT]{};
+static data_for_cascade_mapping cascade_mapping{};
+
+
 struct Directional_Lights {
     alignas(16) int num_of_light{0};
     DirectionalLight Lights[MAX_DIRECTIONAL_LIGHTS]{};
+    Matrix4D MVP_Matrix_per_cascade[MAX_DIRECTIONAL_LIGHTS * SHADOW_CASCADE_COUNT]{};
 };
 
-struct DirectionalLight_SpaceMatrices {
-    Matrix4D ViewProjectionMatrix[MAX_DIRECTIONAL_LIGHTS]{};
+struct Directional_Light_Matrices {
+    Matrix4D Light_Space_Matrix[MAX_DIRECTIONAL_LIGHTS]{};
+    Matrix4D Light_Space_Matrix_Inverse[MAX_DIRECTIONAL_LIGHTS]{};
 };
 
 struct Spot_Lights {
@@ -179,8 +215,9 @@ struct Spot_Lights {
 
 static Point_Lights Point_Lights{};
 static Directional_Lights Directional_Lights{};
+static Directional_Light_Matrices Directional_Lights_Matrices{};
 static Spot_Lights Spot_Lights{};
-static DirectionalLight_SpaceMatrices DirectionalLight_SpaceMatrices{};
+
 
 VECTOR_IMPLEMENTATION_STATIC(Mesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
@@ -213,9 +250,6 @@ static void Draw(
     Material material
 );
 
-static void Draw_Mesh(int mesh_id, const Transform &transform, Vector3D color, Material material);
-
-static void Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
 static void Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
 
@@ -239,14 +273,53 @@ static void Draw_To_Screen_Texture();
 
 static void Initialize_Cursor(int game_resolution_width, int game_resolution_height);
 
-static float normalize_coord(const float value, const float max);
+static float normalize_coord(float value, float max);
 
 static void Draw_Cursor();
 
-// Vertex Shader source code
-static float normalize_coord(const float value, const float max) {
-    return 2 * value / max - 1;
+static void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index);
+
+static void Set_Resolution_Params(int new_screen_width, int new_screen_height);
+
+static void Set_Camera_Params();
+
+static int Calculate_Light_Space_Matrix_Index(int cascade_index, int directional_light_index);
+
+static void Upload_Directional_Light_Data_To_GPU();
+
+static void Calculate_Directional_Light_MVP_Matrix(int light_index);
+
+static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
+
+static void Initialize_frustum_partitions(float z_near, float z_far) {
+    // we can also try 0.5
+
+    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        constexpr float lambda = 0.9f;
+        // Standard cascade split (log + uniform)
+        float log_split = z_near * powf(z_far / z_near, (i + 1.0f) / SHADOW_CASCADE_COUNT);
+        float uniform_split = z_near + (z_far - z_near) * ((i + 1.0f) / SHADOW_CASCADE_COUNT);
+        float split_far = lambda * log_split + (1.0f - lambda) * uniform_split;
+
+        // First cascade starts at 0
+        float split_near = (i == 0) ? 0.0f : frustum_splits[i - 1].far;
+
+        // Optional overlap (skip for first cascade)
+        constexpr float overlap = 0.1f;
+        float overlap_amount = (i == 0) ? 0.0f : overlap * (frustum_splits[i - 1].far - frustum_splits[i - 1].near);
+
+        frustum_splits[i] = {split_near - overlap_amount, split_far};
+
+        printf("%d-partition in space [%f, %f]\n", i, frustum_splits[i].near, frustum_splits[i].far);
+    }
+
+    // Print final partitions
+    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        const frustum_split f = frustum_splits[i];
+        printf("%d-partition in space [%f, %f]\n", i, f.near, f.far);
+    }
 }
+
 
 void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
@@ -254,13 +327,9 @@ void OpenGLGlobalSetup() {
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
-    
-    
-    
-    
+    Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
 
-
-    const unsigned char whitePixel[4] = {255, 255, 255, 255};
+    constexpr unsigned char whitePixel[4] = {255, 255, 255, 255};
 
     glGenTextures(1, &defaultTexture);
     glBindTexture(GL_TEXTURE_2D, defaultTexture);
@@ -270,7 +339,7 @@ void OpenGLGlobalSetup() {
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, whitePixel);
 
-    const unsigned char blackPixels[4] = {0, 0, 0, 0};
+    constexpr unsigned char blackPixels[4] = {0, 0, 0, 0};
     glGenTextures(1, &defaultEmissionTexture);
     glBindTexture(GL_TEXTURE_2D, defaultEmissionTexture);
 
@@ -304,6 +373,9 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    
+    // use this when you want to debug opengl
+    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 
 
     Screen_Texture.Samples = anti_aliasing_samples;
@@ -321,9 +393,12 @@ void Renderer_Init(const int screen_width,
 
     auto display_properties = SDL_GetCurrentDisplayMode(1);
 
+    const int width = display_properties->w;
+    const int height = display_properties->h;
+
     // Create window
-    window = SDL_CreateWindow("Hello World - VAO and VBO", display_properties->w, display_properties->h,
-                              SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS);
+    window = SDL_CreateWindow("Hello World - VAO and VBO", width, height,SDL_WINDOW_OPENGL | SDL_WINDOW_BORDERLESS);
+
     if (!window) {
         fprintf(stderr, "Failed to create SDL window. Error: %s\n", SDL_GetError());
         SDL_Quit();
@@ -337,6 +412,7 @@ void Renderer_Init(const int screen_width,
         SDL_Quit();
     }
 
+
     // Enable VSync
     SDL_GL_SetSwapInterval(1);
 
@@ -347,6 +423,16 @@ void Renderer_Init(const int screen_width,
         SDL_DestroyWindow(window);
         SDL_Quit();
     }
+
+    // glEnable(GL_DEBUG_OUTPUT);
+    // glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS); // callback on the same thread, easier to debug
+    // glDebugMessageCallback([](GLenum source, GLenum type, GLuint id, GLenum severity,
+    //                           GLsizei length, const GLchar *message, const void *userParam) {
+    //     if (severity == GL_DEBUG_SEVERITY_NOTIFICATION) return; // ignore noise
+    //     fprintf(stderr, "[GL] %s\n", message);
+    // }, nullptr);
+    //
+    // glDebugMessageControl(GL_DONT_CARE, GL_DONT_CARE, GL_DONT_CARE, 0, nullptr, GL_TRUE);
 
     glEnable(GL_CULL_FACE);
     glCullFace(GL_BACK);
@@ -363,7 +449,7 @@ void Renderer_Init(const int screen_width,
     // open gl should expect depth values from [0,1]
     // for the above depth mapping to work properly on the projection level
     glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
-    
+
     // enable stencil test just for completion's sake
     glEnable(GL_STENCIL_TEST);
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
@@ -403,14 +489,11 @@ void Renderer_Init(const int screen_width,
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 
 
-    Renderer_ResolutionChanged(display_properties->w, display_properties->h);
-    Renderer_CameraUpdate();
-
-
     unsigned int programs_to_initialize[]{
         world_geometry_program,
         world_geometry_program_cross_textures,
         world_unshaded_geometry_program,
+        Screen_Texture.shadow_map_program,
     };
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
@@ -418,15 +501,27 @@ void Renderer_Init(const int screen_width,
         const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
         const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
         const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
-
+        
         //bind it to the buffer we made at a specific binding point
         // in the geometry program, our uniform that map to a UBO  can be found at global binding pointViewMatrices_binding_point
         // in practice this mean the first call of this actually creates that association at the index
-        glUniformBlockBinding(program_to_initialize, ViewMatrices_Index, ViewMatrices_binding_point);
-        glUniformBlockBinding(program_to_initialize, Point_Lights_Index, Point_Lights_binding_point);
-        glUniformBlockBinding(program_to_initialize, Directional_Lights_Index, Directional_Lights_binding_point);
-        glUniformBlockBinding(program_to_initialize, Spot_Lights_Index, Spot_Lights_binding_point);
+        if (ViewMatrices_Index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_to_initialize, ViewMatrices_Index, ViewMatrices_binding_point);
+        }
+        if (Point_Lights_Index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_to_initialize, Point_Lights_Index, Point_Lights_binding_point);
+        }
+        if (Directional_Lights_Index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_to_initialize, Directional_Lights_Index, Directional_Lights_binding_point);
+        }
+        if (Spot_Lights_Index != GL_INVALID_INDEX) {
+            glUniformBlockBinding(program_to_initialize, Spot_Lights_Index, Spot_Lights_binding_point);
+        }
     }
+
+    Initialize_frustum_partitions(z_near, z_far);
+    Set_Resolution_Params(width, height);
+    Set_Camera_Params();
 
     // set the internal buffer width
     Screen_Texture.screen_texture_Width = screen_width;
@@ -517,6 +612,52 @@ void Renderer_Init(const int screen_width,
             exit(1);
         }
     }
+
+    // START for each light we should be generating a new fbo START
+    // this implies that we need to move this out of init
+    // TODO get to it after we are done with shadow maps
+
+    // we can safely assume we always generate a shadow buffer( for now)
+    glGenFramebuffers(1, &Screen_Texture.buffer_shadow_map);
+    // our depth map is 1024 * 1024 resolution
+
+
+    glGenTextures(1, &Screen_Texture.texture_shadow_map);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, Screen_Texture.texture_shadow_map);
+
+    glTexImage3D(GL_TEXTURE_2D_ARRAY, 0, GL_DEPTH_COMPONENT32F,
+                 Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height, SHADOW_CASCADE_COUNT,
+                 0,GL_DEPTH_COMPONENT, GL_FLOAT, nullptr
+    );
+    // this could work with both linear and nearest depending on the shadow styel
+    glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
+    glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
+
+    // hardware comparison depth
+    // since all things are in the same space we dont have to worry too much
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
+
+    // attach this to buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
+    glDrawBuffer(GL_NONE);
+    glReadBuffer(GL_NONE);
+
+    // attach once and check if we are fine
+    glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, Screen_Texture.texture_shadow_map, 0, 0);
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        exit(1);
+    }
+
+    // END for each light we should be generating a new fbo END
+
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
@@ -645,7 +786,7 @@ int Renderer_RegisterUnshadedTexture(
 
     // the idea is to add a bunch of UVs at the end
     const size_t actual_vertex_count = vertice_count / 3;
-    constexpr size_t float_per_vertex = 8;
+    constexpr size_t float_per_vertex = 5;
     const size_t totalFloats = actual_vertex_count * float_per_vertex;
     m.vertices = (float *) malloc(totalFloats * sizeof(float));
     m.vertice_count = totalFloats;
@@ -658,8 +799,8 @@ int Renderer_RegisterUnshadedTexture(
         m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
         m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
 
+        m.vertices[v * float_per_vertex + 3] = 1;
         m.vertices[v * float_per_vertex + 4] = 1;
-        m.vertices[v * float_per_vertex + 5] = 1;
     }
 
     m.program_id = world_unshaded_geometry_program;
@@ -824,7 +965,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
     m.index_count = quad::vertex_indices_count_uv * total_quads;;
     m.indices = (uint32_t *) malloc(m.index_count * sizeof(uint32_t));
 
-    constexpr int total_elements_for_1_quad = (quad::vertices_count_uv / stride);
+    constexpr int total_elements_for_1_quad = quad::vertices_count_uv / stride;
     for (int quad_idx = 0; quad_idx < total_quads; ++quad_idx) {
         const int starting_point = quad_idx * quad::vertex_indices_count_uv;
         for (int i = 0; i < quad::vertex_indices_count_uv; ++i) {
@@ -862,7 +1003,7 @@ int Renderer_Register_Model(const char *path) {
 
     // if we are here path is probably valid;
     const char *last_slash = strrchr(path, '/');
-    const size_t chars_to_copy = last_slash ? (last_slash - path) : strlen(path);
+    const size_t chars_to_copy = last_slash ? last_slash - path : strlen(path);
     char *directory = (char *) malloc((chars_to_copy + 1) * sizeof(char));
     memcpy(directory, path, chars_to_copy * sizeof(char));
     directory[chars_to_copy] = '\0';
@@ -952,38 +1093,61 @@ int Renderer_Register_Model(const char *path) {
 
     Queue_aiNodePtr_Free(nodes_to_process);
 
-    Vector_Model_Add(Models, model_to_register);
-
     const int model_id = Vector_Model_Length(Models);
+
+    Vector_Model_Add(Models, model_to_register);
 
     return model_id;
 }
-
 
 int Renderer_Register_Directional_Light(const DirectionalLight &light) {
     assert(("Registered more lights than possible", Directional_Lights.num_of_light<MAX_DIRECTIONAL_LIGHTS));
     const int currentId = Directional_Lights.num_of_light;
     Directional_Lights.Lights[currentId] = light;
+    ++Directional_Lights.num_of_light;
 
+    const Vector3D light_forward = normalize(light.direction);
 
-    Vector3D light_forward = normalize(light.direction);
+    // get a proper orthocanonical basis
+    constexpr Vector3D world_basis_x{1, 0, 0};
+    constexpr Vector3D world_basis_y{0, 1, 0};
+    constexpr Vector3D world_basis_z{0, 0, 1};
 
-    Vector3D light_up;
-    if (abs(dot(light.direction, {0, 0, 1})) > 0.99f) {
-        light_up = {0, 1, 0}; // use Y as fallback
-    } else {
-        light_up = {0, 0, 1};
+    constexpr Vector3D basis[3] = {
+        world_basis_x, world_basis_y, world_basis_z
+    };
+
+    // calculate a proper ortho basis
+    float min_dot = 100;
+    Vector3D v_to_use{};
+    for (const Vector3D &b_v: basis) {
+        const float dot_product = abs(dot(light_forward, b_v));
+
+        if (dot_product < min_dot) {
+            v_to_use = b_v;
+            min_dot = dot_product;
+        }
     }
 
-    constexpr int distance = 20;
-    Vector3D light_pos = -light_forward * distance;
-    const Matrix4D light_view = LookAtMatrix(light_pos, light_forward, light_up);
-    const Matrix4D light_projection = MakeOrthoProjection(-10, 10, 10, -10, 1.0f, 7.5f);
-    const Matrix4D result = light_projection * light_view;
+    const Vector3D light_right = normalize(cross(v_to_use, light_forward));
+    const Vector3D light_up = normalize(cross(light_right, light_forward));
+
+    // space matrix for the light
+    const Matrix4D light_matrix = {
+        Vector3D_To_Vector4D(light_right, 0),
+        Vector3D_To_Vector4D(light_up, 0),
+        Vector3D_To_Vector4D(light_forward, 0),
+        {0, 0, 0, 1}
+    };
 
 
-    DirectionalLight_SpaceMatrices.ViewProjectionMatrix[currentId] = result;
-    ++Directional_Lights.num_of_light;
+    Directional_Lights_Matrices.Light_Space_Matrix[currentId] = light_matrix;
+
+    // since the light matrix has no translation we can just transpose it for the inverse
+    Directional_Lights_Matrices.Light_Space_Matrix_Inverse[currentId] = transpose(light_matrix);
+
+    Calculate_Directional_Light_MVP_Matrix(currentId);
+
     return currentId;
 }
 
@@ -1003,6 +1167,7 @@ int Renderer_Register_Spot_Light(const SpotLight &light) {
     return currentId;
 }
 
+
 // we can probably do some post-processing here if we want for the index sorting
 void Renderer_FinalizeMeshLoading() {
     SendGeometryDataToTheGPU();
@@ -1011,7 +1176,6 @@ void Renderer_FinalizeMeshLoading() {
     SendLightUBOsToTheGPU();
     SendScreenTextureDataToTheGPU();
 }
-
 
 void Renderer_Draw_Mesh(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
     Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Mesh, mesh_id, transform, material, color});
@@ -1025,30 +1189,61 @@ void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, 
     Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Mesh_Unshaded, mesh_id, transform, {}, color});
 }
 
+
+void Shadow_Pass() {
+    // use the buffer shadow map with the proper viewport 
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
+    glViewport(0, 0, Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height);
+    
+    // use the default depth clear value and default depth comparison
+    glClearDepth(1.0);
+    glDepthFunc(GL_LEQUAL);
+    
+    // enable polygon offset to deal with shadow acne
+    glEnable(GL_POLYGON_OFFSET_FILL);
+    glPolygonOffset(2.0f, 4.0f);
+    
+    // clamp depth so we won't lose any objects that fall beyond the view frustum
+    glEnable(GL_DEPTH_CLAMP);
+    for (int shadow_cascade_layer = 0; shadow_cascade_layer < SHADOW_CASCADE_COUNT; ++shadow_cascade_layer) {
+        glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, Screen_Texture.texture_shadow_map, 0, shadow_cascade_layer);
+        glClear(GL_DEPTH_BUFFER_BIT);
+        Render_Draw_Commands_To_Shadow_Depth_Buffer(shadow_cascade_layer);
+    }
+    
+    // restore everything back to the values that rendering assumes we use
+    glDisable(GL_DEPTH_CLAMP);
+    glDisable(GL_POLYGON_OFFSET_FILL);
+    glClearDepth(0);
+    glDepthFunc(GL_GEQUAL);
+}
+
+
 void Draw_Without_Anti_Aliasing() {
     // off screen texture pass without anti-aliasing
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    
+
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
-    
+
     Draw_Cursor();
 
     // screen pass
     Draw_To_Screen_Texture();
 }
 
+
 void Draw_With_Anti_Aliasing() {
     // off screen texture pass with anti-aliasing
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-    
+
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
-    
+
     Draw_Cursor();
-    
+
     // blit the anti alias buffer
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
     glClear(GL_COLOR_BUFFER_BIT);
@@ -1057,7 +1252,7 @@ void Draw_With_Anti_Aliasing() {
     glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Screen_Texture.buffer_screen);
     glBlitFramebuffer(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height, 0, 0, Screen_Texture.screen_texture_Width,
                       Screen_Texture.screen_texture_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    
+
     // screen pass
     Draw_To_Screen_Texture();
 }
@@ -1075,13 +1270,12 @@ void Draw_To_Screen_Texture() {
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
 
-    //draw the quad here
     glUseProgram(Screen_Texture.screen_texture_program);
-    glBindVertexArray(Screen_Texture.VAO);
-
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_screen);
-    glDrawElements(GL_TRIANGLES, static_cast<int>(quad::vertex_indices_count_uv_single_faced),GL_UNSIGNED_INT, nullptr);
+
+    glBindVertexArray(Screen_Texture.VAO);
+    glDrawElements(GL_TRIANGLES, Screen_Texture.IndexCount, GL_UNSIGNED_INT, nullptr);
 
     // restore the flags now that we are done drawing on the screen
     glEnable(GL_DEPTH_TEST);
@@ -1093,28 +1287,42 @@ void ExecuteDrawCommands() {
     for (int i = 0; i < Vector_DrawCommand_Length(DrawCommands); ++i) {
         const DrawCommand draw_command = DrawCommands->data[i];
         switch (draw_command.Type) {
-            case DrawCommandType::None:
+            case DrawCommandType::None: {
                 assert("Shouldn't issue a no op command" && 0);
                 break;
-            case DrawCommandType::Mesh:
-                Draw_Mesh(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color, draw_command.Material);
+            }
+            case DrawCommandType::Mesh: {
+                const Mesh mesh = Meshes->data[draw_command.Draw_Entity_Id];
+                Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
                 break;
-            case DrawCommandType::Model:
-                Draw_Model(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color, draw_command.Material);
+            }
+            case DrawCommandType::Model: {
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
+                }
                 break;
-            case DrawCommandType::Mesh_Unshaded:
+            }
+            case DrawCommandType::Mesh_Unshaded: {
                 Draw_Mesh_Unshaded(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color);
                 break;
+            }
         }
     }
 }
 
-void Renderer_FrameEnd() {
+void Renderer_ResolveDrawCalls() {
+    Shadow_Pass();
     if (Screen_Texture.Samples > 0) {
         Draw_With_Anti_Aliasing();
     } else {
         Draw_Without_Anti_Aliasing();
     }
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+}
+
+void Renderer_FrameEnd() {
     SDL_GL_SwapWindow(window);
 }
 
@@ -1138,7 +1346,7 @@ void Renderer_Destroy() {
         const Model m = Models->data[i];
         free(m.mesh_ids);
     }
-    
+
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 
@@ -1157,32 +1365,22 @@ void Renderer_Destroy() {
 
 
 void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen_height) {
-    auto m = PerspectiveProjectionMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
-                               static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height));
-
-    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Matrix4D), &m[0].x);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
-    Screen_Texture.Height = new_screen_height;
-    Screen_Texture.Width = new_screen_width;
+    Set_Resolution_Params(new_screen_width, new_screen_height);
+    Calculate_Directional_Light_MVP_Matrix(0);
+    Upload_Directional_Light_Data_To_GPU();
 }
 
-void Renderer_CameraUpdate() {
-    const auto m = CameraLookAtMatrix(*SceneCamera);
-    const auto m_inverse= inverse(m);
 
-    SceneCamera->Camera_Matrix = m_inverse;
-    SceneCamera->Camera_Matrix_Inverse = CameraLookAtMatrix(*SceneCamera);
-    
-    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
-    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+void Renderer_CameraUpdate() {
+    Set_Camera_Params();
+    Calculate_Directional_Light_MVP_Matrix(0);
+    Upload_Directional_Light_Data_To_GPU();
 }
 
 void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
     Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
 }
+
 
 void Draw_Cursor() {
     glDisable(GL_STENCIL_TEST);
@@ -1196,13 +1394,17 @@ void Draw_Cursor() {
     glEnable(GL_DEPTH_TEST);
 }
 
+void Upload_Directional_Light_Data_To_GPU() {
+    // upload the light data to the gpu
+    glBindBuffer(GL_UNIFORM_BUFFER, Directional_Lights_Block);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Directional_Lights), &Directional_Lights);
+}
+
 void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
-
-    glBindBuffer(GL_UNIFORM_BUFFER, Directional_Lights_Block);
-    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Directional_Lights), &Directional_Lights);
-
+    
+    Upload_Directional_Light_Data_To_GPU();
 
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Spot_Lights), &Spot_Lights);
@@ -1259,14 +1461,14 @@ void SendLightGeometryDataToTheGPU() {
         glBindBuffer(GL_ARRAY_BUFFER, light.VBO);
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * light.vertice_count, light.vertices, GL_STATIC_DRAW);
 
-        constexpr int float_per_vertex = 8;
+        constexpr int float_per_vertex = 5;
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
 
         glEnableVertexAttribArray(1);
         glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE,
                               float_per_vertex * sizeof(float),
-                              reinterpret_cast<void *>(5 * sizeof(float))
+                              reinterpret_cast<void *>(3 * sizeof(float))
         );
 
         glGenBuffers(1, &light.VBE);
@@ -1325,7 +1527,7 @@ void SendTextureDataToTheGPU() {
 int LoadTexture(const aiTextureType type, const char *directory, const aiMaterial *material) {
     aiString str;
     const unsigned int texture_count_for_type = material->GetTextureCount(type);
-    assert((("Currently we only support one texture per type"), texture_count_for_type<=1));
+    assert(("Currently we only support one texture per type", texture_count_for_type<=1));
 
     if (texture_count_for_type == 0) {
         return -1;
@@ -1381,9 +1583,12 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
           const Material material) {
     glUseProgram(program_to_use);
 
+
     // this means all programs need this uniform
     const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
     const GLint view_pos_id = glGetUniformLocation(program_to_use, "view_position");
+
+
     const GLuint diffuse_texture_id = mesh.diffuse_texture_id == -1
                                           ? defaultTexture
                                           : Textures->data[mesh.diffuse_texture_id].texture_id;
@@ -1401,6 +1606,8 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
     glBindTexture(GL_TEXTURE_2D, specular_texture_id);
     glActiveTexture(GL_TEXTURE2);
     glBindTexture(GL_TEXTURE_2D, emission_texture_id);
+    glActiveTexture(GL_TEXTURE3);
+    glBindTexture(GL_TEXTURE_2D_ARRAY, Screen_Texture.texture_shadow_map);
     glBindVertexArray(mesh.VAO);
 
     const Vector4D color_4{color.x, color.y, color.z, 1};
@@ -1408,11 +1615,10 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
     glUniform3fv(view_pos_id, 1, &SceneCamera->position.x);
 
     const Matrix4D model_matrix = calculate_model_matrix_from_transform(transform);
-    const Matrix3D model_matrix_for_normals = calculate_matrix3d_for_normals_from_model_matrix(model_matrix);
-
     const GLint model_matrix_id = glGetUniformLocation(program_to_use, "model_matrix");
     glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
 
+    const Matrix3D model_matrix_for_normals = calculate_matrix3d_for_normals_from_model_matrix(model_matrix);
     const GLint model_matrix_for_normals_id = glGetUniformLocation(program_to_use, "model_matrix_for_normals");
     glUniformMatrix3fv(model_matrix_for_normals_id, 1, GL_FALSE, &model_matrix_for_normals[0].x);
 
@@ -1428,19 +1634,98 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
     const GLint material_shineness_id = glGetUniformLocation(program_to_use, "material.shininess");
     glUniform1fv(material_shineness_id, 1, &material.shininess);
 
+    // shadow map
+    // TODO similarly here we are using one shadow mapping shader program but this only
+    // TODO works if we only have one directional light to worry about
+    const GLint shadow_map_id = glGetUniformLocation(program_to_use, "shadowMap");
+    glUniform1i(shadow_map_id, 3);
+
+    Plane planes_in_object_space[SHADOW_CASCADE_COUNT - 1]{};
+
+    for (int i = 1; i <= SHADOW_CASCADE_COUNT - 1; ++i) {
+        const Plane &p = cascade_mapping.frustum_front_plane_world_space[i - 1];
+        planes_in_object_space[i - 1] = transform_plane(model_matrix, p);
+    }
+
+    const GLint cascade_planes_object_space_id = glGetUniformLocation(program_to_use, "cascade_planes_object_space");
+    glUniform4fv(cascade_planes_object_space_id, 3, &planes_in_object_space[0].normal.x);
+
+    const Matrix4D &shadow_0 = cascade_mapping.world_space_to_0th_cascade_texture_space;
+    const GLint m_0_shadow_id = glGetUniformLocation(program_to_use, "m_0_shadow");
+    glUniformMatrix4fv(m_0_shadow_id, 1, GL_FALSE, &shadow_0[0].x);
+
+
+    const GLint cascade_scale_id = glGetUniformLocation(program_to_use, "cascade_scale");
+    glUniform3fv(cascade_scale_id, 3, &cascade_mapping.scales[0].x);
+
+
+    const GLint cascade_offset_id = glGetUniformLocation(program_to_use, "cascade_offset");
+    glUniform3fv(cascade_offset_id, 3, &cascade_mapping.offsets[0].x);
+
+    const GLint shadow_offset_id = glGetUniformLocation(program_to_use, "shadow_offset");
+    const float d = 3.0f / (16 * Screen_Texture.shadow_map_size);
+    const Vector4D offets[2] = {
+        {-d, -3 * d, 3 * d, -d},
+        {d, 3 * d, -3 * d, d}
+    };
+    glUniform4fv(shadow_offset_id, 2, &offets[0].x);
+
+    //glUniform1i(shadow_map_id, 3);
+
+
     assert(mesh.index_count <= INT_MAX); // this should never happen 
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
-void Draw_Mesh(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
-    const Mesh mesh = Meshes->data[mesh_id];
-    Draw(mesh.program_id, mesh, transform, color, material);
-}
+//TODO this probably should be generalized in on a per light basis
+// skipped for now till we get cascaded shadow maps in
+void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
+    assert(("There should be directional lights" , Directional_Lights.num_of_light >0));
+    constexpr int directional_light_index = 0;
+    glUseProgram(Screen_Texture.shadow_map_program);
 
-void Draw_Model(const int model_id, const Transform &transform, const Vector3D color, const Material material) {
-    const Model model = Models->data[model_id];
-    for (size_t i = 0; i < model.mesh_count; ++i) {
-        Draw_Mesh(model.mesh_ids[i], transform, color, material);
+
+    // TODO at some point we should stop doing uniform id fetches per frame
+    const GLint model_matrix_id = glGetUniformLocation(Screen_Texture.shadow_map_program, "model_matrix");
+    const GLint light_space_matrix_index_id = glGetUniformLocation(Screen_Texture.shadow_map_program, "light_space_matrix_index");
+
+    assert("Uniform should be found"&& light_space_matrix_index_id !=-1);
+
+    const int light_space_matrix_index = Calculate_Light_Space_Matrix_Index(cascade_index, directional_light_index);
+
+    glUniform1i(light_space_matrix_index_id, light_space_matrix_index);
+
+    for (int i = 0; i < Vector_DrawCommand_Length(DrawCommands); ++i) {
+        const DrawCommand draw_command = DrawCommands->data[i];
+        const Matrix4D model_matrix = calculate_model_matrix_from_transform(draw_command.Transform);
+        glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
+        switch (draw_command.Type) {
+            case DrawCommandType::None: {
+                assert("Shouldn't issue a no op command" && 0);
+                break;
+            }
+            case DrawCommandType::Mesh: {
+                const Mesh mesh = Meshes->data[draw_command.Draw_Entity_Id];
+                glBindVertexArray(mesh.VAO);
+                glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
+                break;
+            }
+            case DrawCommandType::Model: {
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    glBindVertexArray(mesh.VAO);
+                    assert(mesh.index_count <= INT_MAX); // this should never happen 
+                    glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
+                }
+                break;
+            }
+            case DrawCommandType::Mesh_Unshaded: {
+                // we don't care to provide shadow for things that are unshaded
+                // TODO we can probably expand expand this type a bit in the sense that we could have things not receiving light but casting shadows
+                continue;
+            }
+        }
     }
 }
 
@@ -1456,7 +1741,7 @@ void Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, const Vec
                                           : Textures->data[unshaded_mesh.diffuse_texture_id].texture_id;
 
 
-    glActiveTexture(GL_TEXTURE0); // Add this
+    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
     glBindVertexArray(unshaded_mesh.VAO);
 
@@ -1504,14 +1789,14 @@ void SendScreenTextureDataToTheGPU() {
 void Initialize_Cursor(int game_resolution_width, int game_resolution_height) {
     cursor_program = InitializeProgram("cursor_program");
     const GLint cursor_color_uniform = glGetUniformLocation(cursor_program, "cursor_color");
-    
+
     constexpr Vector4D cursor_color(1, 0, 0, 1);
     glUseProgram(cursor_program);
     glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
-    
+
     const float centerX = static_cast<float>(game_resolution_width) / 2.0f;
     const float centerY = static_cast<float>(game_resolution_height) / 2.0f;
-    const float cursor[12]={
+    const float cursor[12] = {
         normalize_coord(centerX - 10, static_cast<float>(game_resolution_width)),
         normalize_coord(centerY, static_cast<float>(game_resolution_height)),
         1.0f,
@@ -1528,8 +1813,8 @@ void Initialize_Cursor(int game_resolution_width, int game_resolution_height) {
         normalize_coord(centerY + 10, static_cast<float>(game_resolution_height)),
         1.0f,
     };
-    
-    
+
+
     glGenVertexArrays(1, &cursor_vao);
     glGenBuffers(1, &cursor_vbo);
 
@@ -1548,3 +1833,263 @@ void Initialize_Cursor(int game_resolution_width, int game_resolution_height) {
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+
+// Vertex Shader source code
+float normalize_coord(const float value, const float max) {
+    return 2 * value / max - 1;
+}
+
+void Set_Resolution_Params(const int new_screen_width, const int new_screen_height) {
+    ProjectionParams.aspect_ratio = static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height);
+    auto m = PerspectiveProjectionMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far, ProjectionParams.aspect_ratio);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
+    glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Matrix4D), &m[0].x);
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+
+    Screen_Texture.Height = new_screen_height;
+    Screen_Texture.Width = new_screen_width;
+
+    const float s = ProjectionParams.aspect_ratio;
+    const float g = 1 / tan(DegreeToRadians(ProjectionParams.FOV) * 0.5f);
+
+
+    // TODO we can probably make this its own function but in practice this update goes together anyways so this is not a huge deal
+    // resolution params would require recalculating those
+    // but what can you do
+    const int shadow_map_size = Screen_Texture.shadow_map_size;
+    for (int cascade_index = 0; cascade_index < SHADOW_CASCADE_COUNT; ++cascade_index) {
+        frustum_split &frustum_split = frustum_splits[cascade_index];
+        const float a = frustum_split.near;
+        const float b = frustum_split.far;
+        // get near and far plane corners for the shadow cascade in camera space( main camera space ;)
+        frustum_split.camera_space_corners[0] = {a * s / g, a / g, a}; // + +  
+        frustum_split.camera_space_corners[1] = {a * s / g, -a / g, a}; // +-
+        frustum_split.camera_space_corners[2] = {-a * s / g, -a / g, a}; // --
+        frustum_split.camera_space_corners[3] = {-a * s / g, a / g, a}; // -+
+
+        frustum_split.camera_space_corners[4] = {b * s / g, b / g, b};
+        frustum_split.camera_space_corners[5] = {b * s / g, -b / g, b};
+        frustum_split.camera_space_corners[6] = {-b * s / g, -b / g, b};
+        frustum_split.camera_space_corners[7] = {-b * s / g, b / g, b};
+
+        const Vector3D v_0 = frustum_split.camera_space_corners[0];
+        const Vector3D v_4 = frustum_split.camera_space_corners[4];
+        const Vector3D v_6 = frustum_split.camera_space_corners[6];
+
+        // calculate the max diameter of this particular frustum in camera space
+        const float v0_to_v6 = magnitude(v_0 - v_6);
+        const float v4_to_v6 = magnitude(v_4 - v_6);
+
+        // we can store this
+        const float max_diameter = math_ops::ceil(math_ops::max(v0_to_v6, v4_to_v6));
+
+        // and this
+        // find the texel size for this particular shadow layer using the diameter
+        const float texel_size = max_diameter / shadow_map_size;
+
+        frustum_split.shadow_map_size_d = max_diameter;
+        frustum_split.physica_texel_size_t = texel_size;
+    }
+}
+
+void Set_Camera_Params() {
+    const auto camera_matrix_inverse = CameraLookAtMatrix(*SceneCamera);
+    const auto camera_matrix = inverse(camera_matrix_inverse);
+
+    SceneCamera->Camera_Matrix = camera_matrix;
+    SceneCamera->Camera_Matrix_Inverse = camera_matrix_inverse;
+
+
+    glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
+
+
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
+
+    glBindBuffer(GL_UNIFORM_BUFFER, 0);
+    CalculateCascadeFrontPlanes(camera_matrix);
+}
+
+static int Calculate_Light_Space_Matrix_Index(int cascade_index, const int directional_light_index) {
+    return directional_light_index * SHADOW_CASCADE_COUNT + cascade_index;
+}
+
+
+// TODO we need to actually decide whether we need more than 1 directional light per scene
+// camera changes? we need to recalculate
+// fov , znear or zfar chagnes ? we need to recalclate
+// as a result this is called once we register our single directional right OR when either of the above applies
+// in theory this means that we could doubly calculate, in practice both applying is something that is not bound to change because either the camera is moving OR the user is chaning window size
+void Calculate_Directional_Light_MVP_Matrix(int light_index) {
+    assert(SceneCamera && "Camera should be initialized");
+    //TODO  we probably need to find a way to make sure that projection params are also initialized
+    const Matrix4D &light_matrix_inverse = Directional_Lights_Matrices.Light_Space_Matrix_Inverse[light_index];
+    const Matrix4D camera_matrix = SceneCamera->Camera_Matrix;
+
+    typedef struct Bounding_Box {
+        Vector3D min{};
+        Vector3D max{};
+    } Bounding_Box;
+
+    const Matrix4D camera_space_to_light_space = light_matrix_inverse * camera_matrix;
+
+    constexpr int camera_corners = 8;
+    Vector3D light_space_vertices[SHADOW_CASCADE_COUNT * camera_corners];
+    Bounding_Box bounding_box_light_space[SHADOW_CASCADE_COUNT];
+
+    for (int cascade_index = 0; cascade_index < SHADOW_CASCADE_COUNT; ++cascade_index) {
+        frustum_split &frustum_split = frustum_splits[cascade_index];
+
+        // convert the near and far frustum plane points to light space
+        for (int j = 0; j < camera_corners; ++j) {
+            const Vector3D camera_corner = frustum_split.camera_space_corners[j];
+            const Vector4D transformed_vertice = camera_space_to_light_space * Vector3D_To_Vector4D(camera_corner, 1);
+            light_space_vertices[cascade_index * camera_corners + j] = {
+                transformed_vertice.x,
+                transformed_vertice.y,
+                transformed_vertice.z
+            };
+        }
+
+        // calculate the bounding box that encloses all those points
+        Vector3D &bb_min = bounding_box_light_space[cascade_index].min;
+        Vector3D &bb_max = bounding_box_light_space[cascade_index].max;
+
+        bb_min = {FLT_MAX,FLT_MAX,FLT_MAX};
+        bb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
+
+
+        for (int j = 0; j < camera_corners; ++j) {
+            const Vector3D &light_space_vertice = light_space_vertices[cascade_index * camera_corners + j];
+
+            if (bb_min.x > light_space_vertice.x) {
+                bb_min.x = light_space_vertice.x;
+            }
+
+            if (bb_min.y > light_space_vertice.y) {
+                bb_min.y = light_space_vertice.y;
+            }
+
+            if (bb_min.z > light_space_vertice.z) {
+                bb_min.z = light_space_vertice.z;
+            }
+
+            if (bb_max.x < light_space_vertice.x) {
+                bb_max.x = light_space_vertice.x;
+            }
+
+            if (bb_max.y < light_space_vertice.y) {
+                bb_max.y = light_space_vertice.y;
+            }
+
+            if (bb_max.z < light_space_vertice.z) {
+                bb_max.z = light_space_vertice.z;
+            }
+        }
+
+        frustum_split.bounding_box_z_min = bb_min.z;
+        frustum_split.bounding_box_z_max = bb_max.z;
+        
+        //get the camera space position for this particular light (in light space)
+        const float texel_size = frustum_split.physica_texel_size_t;
+        const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
+        const float y_camera_light_space = math_ops::floor_to_int((bb_max.y + bb_min.y) / (2 * texel_size)) * texel_size;
+        const float z_camera_light_space = bb_min.z;
+
+        const Vector3D camera_pos_light_space = {x_camera_light_space, y_camera_light_space, z_camera_light_space};
+        frustum_split.camera_pos_light_space = camera_pos_light_space;
+
+        // calculate an ortho projection matrix
+        // we assume our camera is placed at 0 hence no translation
+        const Matrix4D cascade_ortho_projection_matrix = Matrix4D{
+            Vector4D{2 / frustum_split.shadow_map_size_d, 0, 0, 0},
+            Vector4D{0, 2 / frustum_split.shadow_map_size_d, 0, 0},
+            Vector4D{0, 0, 1 / (bb_max.z - bb_min.z), 0},
+            Vector4D{0, 0, 0, 1}
+        };
+
+        // calculate a world space to cascade camera space
+        const Matrix4D world_space_to_cascade_camera_space = {
+            light_matrix_inverse[0],
+            light_matrix_inverse[1],
+            light_matrix_inverse[2],
+            Vector3D_To_Vector4D(-camera_pos_light_space, 1)
+        };
+
+        // use both matrices to calculate the MV matrix for any world object
+        Directional_Lights.MVP_Matrix_per_cascade[Calculate_Light_Space_Matrix_Index(cascade_index, light_index)] =
+                cascade_ortho_projection_matrix * world_space_to_cascade_camera_space;
+    }
+
+    const frustum_split &cascade_0 = frustum_splits[0];
+    const Vector3D camera_pos_light_space_0_cascade = cascade_0.camera_pos_light_space;
+
+    // calculate a world space to cascade camera space
+    const Matrix4D world_space_to_0_cascade_space = {
+        light_matrix_inverse[0],
+        light_matrix_inverse[1],
+        light_matrix_inverse[2],
+        Vector3D_To_Vector4D(-camera_pos_light_space_0_cascade, 1)
+    };
+
+    const float d_cascade_0 = cascade_0.shadow_map_size_d;
+    const float diameter_inverse = 1.0f / d_cascade_0;
+    const float z_diff_0_cascade = cascade_0.bounding_box_z_max - cascade_0.bounding_box_z_min;
+    const float z_dif_inverse = 1.0f / z_diff_0_cascade;
+
+    Matrix4D P_shadow_0_cascade = {
+        Vector4D{diameter_inverse, 0, 0, 0},
+        Vector4D{0, diameter_inverse, 0, 0},
+        Vector4D{0, 0, z_dif_inverse, 0},
+        Vector4D{0.5, 0.5, 0, 1}
+    };
+
+    // we have this nice matrix C_k
+    cascade_mapping.world_space_to_0th_cascade_texture_space = P_shadow_0_cascade * world_space_to_0_cascade_space;
+
+    const float s_0_x = camera_pos_light_space_0_cascade.x;
+    const float s_0_y = camera_pos_light_space_0_cascade.y;
+    const float s_0_z = camera_pos_light_space_0_cascade.z;
+
+    for (int i = 1; i < SHADOW_CASCADE_COUNT; ++i) {
+        frustum_split &s = frustum_splits[i];
+        const float d_cascade_k = s.shadow_map_size_d;
+        const float z_diff_cascade_k = s.bounding_box_z_max - s.bounding_box_z_min;
+
+        const float x_scale = d_cascade_0 / d_cascade_k;
+        const float y_scale = d_cascade_0 / d_cascade_k;
+        const float z_scale = z_diff_0_cascade / z_diff_cascade_k;
+
+        cascade_mapping.scales[i - 1] = {x_scale, y_scale, z_scale};
+
+        const Vector3D &camera_pos_s_k_cascade = s.camera_pos_light_space;
+        const float s_k_x = camera_pos_s_k_cascade.x;
+        const float s_k_y = camera_pos_s_k_cascade.y;
+        const float s_k_z = camera_pos_s_k_cascade.z;
+
+
+        const float offset_x = (s_0_x - s_k_x) / d_cascade_k - d_cascade_0 / (2 * d_cascade_k) + 0.5f;
+        const float offset_y = (s_0_y - s_k_y) / d_cascade_k - d_cascade_0 / (2 * d_cascade_k) + 0.5f;
+        const float offset_z = (s_0_z - s_k_z) / (z_diff_cascade_k);
+
+        cascade_mapping.offsets[i - 1] = {offset_x, offset_y, offset_z};
+    }
+
+    // we now need 3 more things and we can call it a day.
+}
+
+void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix) {
+    const Vector4D c = camera_matrix[3];
+    const Vector4D plane_normal = camera_matrix[2];
+
+    for (int i = 1; i < SHADOW_CASCADE_COUNT; ++i) {
+        const frustum_split &previous_partition = frustum_splits[i - 1];
+        const frustum_split &current_partition = frustum_splits[i];
+        const float plane_w = -dot(c, plane_normal) - current_partition.near;
+
+        float plane_scale = 1 / (previous_partition.far - current_partition.near);
+        const Plane p = {plane_normal.x * plane_scale, plane_normal.y * plane_scale, plane_normal.z * plane_scale, plane_w * plane_scale};
+
+        cascade_mapping.frustum_front_plane_world_space[i - 1] = p;
+    }
+}
