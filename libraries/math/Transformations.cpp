@@ -73,7 +73,28 @@ Matrix4D rotation_z_matrix4D(const float t) {
     };
 }
 
-Matrix3D scale_matrix3D(const Matrix3D &m, const Vector3D &v) {
+Matrix3D scale_matrix3D(const Vector3D &v) {
+    Matrix3D result{0};
+    result[0].x = v.x;
+    result[1].y = v.y;
+    result[2].z = v.z;
+
+    return result;
+}
+
+Matrix4D scale_matrix4D(const Vector3D &v) {
+    Matrix4D result{0};
+    result[0].x = v.x;
+    result[1].y = v.y;
+    result[2].z = v.z;
+    result[3].w = 1;
+
+    return result;
+}
+
+
+// equilevant to S*m, where S is the scaling matrix
+Matrix3D scale_matrix3D_by_vector(const Matrix3D &m, const Vector3D &v) {
     Matrix3D result{};
     result[0] = m[0] * v.x;
     result[1] = m[1] * v.y;
@@ -81,7 +102,8 @@ Matrix3D scale_matrix3D(const Matrix3D &m, const Vector3D &v) {
     return result;
 }
 
-Matrix4D scale_matrix4D(const Matrix4D &m, const Vector3D &v) {
+// equilevant to S*m, where S is the scaling matrix
+Matrix4D scale_matrix4D_by_vector(const Matrix4D &m, const Vector3D &v) {
     Matrix4D result{};
     result[0] = m[0] * v.x;
     result[1] = m[1] * v.y;
@@ -93,6 +115,12 @@ Matrix4D scale_matrix4D(const Matrix4D &m, const Vector3D &v) {
 Matrix4D translate(const Matrix4D &m, const Vector3D &v) {
     Matrix4D result{m};
     result[3] = m[0] * v.x + m[1] * v.y + m[2] * v.z + m[3];
+    return result;
+}
+
+Matrix4D translation_matrix4D(const Vector3D &v) {
+    Matrix4D result{1};
+    result[3] = Vector4D{v.x, v.y, v.z, 1};
     return result;
 }
 
@@ -128,4 +156,44 @@ Plane transform_plane(const Matrix4D &H, const Plane &f) {
         f.normal.x * H[2].x + f.normal.y * H[2].y + f.normal.z * H[2].z,
         f.normal.x * H[3].x + f.normal.y * H[3].y + f.normal.z * H[3].z + f.w
     };
+}
+
+EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D obverver_forward, Vector3D observer_up) {
+    const Vector3D observer_target = observer_position + obverver_forward;
+
+    const Vector3D center = observer_target;
+    const Vector3D eye = observer_position;
+
+    const Vector3D f = normalize(center - eye); // Forward vector (in world space)
+    const Vector3D s = normalize(cross(observer_up, f)); // Right
+    const Vector3D u = cross(f, s);
+
+    Matrix4D mat{
+                {s.x, u.x, f.x, 0},
+                {s.y, u.y, f.y, 0},
+                {s.z, u.z, f.z, 0},
+                {-dot(s, eye), -dot(u, eye), -dot(f, eye), 1}
+    };
+    return mat;
+}
+
+Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f) {
+    float w_inv = 1.f / (r - l);
+    float h_inv = 1.f / (b - t);
+    float d_inv = 1.f / (f - n);
+
+    Matrix4D ortho_matrix(0);
+
+    ortho_matrix[0].x = 2 * w_inv;
+
+    ortho_matrix[1].y = -2.f * h_inv; // flip y because we need to
+    ortho_matrix[2].z = d_inv;
+
+
+    ortho_matrix[3].x = -(r + l) * w_inv;
+    ortho_matrix[3].y = -(b + t) * h_inv; // flip y cause we need to 
+    ortho_matrix[3].z = -n * d_inv;
+    ortho_matrix[3].w = 1;
+
+    return ortho_matrix;
 }

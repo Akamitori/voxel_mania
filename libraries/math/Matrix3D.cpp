@@ -72,3 +72,15 @@ Matrix3D inverse(const Matrix3D &M) {
         r2.x * invDet, r2.y * invDet, r2.z * invDet
     };
 }
+
+Matrix3D transpose(const Matrix3D &M) {
+    const Vector3D &a = M[0];
+    const Vector3D &b = M[1];
+    const Vector3D &c = M[2];
+
+    const Vector3D &a_t = {a.x, b.x, c.x};
+    const Vector3D &b_t = {a.y, b.y, c.y};
+    const Vector3D &c_t = {a.z, b.z, c.z};
+    
+    return Matrix3D{a_t,b_t,c_t};
+}

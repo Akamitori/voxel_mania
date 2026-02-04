@@ -38,10 +38,6 @@ EXPORTED Matrix4D CameraLookAtMatrix(const Camera &camera);
 
 EXPORTED Matrix4D PerspectiveMatrix(float FOV, float z_near, float z_far, float aspect);
 
-EXPORTED Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f);
-
-EXPORTED void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, float FOV, float aspect);
-
 EXPORTED void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
 
 EXPORTED void PrintPosition(const Camera &camera); 

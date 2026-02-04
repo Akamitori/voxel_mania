@@ -28,5 +28,6 @@ struct EXPORTED Matrix3D {
 };
 
 EXPORTED Matrix3D inverse(const Matrix3D &M);
+EXPORTED Matrix3D transpose(const Matrix3D &M);
 EXPORTED Matrix3D operator *(const Matrix3D& A, const Matrix3D& B);
 #endif //MATRIX3D_H
