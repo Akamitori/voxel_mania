@@ -11,19 +11,26 @@ layout (std140) uniform ViewMatrices{
 
 uniform mat4 model_matrix;
 uniform mat3 model_matrix_for_normals;
+uniform mat4 light_space_matrix;
 
-out vec2 TexCoord;
-out vec3 Normal;
-out vec3 FragPos;
+out VS_OUT{
+    vec2 TexCoord;
+    vec3 Normal;
+    vec3 FragPosWorldSpace;
+    vec4 FragPosLightSpace;
+} vs_out;
 
 void main() {
 
     gl_Position = perspective_projection_matrix*look_at_matrix*model_matrix * vec4(aPos, 1.0);
 
     // this is important for light calculations
-    FragPos=vec3(model_matrix*vec4(aPos, 1.0));
-    TexCoord = aTexCoord;
-    Normal= model_matrix_for_normals*aNormal;
+    vs_out.FragPosWorldSpace=vec3(model_matrix*vec4(aPos, 1.0));
+    vs_out.TexCoord = aTexCoord;
+    // we could use the inverse transpose blah blah but we just get the matrix from the CPU
+    vs_out.Normal= model_matrix_for_normals*aNormal;
+    
+    vs_out.FragPosLightSpace= light_space_matrix* vec4(vs_out.FragPosWorldSpace,1);
 
     // this works fine if we don't scale things
     // use a different shader if we do!
