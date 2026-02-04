@@ -154,7 +154,7 @@ void sort_objects_based_on_camera_distance(model_instance *models, const size_t 
 
 int main() {
     try {
-        constexpr int game_resolution_width = 800, game_resolution_height = 600;
+        constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
@@ -289,6 +289,17 @@ int main() {
             }
         }
 
+        Vector_model_instance_Add(opaque_models, {crate_cube_id, {(float) 5, (float) 5, 2}});
+        Vector_model_instance_Add(opaque_models, {crate_cube_id, {(float) 7, (float) 4, 0}});
+        Vector_model_instance_Add(opaque_models, {
+                                      crate_cube_id, {
+                                          (float) 3, (float) 3, 0,
+                                            0,DegreeToRadians(45),DegreeToRadians(45)
+                                      }
+
+                                  });
+
+
         // Target cube πιο μακριά
         // Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
         // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
@@ -296,10 +307,6 @@ int main() {
 
         // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
         // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
-
-        Material our_material{
-            2
-        };
 
         //         PointLight our_light{
         //             Vector3D{-5, 5, 2}, // Αντίθετη πλευρά από την κάμερα
@@ -339,7 +346,7 @@ int main() {
         };
 
         PointLight our_light{
-            Vector3D{5, 5, 1}, // κέντρο-ish του scene
+            Vector3D{5, 5, 5}, // κέντρο-ish του scene
             {0.0f, 0.0f, 0.0f},
             {1.0f, 0.9f, 0.7f}, // warm λάμπα
             {1.0f, 1.0f, 1.0f},
@@ -352,13 +359,19 @@ int main() {
         Renderer_Register_Directional_Light(our_dir_light);
 
 
+        Transform t{};
+        t.Position = our_light.position;
         model_instance lights[]{
-            light_source, {our_light.position},
+            light_source, t
         };
 
         Renderer_FinalizeMeshLoading();
 
         bool keepRunning = true;
+
+        Material our_material{
+            2
+        };
 
         bool matrix = true;
         // Rendering loop
@@ -398,12 +411,11 @@ int main() {
                 Renderer_Draw(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
 
-            // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
-            //     const model_instance m = opaque_models->data[i];
-            //     Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
-            // }
-            //
-            //
+            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
+                const model_instance m = opaque_models->data[i];
+                Renderer_Draw_Outline(m.mesh_id, m.transform, {1, 1, 1}, our_material);
+            }
+
             // sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
             //
             // for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
