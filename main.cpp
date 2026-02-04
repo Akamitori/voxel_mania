@@ -104,8 +104,8 @@ int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int e
 }
 
 int compare_models_descending(const void *p, const void *q) {
-    const model_instance m1 = *(const model_instance *) p;
-    const model_instance m2 = *(const model_instance *) q;
+    const mesh_instance m1 = *(const mesh_instance *) p;
+    const mesh_instance m2 = *(const mesh_instance *) q;
 
     const float distance1 = magnitude_squared(SceneCamera->position - m1.transform.Position);
     const float distance2 = magnitude_squared(SceneCamera->position - m2.transform.Position);
@@ -113,13 +113,52 @@ int compare_models_descending(const void *p, const void *q) {
     return (distance1 < distance2) - (distance1 > distance2);
 }
 
-void sort_objects_based_on_camera_distance(model_instance *models, const size_t number) {
-    qsort(models, number, sizeof(model_instance), compare_models_descending);
+void sort_objects_based_on_camera_distance(mesh_instance *models, const size_t number) {
+    qsort(models, number, sizeof(mesh_instance), compare_models_descending);
+}
+
+void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_instance *opaque_meshes) {
+    // create a scene for shadow testing
+    for (int x = 0; x < 50; ++x) {
+        for (int y = 0; y < 10; ++y) {
+            Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) x - 5, (float) y + 2, -1}});
+        }
+    }
+
+    Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) 4, (float) 11, 0}});
+    Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) 4, (float) 11, 1}});
+
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 0}});
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 1}});
+
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 5 - 5, (float) 6, 2}});
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 7 - 5, (float) 4, 0}});
+    Vector_mesh_instance_Add(opaque_meshes, {
+                                 crate_cube_id, {
+                                     (float) 3 - 5, (float) 3, 0,
+                                     0, DegreeToRadians(45), DegreeToRadians(45)
+                                 }
+
+                             });
+
+
+    for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
+        const Vector3D v = opaque_meshes->data[i].transform.Position;
+        printf("(%3f, %3f, %3f)", v.x, v.y, v.z);
+    }
+
+
+    const int offset = 40;
+    for (int x = 0; x < 10; ++x) {
+        for (int y = 0; y < 10; ++y) {
+            Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) offset + x - 5, (float) y + 2, -1}});
+        }
+    }
 }
 
 int main() {
     try {
-        constexpr int game_resolution_width = 800, game_resolution_height = 600;
+        constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
@@ -198,45 +237,21 @@ int main() {
         ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
         ImGui_ImplOpenGL3_Init();
 
-        
-
-
-        
-
-
         Vector3D light_color = {1, 1, 1};
 
 
-        Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
-        Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
+        Vector_mesh_instance *opaque_meshes = Vector_mesh_instance_Create(30);
+        Vector_mesh_instance *transparent_models = Vector_mesh_instance_Create(30);
 
-        // // Grid of cubes για να δεις το spotlight
-        // for (int x = -3; x <= 3; x++) {
-        //     for (int y = 0; y <= 10; y++) {
-        //         models.push_back({
-        //             crate_cube_id,
-        //             Vector3D{x * 2.0f, y * 2.0f, 0}
-        //         });
-        //     }
-        // }
-
-        for (int x = 0; x < 10; ++x) {
-            for (int y = 0; y < 10; ++y) {
-                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float) x, (float) y + 2, -1}});
-            }
-        }
+        Create_Scene(wood_cube_id, crate_cube_id, opaque_meshes);
 
         // Target cube πιο μακριά
-        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
-        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
-        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
+        // Vector_mesh_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
+        // Vector_mesh_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
+        // Vector_mesh_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
 
-        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
-        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
-
-        Material our_material{
-            2
-        };
+        // Vector_mesh_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
+        // Vector_mesh_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
 
         //         PointLight our_light{
         //             Vector3D{-5, 5, 2}, // Αντίθετη πλευρά από την κάμερα
@@ -269,14 +284,17 @@ int main() {
         // };
 
         DirectionalLight our_dir_light{
-            {0.8f, 0.2f, -0.5f},
-            {0.01f, 0.01f, 0.015f}, // ambient - ελάχιστο, μόνο για να μην είναι pitch black
-            {0.08f, 0.08f, 0.1f}, // diffuse - πολύ αδύναμο fill, σαν indirect light
-            {0.0f, 0.0f, 0.0f}
+            //{0.8f, 0.2f, -0.5f}, // direction
+            //{0.3f, 0.5f, -0.8f},
+            {1.0f, 0.0f, -1.0f}, // pointing straight down
+
+            {0.05f, 0.05f, 0.05f}, // ambient
+            {0.8f, 0.75f, 0.7f}, // diffuse - bright enough to see
+            {0.5f, 0.5f, 0.5f} // specular - some highlights
         };
 
         PointLight our_light{
-            Vector3D{5, 5, 1}, // κέντρο-ish του scene
+            Vector3D{5, 5, 5}, // κέντρο-ish του scene
             {0.0f, 0.0f, 0.0f},
             {1.0f, 0.9f, 0.7f}, // warm λάμπα
             {1.0f, 1.0f, 1.0f},
@@ -284,22 +302,38 @@ int main() {
             0.20f // aggressive quadratic
         };
 
-        Renderer_Register_Point_Light(our_light);
+        //Renderer_Register_Point_Light(our_light);
         //Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
 
 
-        model_instance lights[]{
-            light_source, {our_light.position},
+        Transform t{};
+        t.Position = our_light.position;
+        mesh_instance lights[]{
+            light_source, t
         };
 
         Renderer_FinalizeMeshLoading();
 
         bool keepRunning = true;
 
-        bool matrix = true;
+        Material our_material{
+            2
+        };
+
+
+        Uint64 freq = SDL_GetPerformanceFrequency(); // do this once, outside the loop
+        Uint64 lastTime = SDL_GetPerformanceCounter(); // do this once, outside the loop
+        double ms_per_frame = 0.0;
+
         // Rendering loop
         while (keepRunning) {
+            Uint64 now = SDL_GetPerformanceCounter();
+            double ms = (now - lastTime) * 1000.0 / freq;
+            lastTime = now;
+            ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
+
+
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
                 switch (event.type) {
@@ -322,28 +356,28 @@ int main() {
 
                 ImGui_ImplSDL3_ProcessEvent(&event); // Forward your event to backend
             }
-            
+
             Renderer_FrameStart();
 
 
-            for (const auto &m: lights) {
-                Renderer_Draw_Mesh_Unshaded(m.mesh_id, m.transform, light_color);
-            }
+            // for (const auto &m: lights) {
+            //     Renderer_DrawUnshadedTexture(m.mesh_id, m.transform, light_color);
+            // }
 
-            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
-                const model_instance m = opaque_models->data[i];
+            // for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
+            //     const mesh_instance m = opaque_meshes->data[i];
+            //     Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
+            // }
+
+            for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
+                const mesh_instance m = opaque_meshes->data[i];
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
+            Renderer_ResolveDrawCalls();
 
-            // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
-            //     const model_instance m = opaque_models->data[i];
-            //     Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
-            // }
+            // sort_objects_based_on_camera_distance(transparent_models->data, Vector_mesh_instance_Length(transparent_models));
             //
-            //
-            // sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
-            //
-            // for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
+            // for (size_t i = 0; i < Vector_mesh_instance_Length(transparent_models); ++i) {
             //     const model_instance m = transparent_models->data[i];
             //     Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
             // }
@@ -351,17 +385,30 @@ int main() {
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
 
-            
 
             // // Start the Dear ImGui frame
-            // ImGui_ImplOpenGL3_NewFrame();
-            // ImGui_ImplSDL3_NewFrame();
-            // ImGui::NewFrame();
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
+            ImGui::NewFrame();
             //
-            // IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
+            IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
             //
             // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
-            // IMGUI_CHECKVERSION();
+            IMGUI_CHECKVERSION();
+
+            ImGui::Text("Ms/frame : %f", ms_per_frame);
+
+            if (ImGui::Button("Test")) {
+                Renderer_Toggle_Shadow_Map_Rendering();
+            }
+
+            if (ImGui::Button("Camera_As_Light")) {
+                Renderer_Align_Camera_With_Light();
+            }
+
+            if (ImGui::Button("Toggle_PCF")) {
+                Renderer_Toggle_PCF();
+            }
 
             //float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
 
@@ -378,25 +425,23 @@ int main() {
             // }
             // Show demo window! :)
 
-            // ImGui::Render();
-            // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             // Update and Render additional Platform Windows
             // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
             //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
-            // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-            //     SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
-            //     const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
-            //     ImGui::UpdatePlatformWindows();
-            //     ImGui::RenderPlatformWindowsDefault();
-            //     SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-            // }
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+                SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
+                const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
+                ImGui::UpdatePlatformWindows();
+                ImGui::RenderPlatformWindowsDefault();
+                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+            }
 
 
             Renderer_FrameEnd();
-            
         }
 
-        
 
         Renderer_Destroy();
 
