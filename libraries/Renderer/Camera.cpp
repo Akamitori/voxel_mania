@@ -9,6 +9,7 @@
 #include "math_ops.h"
 #include "Trigonometry.h"
 #include "stdio.h"
+#include "Transformations.h"
 
 //TODO unify those functions after I move to SDL2
 void MoveCameraZ(Camera &camera, const float modifier) {
@@ -71,22 +72,7 @@ void RotateCamera(Camera &camera, const short azimuth_modifier, const short elev
 
 
 Matrix4D CameraLookAtMatrix(const Camera &camera) {
-    const Vector3D camera_target = camera.position + camera.forward;
-
-    const Vector3D center = camera_target;
-    const Vector3D eye = camera.position;
-
-    const Vector3D f = normalize(center - eye); // Forward vector (in world space)
-    const Vector3D s = normalize(cross(camera.up, f)); // Right
-    const Vector3D u = cross(f, s);
-
-    Matrix4D mat{
-        {s.x, u.x, f.x, 0},
-        {s.y, u.y, f.y, 0},
-        {s.z, u.z, f.z, 0},
-        {-dot(s, eye), -dot(u, eye), -dot(f, eye), 1}
-    };
-    return mat;
+    return LookAtMatrix(camera.position, camera.forward, camera.up);
 }
 
 Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
@@ -106,33 +92,4 @@ Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_fa
     perspectiveMatrix[3].z = - z_far * z_diff;
 
     return perspectiveMatrix;
-}
-
-Matrix4D MakeOrthoProjection(float l, float r, float t, float b, float n, float f) {
-    float w_inv = 1.f / (r - l);
-    float h_inv = 1.f / (b - t);
-    float d_inv = 1.f / (f - n);
-
-    Matrix4D ortho_matrix(0);
-
-    ortho_matrix[0].x = 2 * w_inv;
-
-    ortho_matrix[1].y = -2.f * h_inv; // flip y because we need to
-    ortho_matrix[2].z = d_inv;
-
-
-    ortho_matrix[3].x = -(r + l) * w_inv;
-    ortho_matrix[3].y = -(b + t) * h_inv; // flip y cause we need to 
-    ortho_matrix[3].z = -n * d_inv;
-    ortho_matrix[3].w = 1;
-
-    return ortho_matrix;
-}
-
-
-void PerspectiveMatrixUpdate(Matrix4D &perspectiveMatrix, const float FOV, const float aspect) {
-    const float aspect_inverse = 1 / aspect;
-    const float tan_fov_2_invert = 1.f / tan(DegreeToRadians(FOV / 2));
-    perspectiveMatrix[0].x = tan_fov_2_invert * aspect_inverse;
-    perspectiveMatrix[1].y = -tan_fov_2_invert;
 }
