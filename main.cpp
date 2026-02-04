@@ -142,8 +142,8 @@ int compare_models_descending(const void *p, const void *q) {
     const model_instance m1 = *(const model_instance *) p;
     const model_instance m2 = *(const model_instance *) q;
 
-    const float distance1 = magnitude_squared(SceneCamera->position - m1.pos);
-    const float distance2 = magnitude_squared(SceneCamera->position - m2.pos);
+    const float distance1 = magnitude_squared(SceneCamera->position - m1.transform.Position);
+    const float distance2 = magnitude_squared(SceneCamera->position - m2.transform.Position);
 
     return (distance1 < distance2) - (distance1 > distance2);
 }
@@ -353,7 +353,7 @@ int main() {
 
 
         model_instance lights[]{
-            light_source, our_light.position,
+            light_source, {our_light.position},
         };
 
         Renderer_FinalizeMeshLoading();
@@ -390,12 +390,12 @@ int main() {
 
 
             for (const auto &m: lights) {
-                Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
+                Renderer_DrawUnshadedTexture(m.mesh_id, m.transform, light_color);
             }
 
             for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
                 const model_instance m = opaque_models->data[i];
-                Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+                Renderer_Draw(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
 
             // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
