@@ -20,28 +20,36 @@ unsigned int compileShader(const unsigned int type, const char *source, char *in
     if (!success) {
         int required_log_size = 0;
         glGetShaderiv(id, GL_INFO_LOG_LENGTH, &required_log_size);
-        glGetShaderInfoLog(id, info_log_size, NULL, info_log);
+
+        char *error_buffer = malloc(sizeof(char) * required_log_size);
+        glGetShaderInfoLog(id, required_log_size, NULL, error_buffer);
+
 
         const char *prefix = "Shader compilation failed:\n";
-        size_t prefix_len = strlen(prefix);
+        const int prefix_len = (int) strlen(prefix);
+        
+        int max_error_characters = info_log_size - prefix_len - 1;
 
-        char *dest;
-        if ((required_log_size - prefix_len) > info_log_size - 1) {
-            const char *suffix = "\n[GLSL info log truncated]";
-            size_t suffix_len = strlen(suffix);
-
-            dest = info_log + prefix_len;
-            memmove(dest, info_log, prefix_len);
-            memcpy(info_log, prefix, sizeof(char) * prefix_len);
-
-            dest = info_log + info_log_size - 1 - suffix_len;
-            memcpy(dest, suffix, sizeof(char) * suffix_len);
-        } else {
-            dest = info_log + prefix_len;
-            memmove(dest, info_log, prefix_len);
-            memcpy(info_log, prefix, sizeof(char) * prefix_len);
+        if (max_error_characters <= 0) {
+            max_error_characters = 0;
         }
+
+        if (max_error_characters >= required_log_size) {
+            snprintf(info_log, info_log_size, "%s%s", prefix, error_buffer);
+        } else {
+            const char *suffix = "...[TRUNCATED]";
+            const int suffix_len = (int)strlen(suffix);
+            int error_chars_to_copy = max_error_characters - suffix_len;
+
+            if (error_chars_to_copy <= 0) {
+                error_chars_to_copy = 0;
+            }
+
+            snprintf(info_log, info_log_size, "%s%.*s%s", prefix, error_chars_to_copy, error_buffer, suffix);
+        }
+
         glDeleteShader(id);
+        free(error_buffer);
         return 0;
     }
 
@@ -129,12 +137,12 @@ unsigned int InitializeProgram(const char *program_id) {
     char infoLog[1024 * 10];
     const int buffer_size = 1024 * 10;
     if ((shaders[0] = LoadShader(GL_FRAGMENT_SHADER, "frag.frag", program_id, infoLog, buffer_size)) == 0) {
-        fprintf(stderr, "Failed to load fragment shader -> %s \n", infoLog);
+        fprintf(stderr, "Failed to load fragment shader for program %s -> %s \n", program_id, infoLog);
         return 0;
     }
 
     if ((shaders[1] = LoadShader(GL_VERTEX_SHADER, "vert.vert", program_id, infoLog, buffer_size)) == 0) {
-        fprintf(stderr, "Failed to load vertex shader -> %s \n", infoLog);
+        fprintf(stderr, "Failed to load vertex shader for program %s -> %s \n", program_id, infoLog);
         return 0;
     }
 
