@@ -5,7 +5,6 @@
 #include "export.h"
 #include "SDL3/SDL_video.h"
 #include <cstdint>
-
 #include "GL/glew.h"
 
 struct Matrix4D;
@@ -54,7 +53,7 @@ enum class TextureWrapMode : uint32_t {
     CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
 };
 
- struct EXPORTED Texture_Parameters {
+struct EXPORTED Texture_Parameters {
     TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
     TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
     bool convert_from_srgb_to_linear_space = false;
@@ -65,7 +64,6 @@ struct EXPORTED Transform {
     Vector3D Rotation{0, 0, 0};
     Vector3D Scale{1, 1, 1};
 };
-
 
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
@@ -114,19 +112,20 @@ EXPORTED void Renderer_Destroy();
 
 EXPORTED void Renderer_FrameStart();
 
+EXPORTED void Renderer_ResolveDrawCalls();
+
 EXPORTED void Renderer_FrameEnd();
 
-EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform& transform, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform &transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Model(int model_id, const Transform& transform, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform& transform, Vector3D color);
+EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
 
 EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 
 EXPORTED void Renderer_CameraUpdate();
 
 EXPORTED void Renderer_Change_Emission(int mesh_id, int emission_texture_id);
-
 
 #endif //RENDERER_H

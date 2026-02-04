@@ -8,12 +8,12 @@
 #include "vector_container.h"
 #include "Renderer.h"
 
-struct model_instance {
+struct mesh_instance {
     int mesh_id{};
     Transform transform{};
 };
 
-VECTOR_IMPLEMENTATION_STATIC(model_instance)
+VECTOR_IMPLEMENTATION_STATIC(mesh_instance)
 
 
 #endif //VOXEL_MANIA_MAIN_CONTAINERS_H
