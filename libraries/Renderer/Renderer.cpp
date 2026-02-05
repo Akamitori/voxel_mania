@@ -37,13 +37,13 @@ SDL_GLContext open_gl_context{};
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
+static unsigned int cursor_program;
 
 
 struct screen {
     unsigned int screen_texture_program{0};
     int Width{};
     int Height{};
-
 
     GLuint VAO{0};
     GLuint VBO{0};
@@ -80,6 +80,21 @@ static unsigned int Spot_Lights_binding_point = 3;
 static unsigned int defaultTexture;
 static unsigned int defaultEmissionTexture;
 
+enum class DrawCommandType {
+    None = 0,
+    Mesh,
+    Model,
+    Mesh_Unshaded
+};
+
+struct DrawCommand {
+    DrawCommandType Type{};
+    int Draw_Entity_Id;
+    Transform Transform{};
+    Material Material{};
+    Vector3D Color{};
+};
+
 enum class TextureType {
     RGB,
     RGB_ALPHA,
@@ -105,6 +120,9 @@ struct Texture {
 
     GLuint texture_id{};
 };
+
+static unsigned int cursor_vao;
+static unsigned int cursor_vbo;
 
 struct Mesh {
     int id{};
@@ -150,6 +168,10 @@ struct Directional_Lights {
     DirectionalLight Lights[MAX_DIRECTIONAL_LIGHTS]{};
 };
 
+struct DirectionalLight_SpaceMatrices {
+    Matrix4D ViewProjectionMatrix[MAX_DIRECTIONAL_LIGHTS]{};
+};
+
 struct Spot_Lights {
     alignas(16) int num_of_light{0};
     SpotLight Lights[MAX_SPOT_LIGHTS]{};
@@ -158,17 +180,20 @@ struct Spot_Lights {
 static Point_Lights Point_Lights{};
 static Directional_Lights Directional_Lights{};
 static Spot_Lights Spot_Lights{};
+static DirectionalLight_SpaceMatrices DirectionalLight_SpaceMatrices{};
 
 VECTOR_IMPLEMENTATION_STATIC(Mesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
 VECTOR_IMPLEMENTATION_STATIC(Texture);
 VECTOR_IMPLEMENTATION_STATIC(uint32_t);
 VECTOR_IMPLEMENTATION_STATIC(float);
+VECTOR_IMPLEMENTATION_STATIC(DrawCommand);
 
 static Vector_Model *Models = Vector_Model_Create(100);
 static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
 static Vector_Mesh *UnshadedMeshes = Vector_Mesh_Create(100);
 static Vector_Texture *Textures = Vector_Texture_Create(100);
+static Vector_DrawCommand *DrawCommands = Vector_DrawCommand_Create(1000);
 
 static void SendLightUBOsToTheGPU();
 
@@ -188,6 +213,12 @@ static void Draw(
     Material material
 );
 
+static void Draw_Mesh(int mesh_id, const Transform &transform, Vector3D color, Material material);
+
+static void Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
+
+static void Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
+
 static Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians);
 
 static Matrix4D calculate_model_matrix_from_transform(const Transform &transform);
@@ -198,13 +229,35 @@ static int LoadTexture(aiTextureType type, const char *directory, const aiMateri
 
 static void OpenGLGlobalSetup();
 
+static void Draw_Without_Anti_Aliasing();
+
+static void Draw_With_Anti_Aliasing();
+
+static void ExecuteDrawCommands();
+
+static void Draw_To_Screen_Texture();
+
+static void Initialize_Cursor(int game_resolution_width, int game_resolution_height);
+
+static float normalize_coord(const float value, const float max);
+
+static void Draw_Cursor();
+
+// Vertex Shader source code
+static float normalize_coord(const float value, const float max) {
+    return 2 * value / max - 1;
+}
+
 void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
 
-
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
+    
+    
+    
+    
 
 
     const unsigned char whitePixel[4] = {255, 255, 255, 255};
@@ -225,8 +278,13 @@ void OpenGLGlobalSetup() {
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
     glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1, 1, 0, GL_RGBA, GL_UNSIGNED_BYTE, blackPixels);
-}
 
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    // set the clear value for the depth buffer to the value associated with the "furthest" object(it's 0 due to reverse z mapping)
+    glClearDepth(0.0f);
+    // set the clear value for the stencil buffer
+    glClearStencil(0);
+}
 
 void Renderer_Init(const int screen_width,
                    const int screen_height,
@@ -309,7 +367,7 @@ void Renderer_Init(const int screen_width,
     // enable stencil test just for completion's sake
     glEnable(GL_STENCIL_TEST);
     glStencilFunc(GL_ALWAYS, 1, 0xFF);
-    glStencilMask(0xFF);
+    glStencilMask(0x00);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
     // some plain old blending
@@ -320,6 +378,7 @@ void Renderer_Init(const int screen_width,
 
 
     OpenGLGlobalSetup();
+    Initialize_Cursor(screen_width, screen_height);
 
     // UBO setup part 1 : bind the buffers. bind them to the proper binding point. fill them with nothing
     glGenBuffers(1, &ViewMatricesBlock);
@@ -458,42 +517,12 @@ void Renderer_Init(const int screen_width,
             exit(1);
         }
     }
-
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 void Renderer_FrameStart() {
-    // bind to the buffer we are drawing
-    // set clear color
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-    // set the clear value for the depth buffer to the value associated with the "furthest" object(it's 0 due to reverse z mapping)
-    glClearDepth(0.0f);
-    // set the clear value for the stencil buffer
-    glClearStencil(0);
-
-    if (Screen_Texture.Samples > 0) {
-        // clear the anti alias buffer
-        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
-        glClear(GL_COLOR_BUFFER_BIT);
-        
-        //TODO this should be moved to the drawing pass
-        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
-    } else {
-        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
-        
-        //TODO this should be moved to the drawing pass
-        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
-    }
-
-
-    // set the viewport to be the size of the buffer we are drawing to
-    glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
+    Vector_DrawCommand_Clear(DrawCommands);
 }
-
 
 int Renderer_RegisterPrimitiveMeshData(
     const float *vertices,
@@ -641,7 +670,7 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-int Renderer_RegisterTexture(const char *path, Texture_Parameters parameters) {
+int Renderer_RegisterTexture(const char *path, const Texture_Parameters parameters) {
     int width;
     int height;
     int nrChannels;
@@ -935,6 +964,25 @@ int Renderer_Register_Directional_Light(const DirectionalLight &light) {
     assert(("Registered more lights than possible", Directional_Lights.num_of_light<MAX_DIRECTIONAL_LIGHTS));
     const int currentId = Directional_Lights.num_of_light;
     Directional_Lights.Lights[currentId] = light;
+
+
+    Vector3D light_forward = normalize(light.direction);
+
+    Vector3D light_up;
+    if (abs(dot(light.direction, {0, 0, 1})) > 0.99f) {
+        light_up = {0, 1, 0}; // use Y as fallback
+    } else {
+        light_up = {0, 0, 1};
+    }
+
+    constexpr int distance = 20;
+    Vector3D light_pos = -light_forward * distance;
+    const Matrix4D light_view = LookAtMatrix(light_pos, light_forward, light_up);
+    const Matrix4D light_projection = MakeOrthoProjection(-10, 10, 10, -10, 1.0f, 7.5f);
+    const Matrix4D result = light_projection * light_view;
+
+
+    DirectionalLight_SpaceMatrices.ViewProjectionMatrix[currentId] = result;
     ++Directional_Lights.num_of_light;
     return currentId;
 }
@@ -965,54 +1013,56 @@ void Renderer_FinalizeMeshLoading() {
 }
 
 
-void Renderer_Draw(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
-    const Mesh mesh = Meshes->data[mesh_id];
-    Draw(mesh.program_id, mesh, transform, color, material);
+void Renderer_Draw_Mesh(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Mesh, mesh_id, transform, material, color});
 }
 
-void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material) {
-    const Model model = Models->data[model_id];
-    for (size_t i = 0; i < model.mesh_count; ++i) {
-        Renderer_Draw(model.mesh_ids[i], transform, color, material);
-    }
+void Renderer_Draw_Model(const int model_id, const Transform &transform, const Vector3D color, const Material material) {
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Model, model_id, transform, material, color});
 }
 
-void Renderer_DrawUnshadedTexture(const int light_id, const Transform &transform, const Vector3D color) {
-    const Mesh light = UnshadedMeshes->data[light_id];
-    const unsigned int program_to_use = light.program_id;
-    glUseProgram(program_to_use);
+void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, const Vector3D color) {
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Mesh_Unshaded, mesh_id, transform, {}, color});
+}
 
-    // this means all programs need this uniform
-    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
-    const GLint position_id = glGetUniformLocation(program_to_use, "position");
-    const GLuint diffuse_texture_id = light.diffuse_texture_id == -1
-                                          ? defaultTexture
-                                          : Textures->data[light.diffuse_texture_id].texture_id;
-
-
-    glActiveTexture(GL_TEXTURE0); // Add this
-    glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
-    glBindVertexArray(light.VAO);
-
-    const Vector4D color_4{color.x, color.y, color.z, 1};
-    glUniform4fv(voxel_color, 1, &color_4.x);
+void Draw_Without_Anti_Aliasing() {
+    // off screen texture pass without anti-aliasing
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
     
-    const Matrix4D model_matrix = calculate_model_matrix_from_transform(transform);
-    const GLint model_matrix_id = glGetUniformLocation(program_to_use, "model_matrix");
-    glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
+    glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
+    ExecuteDrawCommands();
+    
+    Draw_Cursor();
 
-    assert(light.index_count <= INT_MAX); // this should never happen
-    glDrawElements(GL_TRIANGLES, static_cast<int>(light.index_count),GL_UNSIGNED_INT, nullptr);
+    // screen pass
+    Draw_To_Screen_Texture();
 }
 
-void Renderer_FrameEnd() {
-    // point back to the default buffer
-    if (Screen_Texture.Samples > 0) {
-        glBindFramebuffer(GL_READ_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
-        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Screen_Texture.buffer_screen);
-        glBlitFramebuffer(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height, 0, 0, Screen_Texture.screen_texture_Width,
-                          Screen_Texture.screen_texture_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
-    }
+void Draw_With_Anti_Aliasing() {
+    // off screen texture pass with anti-aliasing
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT | GL_STENCIL_BUFFER_BIT);
+    
+    glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
+    ExecuteDrawCommands();
+    
+    Draw_Cursor();
+    
+    // blit the anti alias buffer
+    glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, Screen_Texture.buffer_multisampling);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Screen_Texture.buffer_screen);
+    glBlitFramebuffer(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height, 0, 0, Screen_Texture.screen_texture_Width,
+                      Screen_Texture.screen_texture_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+    
+    // screen pass
+    Draw_To_Screen_Texture();
+}
+
+void Draw_To_Screen_Texture() {
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
 
@@ -1020,12 +1070,10 @@ void Renderer_FrameEnd() {
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
-
     // since we are only drawin on the screen we don't need any of those things so we disable them
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
-
 
     //draw the quad here
     glUseProgram(Screen_Texture.screen_texture_program);
@@ -1039,7 +1087,34 @@ void Renderer_FrameEnd() {
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_STENCIL_TEST);
     glEnable(GL_BLEND);
+}
 
+void ExecuteDrawCommands() {
+    for (int i = 0; i < Vector_DrawCommand_Length(DrawCommands); ++i) {
+        const DrawCommand draw_command = DrawCommands->data[i];
+        switch (draw_command.Type) {
+            case DrawCommandType::None:
+                assert("Shouldn't issue a no op command" && 0);
+                break;
+            case DrawCommandType::Mesh:
+                Draw_Mesh(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color, draw_command.Material);
+                break;
+            case DrawCommandType::Model:
+                Draw_Model(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color, draw_command.Material);
+                break;
+            case DrawCommandType::Mesh_Unshaded:
+                Draw_Mesh_Unshaded(draw_command.Draw_Entity_Id, draw_command.Transform, draw_command.Color);
+                break;
+        }
+    }
+}
+
+void Renderer_FrameEnd() {
+    if (Screen_Texture.Samples > 0) {
+        Draw_With_Anti_Aliasing();
+    } else {
+        Draw_Without_Anti_Aliasing();
+    }
     SDL_GL_SwapWindow(window);
 }
 
@@ -1063,6 +1138,9 @@ void Renderer_Destroy() {
         const Model m = Models->data[i];
         free(m.mesh_ids);
     }
+    
+    glDeleteVertexArrays(1, &cursor_vao);
+    glDeleteBuffers(1, &cursor_vbo);
 
     glDeleteBuffers(1, &ViewMatricesBlock);
     glDeleteFramebuffers(1, &Screen_Texture.buffer_screen);
@@ -1074,6 +1152,7 @@ void Renderer_Destroy() {
     Vector_Mesh_Free(UnshadedMeshes);
     Vector_Model_Free(Models);
     Vector_Texture_Free(Textures);
+    Vector_DrawCommand_Free(DrawCommands);
 }
 
 
@@ -1098,6 +1177,18 @@ void Renderer_CameraUpdate() {
 
 void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
     Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
+}
+
+void Draw_Cursor() {
+    glDisable(GL_STENCIL_TEST);
+    glDisable(GL_DEPTH_TEST);
+    glUseProgram(cursor_program);
+    glBindVertexArray(cursor_vao);
+    glDrawArrays(GL_LINES, 0, 4);
+    glBindVertexArray(0);
+    glUseProgram(0);
+    glEnable(GL_STENCIL_TEST);
+    glEnable(GL_DEPTH_TEST);
 }
 
 void SendLightUBOsToTheGPU() {
@@ -1226,7 +1317,7 @@ void SendTextureDataToTheGPU() {
 }
 
 
-int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material) {
+int LoadTexture(const aiTextureType type, const char *directory, const aiMaterial *material) {
     aiString str;
     const unsigned int texture_count_for_type = material->GetTextureCount(type);
     assert((("Currently we only support one texture per type"), texture_count_for_type<=1));
@@ -1336,6 +1427,45 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
+void Draw_Mesh(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
+    const Mesh mesh = Meshes->data[mesh_id];
+    Draw(mesh.program_id, mesh, transform, color, material);
+}
+
+void Draw_Model(const int model_id, const Transform &transform, const Vector3D color, const Material material) {
+    const Model model = Models->data[model_id];
+    for (size_t i = 0; i < model.mesh_count; ++i) {
+        Draw_Mesh(model.mesh_ids[i], transform, color, material);
+    }
+}
+
+void Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, const Vector3D color) {
+    const Mesh unshaded_mesh = UnshadedMeshes->data[mesh_id];
+    const unsigned int program_to_use = unshaded_mesh.program_id;
+    glUseProgram(program_to_use);
+
+    // this means all programs need this uniform
+    const GLint voxel_color = glGetUniformLocation(program_to_use, "voxel_color");
+    const GLuint diffuse_texture_id = unshaded_mesh.diffuse_texture_id == -1
+                                          ? defaultTexture
+                                          : Textures->data[unshaded_mesh.diffuse_texture_id].texture_id;
+
+
+    glActiveTexture(GL_TEXTURE0); // Add this
+    glBindTexture(GL_TEXTURE_2D, diffuse_texture_id);
+    glBindVertexArray(unshaded_mesh.VAO);
+
+    const Vector4D color_4{color.x, color.y, color.z, 1};
+    glUniform4fv(voxel_color, 1, &color_4.x);
+
+    const Matrix4D model_matrix = calculate_model_matrix_from_transform(transform);
+    const GLint model_matrix_id = glGetUniformLocation(program_to_use, "model_matrix");
+    glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
+
+    assert(unshaded_mesh.index_count <= INT_MAX); // this should never happen
+    glDrawElements(GL_TRIANGLES, static_cast<int>(unshaded_mesh.index_count),GL_UNSIGNED_INT, nullptr);
+}
+
 void SendScreenTextureDataToTheGPU() {
     glGenVertexArrays(1, &Screen_Texture.VAO);
     glBindVertexArray(Screen_Texture.VAO);
@@ -1365,3 +1495,51 @@ void SendScreenTextureDataToTheGPU() {
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, Screen_Texture.VBE);
     glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * indices_count, indices, GL_STATIC_DRAW);
 }
+
+void Initialize_Cursor(int game_resolution_width, int game_resolution_height) {
+    cursor_program = InitializeProgram("cursor_program");
+    const GLint cursor_color_uniform = glGetUniformLocation(cursor_program, "cursor_color");
+    
+    constexpr Vector4D cursor_color(1, 0, 0, 1);
+    glUseProgram(cursor_program);
+    glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
+    
+    const float centerX = static_cast<float>(game_resolution_width) / 2.0f;
+    const float centerY = static_cast<float>(game_resolution_height) / 2.0f;
+    const float cursor[12]={
+        normalize_coord(centerX - 10, static_cast<float>(game_resolution_width)),
+        normalize_coord(centerY, static_cast<float>(game_resolution_height)),
+        1.0f,
+
+        normalize_coord(centerX + 10, static_cast<float>(game_resolution_width)),
+        normalize_coord(centerY, static_cast<float>(game_resolution_height)),
+        1.0f,
+
+        normalize_coord(centerX, static_cast<float>(game_resolution_width)),
+        normalize_coord(centerY - 10, static_cast<float>(game_resolution_height)),
+        1.0f,
+
+        normalize_coord(centerX, static_cast<float>(game_resolution_width)),
+        normalize_coord(centerY + 10, static_cast<float>(game_resolution_height)),
+        1.0f,
+    };
+    
+    
+    glGenVertexArrays(1, &cursor_vao);
+    glGenBuffers(1, &cursor_vbo);
+
+    glBindVertexArray(cursor_vao);
+
+    // Bind and set VBO
+    glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 12, cursor, GL_STATIC_DRAW);
+
+    // Define the vertex attributes (position)
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(0);
+
+    // Unbind the VAO
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
