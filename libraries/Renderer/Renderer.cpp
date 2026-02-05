@@ -37,8 +37,6 @@ SDL_GLContext open_gl_context{};
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
-static unsigned int world_geometry_program_outlines;
-static unsigned int world_geometry_program_outlines_cross_textures;
 
 
 struct screen {
@@ -123,7 +121,6 @@ struct Mesh {
     int specular_texture_id{-1};
     int emission_texture_id{-1};
     unsigned int program_id{0};
-    unsigned int outline_program_id{0};
 };
 
 struct Model {
@@ -205,10 +202,7 @@ void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
-    world_geometry_program_outlines = InitializeProgram("program_for_regular_texture_outlines");
 
-    // no special impl for this. it was added just for completion's sake
-    world_geometry_program_outlines_cross_textures = world_geometry_program_outlines;
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
 
@@ -311,19 +305,11 @@ void Renderer_Init(const int screen_width,
     // open gl should expect depth values from [0,1]
     // for the above depth mapping to work properly on the projection level
     glClipControl(GL_LOWER_LEFT, GL_ZERO_TO_ONE);
-
-    // enable the stencil test. we don't need to disable it for now
-    // everything not equal to 1 passes. this is just for complete init since each call will override it
-    // keep  , keep and replace with 1
-    // keep in mind that stencil ops can be blocked by the write mask
+    
+    // enable stencil test just for completion's sake
     glEnable(GL_STENCIL_TEST);
-
-    // we don't need to override the glStencilFunc because we do that for each draw call
-    // glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-
-    // keep if the stencil test fails
-    // else keep if the depth pass fails
-    // else replace if both tests pass
+    glStencilFunc(GL_ALWAYS, 1, 0xFF);
+    glStencilMask(0xFF);
     glStencilOp(GL_KEEP, GL_KEEP, GL_REPLACE);
 
     // some plain old blending
@@ -366,7 +352,6 @@ void Renderer_Init(const int screen_width,
         world_geometry_program,
         world_geometry_program_cross_textures,
         world_unshaded_geometry_program,
-        world_geometry_program_outlines
     };
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
@@ -727,7 +712,6 @@ int Renderer_RegisterTexturedMesh(
     m.specular_texture_id = specular_texture_id;
     m.emission_texture_id = emission_texture_id;
     m.program_id = world_geometry_program;
-    m.outline_program_id = world_geometry_program_outlines;
 
     Vector_Mesh_Add(Meshes, m);
 
@@ -825,7 +809,6 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 
     m.diffuse_texture_id = texture_id;
     m.program_id = world_geometry_program_cross_textures;
-    m.outline_program_id = world_geometry_program_outlines;
 
     Vector_Mesh_Add(Meshes, m);
 
@@ -982,41 +965,10 @@ void Renderer_FinalizeMeshLoading() {
 }
 
 
-// TODO we can probably work with a Matrix4D eventually
 void Renderer_Draw(const int mesh_id, const Transform &transform, const Vector3D color, const Material material) {
-    // 1st stencil pass
-    // write 1 to stencil buffer where fragments are drawn
-    // for now assume everything has an outline
-    // all fragments pass stencil test (still need to pass depth test)
-
-    glStencilFunc(GL_ALWAYS, 1, 0xFF);
-    glStencilMask(0xFF);
-
     const Mesh mesh = Meshes->data[mesh_id];
     Draw(mesh.program_id, mesh, transform, color, material);
 }
-
-void Renderer_Draw_Outline(int mesh_id, const Transform &transform, Vector3D color, Material material) {
-    // now that we have written to the stencil buffer we need to draw an outline
-    // therefore everywhere where stencil passed shouldn't be drawn
-    // we also disable writing to the stencil buffer because we don't want outlines to write there
-    // our shader will scale the model internally and discard the fragments we had at scale 1
-    // we also disable depth test so the outline will be drawn on top
-    glStencilFunc(GL_NOTEQUAL, 1, 0xFF);
-    glStencilMask(0x00);
-    glDisable(GL_DEPTH_TEST);
-
-
-    const Mesh mesh = Meshes->data[mesh_id];
-    Draw(mesh.outline_program_id, mesh, transform, color, material);
-
-    // reset to the previous state
-    glStencilMask(0xFF);
-    // no need to bother with stencil func itself since all draw calls set it up proplery
-    //glStencilFunc(GL_ALWAYS, 0, 0xFF);
-    glEnable(GL_DEPTH_TEST);
-}
-
 
 void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material) {
     const Model model = Models->data[model_id];
@@ -1025,20 +977,7 @@ void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D colo
     }
 }
 
-void Renderer_Draw_Model_Outline(int model_id, const Transform &transform, Vector3D color, Material material) {
-    const Model model = Models->data[model_id];
-    for (size_t i = 0; i < model.mesh_count; ++i) {
-        Renderer_Draw_Outline(model.mesh_ids[i], transform, color, material);
-    }
-}
-
-
 void Renderer_DrawUnshadedTexture(const int light_id, const Transform &transform, const Vector3D color) {
-    // always pass the test so we can draw
-    glStencilFunc(GL_ALWAYS, 0, 0xFF);
-    // don't write anything to the stenci buffer though ;)
-    glStencilMask(0x00);
-
     const Mesh light = UnshadedMeshes->data[light_id];
     const unsigned int program_to_use = light.program_id;
     glUseProgram(program_to_use);
