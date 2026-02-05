@@ -116,11 +116,11 @@ EXPORTED void Renderer_FrameStart();
 
 EXPORTED void Renderer_FrameEnd();
 
-EXPORTED void Renderer_Draw(int mesh_id, const Transform& transform, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform& transform, Vector3D color, Material material);
 
 EXPORTED void Renderer_Draw_Model(int model_id, const Transform& transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_DrawUnshadedTexture(int light_id, const Transform& transform, Vector3D color);
+EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform& transform, Vector3D color);
 
 EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 

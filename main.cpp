@@ -13,7 +13,6 @@
 #include <imgui_impl_opengl3.h>
 
 #include "Trigonometry.h"
-#include "OpenGlHelpers/ShaderLoader.h"
 #include "Renderer/Renderer.h"
 #include "SDL3/SDL_timer.h"
 
@@ -23,40 +22,6 @@
 #include "Main_Containers.h"
 #include "Perlin.h"
 
-
-// Vertex Shader source code
-float normalize_coord(const float value, const float max) {
-    return 2 * value / max - 1;
-}
-
-void Draw_Cursor(const unsigned int cursorProgram, const unsigned int cursor_vao) {
-    glDisable(GL_STENCIL_TEST);
-    glUseProgram(cursorProgram);
-    glBindVertexArray(cursor_vao);
-    glDrawArrays(GL_LINES, 0, 8);
-    glBindVertexArray(0);
-    glUseProgram(0);
-    glEnable(GL_STENCIL_TEST);
-}
-
-void InitializeCursorVBO(const std::array<float, 12> &cursor, unsigned int &cursor_vao, unsigned int &cursor_vbo) {
-    glGenVertexArrays(1, &cursor_vao);
-    glGenBuffers(1, &cursor_vbo);
-
-    glBindVertexArray(cursor_vao);
-
-    // Bind and set VBO
-    glBindBuffer(GL_ARRAY_BUFFER, cursor_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * cursor.size(), cursor.data(), GL_STATIC_DRAW);
-
-    // Define the vertex attributes (position)
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-    glEnableVertexAttribArray(0);
-
-    // Unbind the VAO
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-}
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,
@@ -233,38 +198,10 @@ int main() {
         ImGui_ImplSDL3_InitForOpenGL(window, open_gl_context);
         ImGui_ImplOpenGL3_Init();
 
-        const unsigned int cursorProgram = InitializeProgram("cursor_program");
-        const GLint cursor_color_uniform = glGetUniformLocation(cursorProgram, "cursor_color");
+        
 
 
-        constexpr Vector4D cursor_color(1, 0, 0, 1);
-        glUseProgram(cursorProgram);
-        glUniform4fv(cursor_color_uniform, 1, &cursor_color.x);
-
-        constexpr float centerX = static_cast<float>(game_resolution_width) / 2.0f;
-        constexpr float centerY = static_cast<float>(game_resolution_height) / 2.0f;
-        const std::array cursor{
-            normalize_coord(centerX - 10, static_cast<float>(game_resolution_width)),
-            normalize_coord(centerY, static_cast<float>(game_resolution_height)),
-            1.0f,
-
-            normalize_coord(centerX + 10, static_cast<float>(game_resolution_width)),
-            normalize_coord(centerY, static_cast<float>(game_resolution_height)),
-            1.0f,
-
-            normalize_coord(centerX, static_cast<float>(game_resolution_width)),
-            normalize_coord(centerY - 10, static_cast<float>(game_resolution_height)),
-            1.0f,
-
-            normalize_coord(centerX, static_cast<float>(game_resolution_width)),
-            normalize_coord(centerY + 10, static_cast<float>(game_resolution_height)),
-            1.0f,
-        };
-
-
-        unsigned int cursor_vao;
-        unsigned int cursor_vbo;
-        InitializeCursorVBO(cursor, cursor_vao, cursor_vbo);
+        
 
 
         Vector3D light_color = {1, 1, 1};
@@ -385,17 +322,17 @@ int main() {
 
                 ImGui_ImplSDL3_ProcessEvent(&event); // Forward your event to backend
             }
-
+            
             Renderer_FrameStart();
 
 
             for (const auto &m: lights) {
-                Renderer_DrawUnshadedTexture(m.mesh_id, m.transform, light_color);
+                Renderer_Draw_Mesh_Unshaded(m.mesh_id, m.transform, light_color);
             }
 
             for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
                 const model_instance m = opaque_models->data[i];
-                Renderer_Draw(m.mesh_id, m.transform, {1, 1, 1}, our_material);
+                Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
 
             // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
@@ -414,7 +351,7 @@ int main() {
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
 
-            Draw_Cursor(cursorProgram, cursor_vao);
+            
 
             // // Start the Dear ImGui frame
             // ImGui_ImplOpenGL3_NewFrame();
@@ -443,7 +380,6 @@ int main() {
 
             // ImGui::Render();
             // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
             // Update and Render additional Platform Windows
             // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
             //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
@@ -457,10 +393,10 @@ int main() {
 
 
             Renderer_FrameEnd();
+            
         }
 
-        glDeleteVertexArrays(1, &cursor_vao);
-        glDeleteBuffers(1, &cursor_vbo);
+        
 
         Renderer_Destroy();
 
