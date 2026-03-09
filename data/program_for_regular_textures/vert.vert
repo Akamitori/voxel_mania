@@ -11,29 +11,29 @@ layout (std140) uniform ViewMatrices{
 
 uniform mat4 model_matrix;
 uniform mat3 model_matrix_for_normals;
-uniform mat4 light_space_matrix;
+
+uniform vec4[3] cascade_planes;
 
 out VS_OUT{
     vec2 TexCoord;
     vec3 Normal;
     vec3 FragPosWorldSpace;
-    vec4 FragPosLightSpace;
+    float[3] u_products_for_interpolation;
 } vs_out;
 
 void main() {
-
     gl_Position = perspective_projection_matrix*look_at_matrix*model_matrix * vec4(aPos, 1.0);
 
     // this is important for light calculations
     vs_out.FragPosWorldSpace=vec3(model_matrix*vec4(aPos, 1.0));
     vs_out.TexCoord = aTexCoord;
+
+    // Normal = mat3(transpose(inverse(model_matrix))) * anormal;
     // we could use the inverse transpose blah blah but we just get the matrix from the CPU
     vs_out.Normal= model_matrix_for_normals*aNormal;
-    
-    vs_out.FragPosLightSpace= light_space_matrix* vec4(vs_out.FragPosWorldSpace,1);
 
-    // this works fine if we don't scale things
-    // use a different shader if we do!
-    // Normal = mat3(transpose(inverse(model_matrix))) * anormal;
-    //Normal= mat3(model_matrix)*aNormal;
+    for (int i=0;i< 3;++i){
+        const vec4 plane=cascade_planes[i];
+        vs_out.u_products_for_interpolation[i]=plane * model_matrix * vec4(aPos, 1);
+    }
 }

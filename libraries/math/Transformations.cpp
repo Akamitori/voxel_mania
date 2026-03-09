@@ -7,6 +7,7 @@
 #include "Matrix3D.h"
 #include "Vector3D.h"
 #include "Plane.h"
+#include "Trigonometry.h"
 
 Matrix3D rotation_x_matrix3D(const float t) {
     float c = cos(t);
@@ -161,8 +162,8 @@ Plane transform_plane(const Matrix4D &H, const Plane &f) {
     };
 }
 
-EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D obverver_forward, Vector3D observer_up) {
-    const Vector3D observer_target = observer_position + obverver_forward;
+EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D observer_forward, Vector3D observer_up) {
+    const Vector3D observer_target = observer_position + observer_forward;
 
     const Vector3D center = observer_target;
     const Vector3D eye = observer_position;
@@ -172,13 +173,14 @@ EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D obverver_for
     const Vector3D u = cross(f, s);
 
     Matrix4D mat{
-                {s.x, u.x, f.x, 0},
-                {s.y, u.y, f.y, 0},
-                {s.z, u.z, f.z, 0},
-                {-dot(s, eye), -dot(u, eye), -dot(f, eye), 1}
+        {s.x, u.x, f.x, 0},
+        {s.y, u.y, f.y, 0},
+        {s.z, u.z, f.z, 0},
+        {-dot(s, eye), -dot(u, eye), -dot(f, eye), 1}
     };
     return mat;
 }
+
 
 Matrix4D MakeOrthoProjection(const float left, const float right, const float top, const float bottom, const float near, const float far) {
     assert(top < bottom && "top must be < bottom for Y+ down camera space");
@@ -190,7 +192,7 @@ Matrix4D MakeOrthoProjection(const float left, const float right, const float to
 
     ortho_matrix[0].x = 2 * w_inv;
 
-    ortho_matrix[1].y = 2.f * h_inv; 
+    ortho_matrix[1].y = 2.f * h_inv;
     ortho_matrix[2].z = d_inv;
 
 
@@ -200,4 +202,23 @@ Matrix4D MakeOrthoProjection(const float left, const float right, const float to
     ortho_matrix[3].w = 1;
 
     return ortho_matrix;
+}
+
+Matrix4D PerspectiveProjectionMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
+    Matrix4D perspectiveMatrix(0);
+
+    const float tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
+
+    const float z_diff = 1 / (z_near - z_far);
+    perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
+
+    // flip y since it takes the place of z and we want bigger values to equal higher instead of lower points
+    perspectiveMatrix[1].y = -tan_fov_2_invert;
+
+    // map from [0,1] with 1 being the closest for better precision
+    perspectiveMatrix[2].z = z_near * z_diff;
+    perspectiveMatrix[2].w = 1;
+    perspectiveMatrix[3].z = - z_far * z_diff;
+
+    return perspectiveMatrix;
 }

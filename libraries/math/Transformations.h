@@ -2,7 +2,6 @@
 #define TRANSFORMATIONS_H
 
 #include "export.h"
-#include "Vector3D.h"
 
 struct Matrix3D;
 struct Matrix4D;
@@ -33,7 +32,10 @@ EXPORTED Vector3D transform_point(const Matrix4D &m, const Vector3D &p);
 EXPORTED Plane transform_plane(const Matrix4D &H, const Plane &f);
 
 EXPORTED Matrix4D MakeOrthoProjection(float left, float right, float top, float bottom, float near, float far);
-EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D obverver_forward, Vector3D observer_up);
+EXPORTED Matrix4D PerspectiveProjectionMatrix(float FOV, float z_near, float z_far, float aspect);
+EXPORTED Matrix4D LookAtMatrix(Vector3D observer_position, Vector3D observer_forward, Vector3D observer_up);
+
+
 
 
 

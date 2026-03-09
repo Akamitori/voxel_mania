@@ -88,6 +88,20 @@ Matrix4D inverse(const Matrix4D &M) {
     };
 }
 
+Matrix4D transpose(const Matrix4D &M) {
+    const Vector4D &a = M[0];
+    const Vector4D &b = M[1];
+    const Vector4D &c = M[2];
+    const Vector4D &d = M[3];
+
+    const Vector4D &a_t = {a.x, b.x, c.x, d.x};
+    const Vector4D &b_t = {a.y, b.y, c.y, d.y};
+    const Vector4D &c_t = {a.z, b.z, c.z, d.z};
+    const Vector4D &d_t = {a.w, b.w, c.w, d.w};
+    
+    return Matrix4D{a_t,b_t,c_t, d_t};
+}
+
 Matrix4D operator *(const Matrix4D &A, const Matrix4D &B) {
     return Matrix4D{
         A[0].x * B[0].x + A[1].x * B[0].y + A[2].x * B[0].z + A[3].x * B[0].w,
@@ -110,4 +124,20 @@ Matrix4D operator *(const Matrix4D &A, const Matrix4D &B) {
         A[0].w * B[2].x + A[1].w * B[2].y + A[2].w * B[2].z + A[3].w * B[2].w,
         A[0].w * B[3].x + A[1].w * B[3].y + A[2].w * B[3].z + A[3].w * B[3].w
     };
+}
+
+Vector4D operator*(const Matrix4D &m, const Vector4D &v) {
+    const Vector4D column_vector_0 = m[0];
+    const Vector4D column_vector_1 = m[1];
+    const Vector4D column_vector_2 = m[2];
+    const Vector4D column_vector_3 = m[3];
+
+    return Vector4D{
+        column_vector_0.x * v.x + column_vector_1.x * v.y + column_vector_2.x * v.z + column_vector_3.x * v.w,
+        column_vector_0.y * v.x + column_vector_1.y * v.y + column_vector_2.y * v.z + column_vector_3.y * v.w,
+        column_vector_0.z * v.x + column_vector_1.z * v.y + column_vector_2.z * v.z + column_vector_3.z * v.w,
+        column_vector_0.w * v.x + column_vector_1.w * v.y + column_vector_2.w * v.z + column_vector_3.w * v.w,
+    };
+    
+    
 }

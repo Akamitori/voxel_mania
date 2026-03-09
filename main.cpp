@@ -305,8 +305,7 @@ int main() {
         //Renderer_Register_Point_Light(our_light);
         //Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
-
-
+        
         Transform t{};
         t.Position = our_light.position;
         mesh_instance lights[]{
@@ -327,6 +326,7 @@ int main() {
         double ms_per_frame = 0.0;
 
         // Rendering loop
+        int layer=0;
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
@@ -397,10 +397,16 @@ int main() {
             IMGUI_CHECKVERSION();
 
             ImGui::Text("Ms/frame : %f", ms_per_frame);
+            
+            
+            
+            
+            ImGui::InputInt("Layer :",&layer);
 
             if (ImGui::Button("Test")) {
-                Renderer_Toggle_Shadow_Map_Rendering();
+                Renderer_Toggle_Shadow_Map_Rendering(layer);
             }
+            
 
             if (ImGui::Button("Camera_As_Light")) {
                 Renderer_Align_Camera_With_Light();

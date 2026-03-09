@@ -7,6 +7,7 @@
 
 #include "Vector3D.h"
 #include "export.h"
+#include "Matrix4D.h"
 
 struct Matrix4D;
 
@@ -18,6 +19,8 @@ struct EXPORTED Camera {
     Vector3D forward{basis_forward};
     Vector3D right{basis_right};
     Vector3D up{basis_up};
+    Matrix4D Camera_Matrix{};
+    Matrix4D Camera_Matrix_Inverse{};
 
     float camera_speed{0.05f};
     float azimuth = 0;
@@ -35,8 +38,6 @@ EXPORTED void MoveCameraX(Camera &camera, float modifier);
 EXPORTED void MoveCameraY(Camera &camera, float modifier);
 
 EXPORTED Matrix4D CameraLookAtMatrix(const Camera &camera);
-
-EXPORTED Matrix4D PerspectiveMatrix(float FOV, float z_near, float z_far, float aspect);
 
 EXPORTED void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
 

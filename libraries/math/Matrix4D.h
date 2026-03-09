@@ -2,7 +2,8 @@
 #define MATRIX4D_H
 
 #include "Vector4D.h"
-#include "export.h"
+
+struct Vector4D;
 
 
 struct EXPORTED Matrix4D {
@@ -30,7 +31,9 @@ struct EXPORTED Matrix4D {
 };
 
 EXPORTED Matrix4D inverse(const Matrix4D &M);
+EXPORTED Matrix4D transpose(const Matrix4D &M);
 EXPORTED Matrix4D operator *(const Matrix4D& A, const Matrix4D& B);
+EXPORTED Vector4D operator*(const Matrix4D &m, const Vector4D &v);
 
 
 #endif //MATRIX4D_H
