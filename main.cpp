@@ -159,7 +159,7 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
 int main() {
     try {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
-        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 512, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
@@ -305,8 +305,7 @@ int main() {
         //Renderer_Register_Point_Light(our_light);
         //Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
-
-
+        
         Transform t{};
         t.Position = our_light.position;
         mesh_instance lights[]{
@@ -327,6 +326,7 @@ int main() {
         double ms_per_frame = 0.0;
 
         // Rendering loop
+        int layer=0;
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
@@ -385,61 +385,67 @@ int main() {
             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
 
-
-            // // Start the Dear ImGui frame
-            ImGui_ImplOpenGL3_NewFrame();
-            ImGui_ImplSDL3_NewFrame();
-            ImGui::NewFrame();
             //
-            IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
+            // // // Start the Dear ImGui frame
+            // ImGui_ImplOpenGL3_NewFrame();
+            // ImGui_ImplSDL3_NewFrame();
+            // ImGui::NewFrame();
+            // //
+            // IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
+            // //
+            // // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
+            // IMGUI_CHECKVERSION();
             //
-            // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
-            IMGUI_CHECKVERSION();
-
-            ImGui::Text("Ms/frame : %f", ms_per_frame);
-
-            if (ImGui::Button("Test")) {
-                Renderer_Toggle_Shadow_Map_Rendering();
-            }
-
-            if (ImGui::Button("Camera_As_Light")) {
-                Renderer_Align_Camera_With_Light();
-            }
-
-            if (ImGui::Button("Toggle_PCF")) {
-                Renderer_Toggle_PCF();
-            }
-
-            //float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
-
-            // if (ImGui::Button("Matrixxx")) {
-            //     const int value = matrix ? -1 : crate_Texture_emission_id;
-            //     matrix = !matrix;
-            //     Renderer_Change_Emission(crate_cube_id, value);
+            // ImGui::Text("Ms/frame : %f", ms_per_frame);
+            //
+            //
+            //
+            //
+            // ImGui::InputInt("Layer :",&layer);
+            //
+            // if (ImGui::Button("Test")) {
+            //     Renderer_Toggle_Shadow_Map_Rendering(layer);
             // }
             //
-            // if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
-            // ) {
-            //     lights[0].pos = *reinterpret_cast<Vector3D *>(p_as_float3);
-            //     our_light.position = lights[0].pos;
+            //
+            // if (ImGui::Button("Camera_As_Light")) {
+            //     Renderer_Align_Camera_With_Light();
             // }
-            // Show demo window! :)
-
-            ImGui::Render();
-            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-            // Update and Render additional Platform Windows
-            // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
-            //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
-            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-                SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
-                const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
-                ImGui::UpdatePlatformWindows();
-                ImGui::RenderPlatformWindowsDefault();
-                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-            }
-
+            //
+            // if (ImGui::Button("Toggle_PCF")) {
+            //     Renderer_Toggle_PCF();
+            // }
+            //
+            // //float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
+            //
+            // // if (ImGui::Button("Matrixxx")) {
+            // //     const int value = matrix ? -1 : crate_Texture_emission_id;
+            // //     matrix = !matrix;
+            // //     Renderer_Change_Emission(crate_cube_id, value);
+            // // }
+            // //
+            // // if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
+            // // ) {
+            // //     lights[0].pos = *reinterpret_cast<Vector3D *>(p_as_float3);
+            // //     our_light.position = lights[0].pos;
+            // // }
+            // // Show demo window! :)
+            //
+            // ImGui::Render();
+            // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            // // Update and Render additional Platform Windows
+            // // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+            // //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
+            // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+            //     SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
+            //     const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
+            //     ImGui::UpdatePlatformWindows();
+            //     ImGui::RenderPlatformWindowsDefault();
+            //     SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+            // }
 
             Renderer_FrameEnd();
+            
         }
 
 

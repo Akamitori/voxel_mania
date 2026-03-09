@@ -1,0 +1,1783 @@
+commit bbaa96e258810bb144c05582217724304e71255a
+Author: Akamitori <akamitori@tutanota.com>
+Date:   Tue Feb 3 15:20:04 2026 +0200
+
+    sample commit
+
+diff --git a/data/program_for_screen_texture/frag.frag b/data/program_for_screen_texture/frag.frag
+index 3b84242..dc1b216 100644
+--- a/data/program_for_screen_texture/frag.frag
++++ b/data/program_for_screen_texture/frag.frag
+@@ -5,49 +5,24 @@ in vec2 TexCoord;
+ 
+ uniform sampler2D screenTexture;
+ 
+-const float offset = 1.0 / 300.0;
++float gamma_correct_color_component(float color_component){
+ 
+-void main()
+-{
+-    // assuming you just want to render you will just sample teh texture and call it a day
+-    FragColor = texture(screenTexture, TexCoord);
+-    
+-    // ELSE you can just do various cool things with colors ;)
+-    // various example where we can do post processing on the colors sampled by the screen texture
+-//    FragColor = vec4(vec3(1.0 - texture(screenTexture, TexCoord)), 1.0);
++    if (color_component<= 0.0031308){
++        return 12.92*color_component;
++    }
+ 
+-//    vec2 offsets[9] = vec2[](
+-//    vec2(-offset,  offset), // top-left
+-//    vec2( 0.0f,    offset), // top-center
+-//    vec2( offset,  offset), // top-right
+-//    vec2(-offset,  0.0f),   // center-left
+-//    vec2( 0.0f,    0.0f),   // center-center
+-//    vec2( offset,  0.0f),   // center-right
+-//    vec2(-offset, -offset), // bottom-left
+-//    vec2( 0.0f,   -offset), // bottom-center
+-//    vec2( offset, -offset)  // bottom-right    
+-//    );
+-//
+-//    float kernel[9] = float[](
+-//    -1, -1, -1,
+-//    -1,  9, -1,
+-//    -1, -1, -1
+-//    );
+-//
+-//    vec3 sampleTex[9];
+-//    for(int i = 0; i < 9; i++)
+-//    {
+-//        sampleTex[i] = vec3(texture(screenTexture, TexCoord.st + offsets[i]));
+-//    }
+-//    vec3 col = vec3(0.0);
+-//    for(int i = 0; i < 9; i++)
+-//    col += sampleTex[i] * kernel[i];
+-//
+-//    FragColor = vec4(col, 1.0);
+-    
++    return 1.055 * pow(color_component, 1/2.4) - 0.055;
++}
+ 
+-//    FragColor = texture(screenTexture, TexCoord);
+-//    float average = 0.2126 * FragColor.r + 0.7152 * FragColor.g + 0.0722 * FragColor.b;
+-//    FragColor = vec4(average, average, average, 1.0);
++vec4 gamma_correct_color(vec4 color){
++    color.x=gamma_correct_color_component(color.x);
++    color.y=gamma_correct_color_component(color.y);
++    color.z=gamma_correct_color_component(color.z);
++    return color;
++}
+ 
++void main()
++{
++    vec4 mapped_textured_color= texture(screenTexture, TexCoord);
++    FragColor = gamma_correct_color(mapped_textured_color);
+ }
+\ No newline at end of file
+diff --git a/libraries/Renderer/Renderer.cpp b/libraries/Renderer/Renderer.cpp
+index c2842df..c9a289a 100644
+--- a/libraries/Renderer/Renderer.cpp
++++ b/libraries/Renderer/Renderer.cpp
+@@ -80,14 +80,22 @@ static unsigned int defaultEmissionTexture;
+ 
+ enum class TextureType {
+     RGB,
+-    RGBA
++    RGB_ALPHA,
++    SRGB,
++    SRGB_ALPHA
++};
++
++enum class TextureInternalStorageConversion {
++    None,
++    Linear,
+ };
+ 
+ struct Texture {
+     int id{};
+     int width{};
+     int height{};
+-    TextureType texture_type{};
++    TextureType loaded_texture_type{};
++    TextureType stored_texture_storage{};
+     unsigned char *data{};
+     char *path{};
+     TextureWrapMode WrapMode_S{};
+@@ -618,7 +626,7 @@ int Renderer_RegisterUnshadedTexture(
+ }
+ 
+ 
+-int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, TextureWrapMode wrap_mode_t) {
++int Renderer_RegisterTexture(const char *path, Texture_Parameters parameters) {
+     int width;
+     int height;
+     int nrChannels;
+@@ -634,15 +642,23 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
+ 
+     char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
+     strcpy(texture_path, path);
++
++    TextureType loaded_format = nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
++    TextureType internal_format = loaded_format;
++    if (parameters.convert_from_srgb_to_linear_space) {
++        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
++    }
++
+     const Texture t{
+         id,
+         width,
+         height,
+-        nrChannels == 3 ? TextureType::RGB : TextureType::RGBA,
++        loaded_format,
++        internal_format,
+         data,
+         texture_path,
+-        wrap_mode_s,
+-        wrap_mode_t
++        parameters.wrap_mode_s,
++        parameters.wrap_mode_t
+     };
+ 
+     Vector_Texture_Add(Textures, t);
+@@ -1211,8 +1227,27 @@ void SendTextureDataToTheGPU() {
+         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST_MIPMAP_NEAREST);
+         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+ 
+-        const int mode = t.texture_type == TextureType::RGB ? GL_RGB : GL_RGBA;
+-        glTexImage2D(GL_TEXTURE_2D, 0, mode, t.width, t.height, 0, mode, GL_UNSIGNED_BYTE, t.data);
++        const int format = t.loaded_texture_type == TextureType::RGB ? GL_RGB : GL_RGBA;
++
++        int internal_format = 0;
++        switch (t.stored_texture_storage) {
++            case TextureType::SRGB_ALPHA:
++                internal_format = GL_SRGB8_ALPHA8;
++                break;
++            case TextureType::SRGB:
++                internal_format = GL_SRGB8;
++                break;
++            case TextureType::RGB:
++                internal_format = GL_RGB;
++                break;
++            case TextureType::RGB_ALPHA:
++                internal_format = GL_RGBA;
++                break;
++        }
++
++        assert(internal_format!=0);
++
++        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, t.width, t.height, 0, format, GL_UNSIGNED_BYTE, t.data);
+         glGenerateMipmap(GL_TEXTURE_2D);
+         stbi_image_free(t.data);
+         t.data = nullptr;
+diff --git a/libraries/Renderer/Renderer.h b/libraries/Renderer/Renderer.h
+index 8ac2752..5d534d3 100644
+--- a/libraries/Renderer/Renderer.h
++++ b/libraries/Renderer/Renderer.h
+@@ -54,6 +54,12 @@ enum class TextureWrapMode : uint32_t {
+     CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
+ };
+ 
++ struct EXPORTED Texture_Parameters {
++    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
++    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
++    bool convert_from_srgb_to_linear_space = false;
++};
++
+ 
+ EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
+ 
+@@ -73,8 +79,7 @@ EXPORTED int Renderer_RegisterUnshadedTexture(
+ 
+ EXPORTED int Renderer_RegisterTexture(
+     const char *path,
+-    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT,
+-    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT
++    Texture_Parameters texture_parameters = {}
+ );
+ 
+ EXPORTED int Renderer_RegisterTexturedMesh(
+diff --git a/main.cpp b/main.cpp
+index 29b77e3..64177dd 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -157,17 +157,19 @@ int main() {
+         constexpr int game_resolution_width = 800, game_resolution_height = 600;
+         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100);
+ 
+-        const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png");
+-        const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png");
+-        const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png");
+-        const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png");
+-        const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png");
+-        const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png");
+-        const int crate_Texture_emission_id = Renderer_RegisterTexture("data/textures/box_container_emission.png");
++        const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
++        const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
++        const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
++        const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
++        const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png", {.convert_from_srgb_to_linear_space = true});
++        const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png");  // specular stays as is
+         const int tranrsparent_window_texture = Renderer_RegisterTexture(
+             "data/textures/blending_transparent_window.png",
+-            TextureWrapMode::CLAMP_TO_EDGE,
+-            TextureWrapMode::CLAMP_TO_EDGE
++            {
++                TextureWrapMode::CLAMP_TO_EDGE,
++                TextureWrapMode::CLAMP_TO_EDGE,
++                true
++            }
+         );
+ 
+         // if our problem is wrapping cubes and data like that
+@@ -266,7 +268,7 @@ int main() {
+ 
+ 
+         Vector3D light_color = {1, 1, 1};
+-                           
++
+ 
+         Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
+         Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
+@@ -280,10 +282,10 @@ int main() {
+         //         });
+         //     }
+         // }
+-        
+-        for (int x=0;x<10;++x) {
+-            for (int y=0;y<10;++y) {
+-                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float)x, (float)y+2, -1}});            
++
++        for (int x = 0; x < 10; ++x) {
++            for (int y = 0; y < 10; ++y) {
++                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float) x, (float) y + 2, -1}});
+             }
+         }
+ 
+@@ -300,11 +302,11 @@ int main() {
+         };
+ 
+         PointLight our_light{
+-            Vector3D{-5, 5, 2},      // Αντίθετη πλευρά από την κάμερα
+-            {0.0f, 0.0f, 0.0f},   // Πολύ χαμηλό ambient
+-            {0.1f, 0.1f, 0.1f},      // Χαμηλό diffuse για να μην κρύβει το specular
+-            {1.0f, 1.0f, 1.0f},      // Full specular
+-            0.09f,                    // Πιο αργό falloff για να φτάνει μακρύτερα
++            Vector3D{-5, 5, 2}, // Αντίθετη πλευρά από την κάμερα
++            {0.0f, 0.0f, 0.0f}, // Πολύ χαμηλό ambient
++            {0.1f, 0.1f, 0.1f}, // Χαμηλό diffuse για να μην κρύβει το specular
++            {1.0f, 1.0f, 1.0f}, // Full specular
++            0.09f, // Πιο αργό falloff για να φτάνει μακρύτερα
+             0.032f
+         };
+ 
+@@ -315,8 +317,8 @@ int main() {
+         Vector3D spotLightpos = SceneCamera->position;
+         spotLightpos.z += 0.5f;
+         SpotLight our_spot_light{
+-            {5,5,3},
+-            {0,0,-1},
++            {5, 5, 3},
++            {0, 0, -1},
+             {0.1f, 0.1f, 0.1f}, // Καθόλου ambient (ήταν 0.01)
+             {0.8f, 0.8f, 0.8f}, // Πολύ πιο δυνατό (ήταν 0.3)
+             {0.1f, 0.1f, 0.1f},
+
+commit 495de9b418e76648eda973ca10324c885380b48b
+Author: Akamitori <akamitori@tutanota.com>
+Date:   Mon Feb 2 22:57:31 2026 +0200
+
+    Replaced Phong Lighting with Blinn-Phong Lighting
+
+diff --git a/data/program_for_regular_textures/frag.frag b/data/program_for_regular_textures/frag.frag
+index 952d2d4..fc3b50b 100644
+--- a/data/program_for_regular_textures/frag.frag
++++ b/data/program_for_regular_textures/frag.frag
+@@ -73,7 +73,7 @@ vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm);
+ 
+ void main() {
+     vec4 texture_color=texture(material.diffuse, TexCoord);
+-    
++
+     vec3 diffuseTexMap=  vec3(texture_color);
+     vec3 specularTexMap = vec3(texture(material.specular, TexCoord));
+     vec3 emisionTexMap =   vec3(texture(material.emission, TexCoord));
+@@ -86,7 +86,7 @@ void main() {
+     output_color+=CalculateSpotLights(diffuseTexMap, specularTexMap, norm);
+     output_color+=emisionTexMap;
+ 
+-    FragColor= vec4(output_color, texture_color.a );
++    FragColor= vec4(output_color, texture_color.a);
+ }
+ 
+ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
+@@ -104,8 +104,8 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         float distance= length(light_direction_vector);
+@@ -131,8 +131,8 @@ vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 no
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         output_color+= ambient+ diffuse + specular;
+@@ -160,8 +160,8 @@ vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         float distance= length(light_direction_vector);
+diff --git a/data/program_for_transparent_cross_textures/frag.frag b/data/program_for_transparent_cross_textures/frag.frag
+index da2eb84..442f2cc 100644
+--- a/data/program_for_transparent_cross_textures/frag.frag
++++ b/data/program_for_transparent_cross_textures/frag.frag
+@@ -109,8 +109,8 @@ vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         float distance= length(light_direction_vector);
+@@ -136,8 +136,8 @@ vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 no
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         output_color+= ambient+ diffuse + specular;
+@@ -165,8 +165,8 @@ vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 norm){
+         vec3 diffuse = light.diffuse * diff * diffuseTexMap;
+ 
+         // specular
+-        vec3 reflectionDirection=reflect(-light_direction, norm);
+-        float spec=pow(max(dot(viewDir, reflectionDirection), 0.0), material.shininess);
++        vec3 halfwayDir = normalize(light_direction + viewDir);
++        float spec=pow(max(dot(norm, halfwayDir), 0.0), material.shininess);
+         vec3 specular= light.specular * spec* specularTexMap;
+ 
+         float distance= length(light_direction_vector);
+diff --git a/main.cpp b/main.cpp
+index c650ad4..29b77e3 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -280,26 +280,32 @@ int main() {
+         //         });
+         //     }
+         // }
++        
++        for (int x=0;x<10;++x) {
++            for (int y=0;y<10;++y) {
++                Vector_model_instance_Add(opaque_models, {wood_cube_id, {(float)x, (float)y+2, -1}});            
++            }
++        }
+ 
+         // Target cube πιο μακριά
+-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
+-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
+-        Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
++        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
++        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, 2, 0}});
++        // Vector_model_instance_Add(opaque_models, {crate_cube_id, {1, -2, 0}});
+ 
+-        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
+-        Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
++        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0, 1.5, 0}});
++        // Vector_model_instance_Add(transparent_models, {glass_cube_id, {0.5, 1, 0}});
+ 
+         Material our_material{
+-            32
++            2
+         };
+ 
+         PointLight our_light{
+-            Vector3D{3, 4, 2}, // Πιο κοντά στα cubes (ήταν 5,5,2.2)
+-            {0.05f, 0.05f, 0.05f}, // Minimal ambient
+-            {0.8f, 0.6f, 0.3f}, // Ζεστό πορτοκαλί/κίτρινο (ήταν 0.4)
+-            {1.0f, 1.0f, 1.0f}, // Full specular
+-            0.14f, // Λίγο πιο γρήγορο falloff (ήταν 0.22)
+-            0.07f // Λιγότερο quadratic (ήταν 0.20)
++            Vector3D{-5, 5, 2},      // Αντίθετη πλευρά από την κάμερα
++            {0.0f, 0.0f, 0.0f},   // Πολύ χαμηλό ambient
++            {0.1f, 0.1f, 0.1f},      // Χαμηλό diffuse για να μην κρύβει το specular
++            {1.0f, 1.0f, 1.0f},      // Full specular
++            0.09f,                    // Πιο αργό falloff για να φτάνει μακρύτερα
++            0.032f
+         };
+ 
+         model_instance lights[]{
+@@ -309,11 +315,11 @@ int main() {
+         Vector3D spotLightpos = SceneCamera->position;
+         spotLightpos.z += 0.5f;
+         SpotLight our_spot_light{
+-            spotLightpos,
+-            SceneCamera->forward,
+-            {0.0f, 0.0f, 0.0f}, // Καθόλου ambient (ήταν 0.01)
++            {5,5,3},
++            {0,0,-1},
++            {0.1f, 0.1f, 0.1f}, // Καθόλου ambient (ήταν 0.01)
+             {0.8f, 0.8f, 0.8f}, // Πολύ πιο δυνατό (ήταν 0.3)
+-            {1.0f, 1.0f, 1.0f},
++            {0.1f, 0.1f, 0.1f},
+             0.09f,
+             0.032f,
+             (float) cos(DegreeToRadians(12.5f)),
+@@ -327,8 +333,8 @@ int main() {
+         };
+ 
+         Renderer_Register_Point_Light(our_light);
+-        Renderer_Register_Spot_Light(our_spot_light);
+-        Renderer_Register_Directional_Light(our_dir_light);
++        //Renderer_Register_Spot_Light(our_spot_light);
++        //Renderer_Register_Directional_Light(our_dir_light);
+ 
+         Renderer_FinalizeMeshLoading();
+ 
+@@ -372,18 +378,18 @@ int main() {
+                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+             }
+ 
+-            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
+-                const model_instance m = opaque_models->data[i];
+-                Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+-            }
+-
+-
+-            sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
+-
+-            for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
+-                const model_instance m = transparent_models->data[i];
+-                Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+-            }
++            // for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
++            //     const model_instance m = opaque_models->data[i];
++            //     Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
++            // }
++            //
++            //
++            // sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
++            //
++            // for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
++            //     const model_instance m = transparent_models->data[i];
++            //     Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
++            // }
+ 
+             //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
+             //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
+
+commit 4ecdce62c4dd8ce350fe4471d67590de4834ed0e
+Author: Akamitori <akamitori@tutanota.com>
+Date:   Thu Jan 29 22:27:35 2026 +0200
+
+    Fixed reverse buffer zmapping
+
+diff --git a/libraries/Renderer/Camera.cpp b/libraries/Renderer/Camera.cpp
+index 2fc6fc2..b71b0a4 100644
+--- a/libraries/Renderer/Camera.cpp
++++ b/libraries/Renderer/Camera.cpp
+@@ -103,7 +103,7 @@ Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_fa
+     // map from [0,1] with 1 being the closest for better precision
+     perspectiveMatrix[2].z = z_near * z_diff;
+     perspectiveMatrix[2].w = 1;
+-    perspectiveMatrix[3].z = -z_near * z_far * z_diff;
++    perspectiveMatrix[3].z = - z_far * z_diff;
+ 
+     return perspectiveMatrix;
+ }
+
+commit 663bda8ef3b73edfedd26de497ab8b8369b742a2
+Author: Akamitori <akamitori@tutanota.com>
+Date:   Thu Jan 29 22:05:58 2026 +0200
+
+    Implemented anti-aliasing
+
+diff --git a/libraries/Renderer/Renderer.cpp b/libraries/Renderer/Renderer.cpp
+index d6ae7d3..c2842df 100644
+--- a/libraries/Renderer/Renderer.cpp
++++ b/libraries/Renderer/Renderer.cpp
+@@ -53,9 +53,12 @@ struct screen {
+     GLuint VBE{0};
+     int IndexCount{0};
+ 
++    int Samples{0};
+ 
+     GLuint frame_buffer{0};
+-    GLuint texture_color_buffer{0};
++    GLuint frame_buffer_multisample_result{0};
++    GLuint texture_multisample{0};
++    GLuint screen_texture{0};
+     GLuint texture_render_buffer_object{0};
+ };
+ 
+@@ -213,8 +216,13 @@ void OpenGLGlobalSetup() {
+ }
+ 
+ 
+-void Renderer_Init(const int screen_width, const int screen_height, const float fov, const float z_near,
+-                   const float z_far) {
++void Renderer_Init(const int screen_width,
++                   const int screen_height,
++                   const float fov,
++                   const float z_near,
++                   const float z_far,
++                   const int anti_aliasing_samples
++) {
+     // Initialize SDL
+     if (!SDL_Init(SDL_INIT_VIDEO)) {
+         fprintf(stderr, "%s\n", SDL_GetError());
+@@ -223,10 +231,18 @@ void Renderer_Init(const int screen_width, const int screen_height, const float
+     ProjectionParams.FOV = fov;
+     ProjectionParams.Z_near = z_near;
+     ProjectionParams.Z_far = z_far;
+-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
++    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
++    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
+     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+ 
++
++    Screen_Texture.Samples = anti_aliasing_samples;
++
++    if (Screen_Texture.Samples > 0) {
++        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLEBUFFERS, 1);
++        SDL_GL_SetAttribute(SDL_GL_MULTISAMPLESAMPLES, Screen_Texture.Samples);
++    }
++
+     // add a stencil buffer
+     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+ 
+@@ -359,30 +375,81 @@ void Renderer_Init(const int screen_width, const int screen_height, const float
+     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer);
+ 
+     // generate texture for which we sample the colors
+-    glGenTextures(1, &Screen_Texture.texture_color_buffer);
+-    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
+-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
+-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+-    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+-    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+-    glBindTexture(GL_TEXTURE_2D, 0);
+-
+-    //attach it to the currently bound framebuffer object
+-    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.texture_color_buffer, 0);
+-
+-    // generate a renderbuffer object object for which we only do write ops
+-    // this is done for depth and stencil testing
+-    glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
+-    glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+-    glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
+-    glBindRenderbuffer(GL_RENDERBUFFER, 0);
+-    glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
+-
+-    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+-        fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
+-        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+-        exit(1);
++
++    if (Screen_Texture.Samples > 0) {
++        // setup for the anti alias buffer
++        // it should be using both a 
++        glGenTextures(1, &Screen_Texture.texture_multisample);
++        glBindTexture(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.texture_multisample);
++        glTexImage2DMultisample(GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.Samples, GL_RGB,
++                                Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, GL_TRUE
++        );
++        glBindTexture(GL_TEXTURE_2D, 0);
++        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D_MULTISAMPLE, Screen_Texture.texture_multisample, 0);
++
++        glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
++        glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
++        glRenderbufferStorageMultisample(GL_RENDERBUFFER, Screen_Texture.Samples, GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width,
++                                         Screen_Texture.Internal_Height);
++        glBindRenderbuffer(GL_RENDERBUFFER, 0);
++        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
++
++        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
++            glBindFramebuffer(GL_FRAMEBUFFER, 0);
++            exit(1);
++        }
++
++        // now we need to create the actual screen buffer
++        // since the anti-alias buffer already does the depth and stencil test we are free to just use it as a color attachment and call it a day
++
++        glGenFramebuffers(1, &Screen_Texture.frame_buffer_multisample_result);
++        glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.frame_buffer_multisample_result);
++
++        // simple screen texture with no samples
++        glGenTextures(1, &Screen_Texture.screen_texture);
++        glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
++        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++        glBindTexture(GL_TEXTURE_2D, 0);
++
++        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.screen_texture, 0);
++
++        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
++            glBindFramebuffer(GL_FRAMEBUFFER, 0);
++            exit(1);
++        }
++    } else {
++        // simple screen texture with no samples
++        glGenTextures(1, &Screen_Texture.screen_texture);
++        glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
++        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0,GL_RGB,GL_UNSIGNED_BYTE, nullptr);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
++        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
++        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER, GL_LINEAR);
++        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER, GL_LINEAR);
++        glBindTexture(GL_TEXTURE_2D, 0);
++
++        //attach it to the currently bound framebuffer object
++        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Screen_Texture.screen_texture, 0);
++
++        // generate a renderbuffer object object for which we only do write ops
++        // this is done for depth and stencil testing
++        glGenRenderbuffers(1, &Screen_Texture.texture_render_buffer_object);
++        glBindRenderbuffer(GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
++        glRenderbufferStorage(GL_RENDERBUFFER,GL_DEPTH24_STENCIL8, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height);
++        glBindRenderbuffer(GL_RENDERBUFFER, 0);
++        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, Screen_Texture.texture_render_buffer_object);
++
++        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
++            fprintf(stderr, "ERROR::FRAMEBUFFER:: Framebuffer is not complete!\n");
++            glBindFramebuffer(GL_FRAMEBUFFER, 0);
++            exit(1);
++        }
+     }
+ 
+     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+@@ -953,6 +1020,12 @@ void Renderer_DrawUnshadedTexture(const int light_id, const Vector3D pos, const
+ 
+ void Renderer_FrameEnd() {
+     // point back to the default buffer
++    if (Screen_Texture.Samples > 0) {
++        glBindFramebuffer(GL_READ_FRAMEBUFFER, Screen_Texture.frame_buffer);
++        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, Screen_Texture.frame_buffer_multisample_result);
++        glBlitFramebuffer(0, 0, Screen_Texture.Internal_Width, Screen_Texture.Internal_Height, 0, 0, Screen_Texture.Internal_Width,
++                          Screen_Texture.Internal_Height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
++    }
+     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+     glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
+ 
+@@ -972,7 +1045,7 @@ void Renderer_FrameEnd() {
+     glBindVertexArray(Screen_Texture.VAO);
+ 
+     glActiveTexture(GL_TEXTURE0);
+-    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_color_buffer);
++    glBindTexture(GL_TEXTURE_2D, Screen_Texture.screen_texture);
+     glDrawElements(GL_TRIANGLES, static_cast<int>(quad::vertex_indices_count_uv_single_faced),GL_UNSIGNED_INT, nullptr);
+ 
+     // restore the flags now that we are done drawing on the screen
+@@ -1055,7 +1128,6 @@ void SendLightUBOsToTheGPU() {
+ 
+ // this is for untextured meshes ;)
+ void SendGeometryDataToTheGPU() {
+-    volatile int a=Vector_Model_Length(Models);
+     for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
+         auto &m = Meshes->data[i];
+ 
+diff --git a/libraries/Renderer/Renderer.h b/libraries/Renderer/Renderer.h
+index 82fe83a..8ac2752 100644
+--- a/libraries/Renderer/Renderer.h
++++ b/libraries/Renderer/Renderer.h
+@@ -55,7 +55,7 @@ enum class TextureWrapMode : uint32_t {
+ };
+ 
+ 
+-EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far);
++EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
+ 
+ EXPORTED int Renderer_RegisterPrimitiveMeshData(
+     const float *vertices,
+
+commit b4e2a121d7ac1ab093b1cfb6c28577f17e36ef0b
+Author: Akamitori <akamitori@tutanota.com>
+Date:   Thu Jan 29 17:04:06 2026 +0200
+
+    Refined vector and queue and added a few benchmarks
+
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 9abf51d..d67d18d 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -27,7 +27,6 @@ add_executable(voxel_mania
+         AppData.h
+         RandomNumberGeneration.cpp
+         Perlin.cpp
+-        Main_Containers.cpp
+ )
+ 
+ target_link_libraries(voxel_mania
+diff --git a/Main_Containers.cpp b/Main_Containers.cpp
+deleted file mode 100644
+index c7991f0..0000000
+--- a/Main_Containers.cpp
++++ /dev/null
+@@ -1,3 +0,0 @@
+-#include "Main_Containers.h"
+-
+-VECTOR_IMPLEMENTATION(model_instance)
+diff --git a/Main_Containers.h b/Main_Containers.h
+index 49badc2..5485afa 100644
+--- a/Main_Containers.h
++++ b/Main_Containers.h
+@@ -13,6 +13,7 @@ struct model_instance {
+     Vector3D pos{};
+ };
+ 
+-VECTOR_DECLARATION_STATIC(model_instance);
++VECTOR_IMPLEMENTATION_STATIC(model_instance)
++
+ 
+ #endif //VOXEL_MANIA_MAIN_CONTAINERS_H
+diff --git a/libraries/Containers/CMakeLists.txt b/libraries/Containers/CMakeLists.txt
+index 6c108bc..0ed405a 100644
+--- a/libraries/Containers/CMakeLists.txt
++++ b/libraries/Containers/CMakeLists.txt
+@@ -1,3 +1,32 @@
+ include(../../cmake_scripts/link_and_export_utilities.cmake)
+ 
+ add_and_export_library(Custom_Containers TYPE INTERFACE)
++
++
++add_and_export_library(Custom_Containers_Test TYPE SHARED FILES benchmarks/vector_int.cpp)
++target_link_libraries(Custom_Containers_Test PRIVATE Custom_Containers)
++
++
++add_executable(queue_tests benchmarks/queue_benchmarks.cpp)
++target_link_libraries(queue_tests PRIVATE Custom_Containers)
++
++# For a specific target
++set_target_properties(queue_tests PROPERTIES
++        INTERPROCEDURAL_OPTIMIZATION TRUE
++)
++
++
++# Static inline version (header-only)
++add_executable(vector_tests_inline benchmarks/vector_benchmark.cpp)
++target_link_libraries(vector_tests_inline PRIVATE Custom_Containers)
++
++# Library version (linked)
++add_executable(vector_tests_linked benchmarks/vector_benchmark.cpp)
++target_link_libraries(vector_tests_linked PRIVATE Custom_Containers_Test)
++
++target_compile_definitions(vector_tests_linked PRIVATE VECTOR_USE_LIBRARY)
++
++set_target_properties(vector_tests_inline vector_tests_linked PROPERTIES
++        INTERPROCEDURAL_OPTIMIZATION TRUE
++)
++
+diff --git a/libraries/Containers/benchmarks/queue_benchmarks.cpp b/libraries/Containers/benchmarks/queue_benchmarks.cpp
+new file mode 100644
+index 0000000..72543bf
+--- /dev/null
++++ b/libraries/Containers/benchmarks/queue_benchmarks.cpp
+@@ -0,0 +1,249 @@
++#include <cstdio>
++#include <deque>
++#include <chrono>
++#include <random>
++#include "queue_container.h"
++
++// Instantiate the queue implementation for int
++QUEUE_DECLARATION_STATIC(int)
++QUEUE_IMPLEMENTATION(int)
++
++using namespace std;
++using namespace std::chrono;
++
++// ------------------------------------------------------------ 
++// Benchmark helper
++// ------------------------------------------------------------ 
++template<typename Func>
++double benchmark(Func &&f, const char *name) {
++    auto start = high_resolution_clock::now();
++    f();
++    auto end = high_resolution_clock::now();
++    double ms = duration_cast<microseconds>(end - start).count() / 1000.0;
++    printf("%-45s: %10.3f ms\n", name, ms);
++    return ms;
++}
++
++// ------------------------------------------------------------ 
++// Helpers
++// ------------------------------------------------------------ 
++static inline bool deque_enqueue(deque<int>& q, int v) {
++    q.push_back(v);
++    return true;
++}
++
++static inline bool deque_dequeue(deque<int>& q, int& out) {
++    if (q.empty()) return false;
++    out = q.front();
++    q.pop_front();
++    return true;
++}
++
++// ------------------------------------------------------------ 
++// Test 1: Sequential enqueue then dequeue
++// ------------------------------------------------------------ 
++void test_sequential(int N) {
++    printf("\n=== Sequential (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        deque<int> q;
++        for (int i = 0; i < N; ++i) deque_enqueue(q, i);
++        int v;
++        while (deque_dequeue(q, v)) {}
++    }, "std::deque");
++    
++    benchmark([&]() {
++        Queue_int* q = Queue_int_Create(N);
++        if (!q) { printf("ERROR: Create failed\n"); return; }
++        for (int i = 0; i < N; ++i) Queue_int_Enqueue(q, i);
++        int v;
++        while (Queue_int_Deque(q, &v)) {}
++        Queue_int_Free(q);
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// Test 2: Alternating workload
++// ------------------------------------------------------------ 
++void test_alternating(int N) {
++    printf("\n=== Alternating (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        deque<int> q;
++        int v;
++        for (int i = 0; i < N; ++i) {
++            deque_enqueue(q, i);
++            if (i % 3 == 0) deque_dequeue(q, v);
++        }
++        while (deque_dequeue(q, v)) {}
++    }, "std::deque");
++    
++    benchmark([&]() {
++        Queue_int* q = Queue_int_Create(N);
++        if (!q) { printf("ERROR: Create failed\n"); return; }
++        int v;
++        for (int i = 0; i < N; ++i) {
++            Queue_int_Enqueue(q, i);
++            if (i % 3 == 0) Queue_int_Deque(q, &v);
++        }
++        while (Queue_int_Deque(q, &v)) {}
++        Queue_int_Free(q);
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// Test 3: Wraparound stress (fixed capacity, no overflow)
++// ------------------------------------------------------------ 
++void test_wraparound(int N) {
++    printf("\n=== Wraparound (N=%d) ===\n", N);
++    const int capacity = N / 2 + 1;
++    
++    benchmark([&]() {
++        deque<int> q;
++        int v;
++        for (int i = 0; i < capacity; ++i) deque_enqueue(q, i);
++        for (int i = 0; i < N; ++i) {
++            deque_dequeue(q, v);
++            deque_enqueue(q, i);
++        }
++    }, "std::deque");
++    
++    benchmark([&]() {
++        Queue_int* q = Queue_int_Create(capacity);
++        if (!q) { printf("ERROR: Create failed\n"); return; }
++        int v;
++        for (int i = 0; i < capacity; ++i) Queue_int_Enqueue(q, i);
++        for (int i = 0; i < N; ++i) {
++            Queue_int_Deque(q, &v);
++            Queue_int_Enqueue(q, i);
++        }
++        Queue_int_Free(q);
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// Test 4: Random operations (capacity-aware)
++// ------------------------------------------------------------ 
++void test_random(int N) {
++    printf("\n=== Random Ops (N=%d) ===\n", N);
++    mt19937 gen(42);
++    uniform_int_distribution<> dist(0, 1);
++    
++    benchmark([&]() {
++        deque<int> q;
++        gen.seed(42);
++        int v;
++        for (int i = 0; i < N; ++i) {
++            if (dist(gen) == 0 || q.empty()) {
++                deque_enqueue(q, i);
++            } else {
++                deque_dequeue(q, v);
++            }
++        }
++    }, "std::deque");
++    
++    benchmark([&]() {
++        Queue_int* q = Queue_int_Create(N);
++        if (!q) { printf("ERROR: Create failed\n"); return; }
++        gen.seed(42);
++        int v;
++        for (int i = 0; i < N; ++i) {
++            if (dist(gen) == 0 || q->size == 0) {
++                Queue_int_Enqueue(q, i);
++            } else {
++                Queue_int_Deque(q, &v);
++            }
++        }
++        Queue_int_Free(q);
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// Test 5: Many small queues (allocation stress)
++// ------------------------------------------------------------ 
++void test_many_small(int num_queues, int size_each) {
++    printf("\n=== Many Small Queues (n=%d, size=%d) ===\n", num_queues, size_each);
++    
++    benchmark([&]() {
++        for (int q = 0; q < num_queues; ++q) {
++            deque<int> dq;
++            int v;
++            for (int i = 0; i < size_each; ++i) deque_enqueue(dq, i);
++            while (deque_dequeue(dq, v)) {}
++        }
++    }, "std::deque");
++    
++    benchmark([&]() {
++        for (int q = 0; q < num_queues; ++q) {
++            Queue_int* qu = Queue_int_Create(size_each);
++            if (!qu) continue;
++            int v;
++            for (int i = 0; i < size_each; ++i) Queue_int_Enqueue(qu, i);
++            while (Queue_int_Deque(qu, &v)) {}
++            Queue_int_Free(qu);
++        }
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// Test 6: Steady-state (pre-filled queue, sustained ops)
++// ------------------------------------------------------------ 
++void test_steady_state(int N) {
++    printf("\n=== Steady-State (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        deque<int> q;
++        // Pre-fill
++        for (int i = 0; i < N; ++i) deque_enqueue(q, i);
++        // Sustained load: dequeue and enqueue
++        int v;
++        for (int i = 0; i < N; ++i) {
++            deque_dequeue(q, v);
++            deque_enqueue(q, i + N);
++        }
++    }, "std::deque");
++    
++    benchmark([&]() {
++        Queue_int* q = Queue_int_Create(N);
++        if (!q) { printf("ERROR: Create failed\n"); return; }
++        // Pre-fill
++        for (int i = 0; i < N; ++i) Queue_int_Enqueue(q, i);
++        // Sustained load: dequeue and enqueue
++        int v;
++        for (int i = 0; i < N; ++i) {
++            Queue_int_Deque(q, &v);
++            Queue_int_Enqueue(q, i + N);
++        }
++        Queue_int_Free(q);
++    }, "Queue_int");
++}
++
++// ------------------------------------------------------------ 
++// main
++// ------------------------------------------------------------ 
++int main() {
++    printf("Queue Benchmark: Fixed-Capacity Queue vs std::deque\n");
++    printf("====================================================\n\n");
++    
++    test_sequential(100000);
++    test_sequential(1000000);
++    
++    test_alternating(100000);
++    test_alternating(1000000);
++    
++    test_wraparound(100000);
++    test_wraparound(1000000);
++    
++    test_random(100000);
++    test_random(1000000);
++    
++    test_many_small(10000, 10);
++    test_many_small(1000, 100);
++    
++    test_steady_state(1000000);
++    
++    printf("\n====================================================\n");
++    printf("All tests completed successfully!\n");
++    
++    return 0;
++}
+\ No newline at end of file
+diff --git a/libraries/Containers/benchmarks/vector_benchmark.cpp b/libraries/Containers/benchmarks/vector_benchmark.cpp
+new file mode 100644
+index 0000000..a35e312
+--- /dev/null
++++ b/libraries/Containers/benchmarks/vector_benchmark.cpp
+@@ -0,0 +1,207 @@
++#include <cstdio>
++#include <vector>
++#include <chrono>
++
++// If VECTOR_USE_LIBRARY is defined, use the library version (linked)
++// Otherwise, use the static inline version (header-only)
++#ifdef VECTOR_USE_LIBRARY
++    #include "vector_int.h"
++#else
++    #include "vector_container.h"
++    VECTOR_IMPLEMENTATION_STATIC(int)
++#endif
++
++using namespace std;
++using namespace std::chrono;
++
++constexpr int BENCHMARK_RUNS = 100;
++
++template<typename Func>
++double benchmark_single(Func &&f) {
++    auto start = high_resolution_clock::now();
++    f();
++    auto end = high_resolution_clock::now();
++    return duration_cast<microseconds>(end - start).count() / 1000.0;
++}
++
++template<typename Func>
++double benchmark(Func &&f, const char *name) {
++    double total = 0;
++    for (int r = 0; r < BENCHMARK_RUNS; ++r) {
++        total += benchmark_single(f);
++    }
++    double avg = total / BENCHMARK_RUNS;
++    printf("%-45s: %10.3f ms\n", name, avg);
++    return avg;
++}
++
++void test_sequential_append(int N) {
++    printf("\n=== Sequential Append (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        vector<int> v;
++        for (int i = 0; i < N; ++i) v.push_back(i);
++    }, "std::vector");
++    
++    benchmark([&]() {
++        Vector_int* v = Vector_int_Create(N);
++        if (!v) return;
++        for (int i = 0; i < N; ++i) Vector_int_Add(v, i);
++        Vector_int_Free(v);
++    }, "Vector_int");
++}
++
++void test_reserved_capacity(int N) {
++    printf("\n=== Pre-Reserved Capacity (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        vector<int> v;
++        v.reserve(N);
++        for (int i = 0; i < N; ++i) v.push_back(i);
++    }, "std::vector");
++    
++    benchmark([&]() {
++        Vector_int* v = Vector_int_Create(N);
++        if (!v) return;
++        for (int i = 0; i < N; ++i) Vector_int_Add(v, i);
++        Vector_int_Free(v);
++    }, "Vector_int");
++}
++
++void test_repeated_clear_refill(int N, int iterations) {
++    printf("\n=== Repeated Clear & Refill (N=%d, iter=%d) ===\n", N, iterations);
++    
++    vector<int> sv;
++    sv.reserve(N);
++    
++    Vector_int* vp = Vector_int_Create(N);
++    
++    benchmark([&]() {
++        for (int iter = 0; iter < iterations; ++iter) {
++            sv.clear();
++            for (int i = 0; i < N; ++i) sv.push_back(i);
++        }
++    }, "std::vector");
++    
++    benchmark([&]() {
++        for (int iter = 0; iter < iterations; ++iter) {
++            Vector_int_Clear(vp);
++            for (int i = 0; i < N; ++i) Vector_int_Add(vp, i);
++        }
++    }, "Vector_int");
++    
++    Vector_int_Free(vp);
++}
++
++void test_many_small_vectors(int num_vectors, int size_each) {
++    printf("\n=== Many Small Vectors (n=%d, size=%d) ===\n", num_vectors, size_each);
++    
++    benchmark([&]() {
++        for (int v = 0; v < num_vectors; ++v) {
++            vector<int> vec;
++            for (int i = 0; i < size_each; ++i) vec.push_back(i);
++        }
++    }, "std::vector");
++    
++    benchmark([&]() {
++        for (int v = 0; v < num_vectors; ++v) {
++            Vector_int* vec = Vector_int_Create(size_each);
++            if (!vec) continue;
++            for (int i = 0; i < size_each; ++i) Vector_int_Add(vec, i);
++            Vector_int_Free(vec);
++        }
++    }, "Vector_int");
++}
++
++void test_mixed_workload(int N) {
++    printf("\n=== Mixed Workload (N=%d) ===\n", N);
++    
++    benchmark([&]() {
++        vector<int> v;
++        for (int i = 0; i < N; ++i) {
++            v.push_back(i);
++            if (i % 5 == 0) {
++                volatile int x = v[i / 2];
++                (void)x;
++            }
++            if (i % 3 == 0 && !v.empty()) {
++                v[i % v.size()] = i * 2;
++            }
++        }
++    }, "std::vector");
++    
++    benchmark([&]() {
++        Vector_int* v = Vector_int_Create(N);
++        if (!v) return;
++        for (int i = 0; i < N; ++i) {
++            Vector_int_Add(v, i);
++            int len = Vector_int_Length(v);
++            if (i % 5 == 0) {
++                volatile int x = v->data[i / 2];
++                (void)x;
++            }
++            if (i % 3 == 0 && len > 0) {
++                v->data[i % len] = i * 2;
++            }
++        }
++        Vector_int_Free(v);
++    }, "Vector_int");
++}
++
++void test_exponential_growth(int N) {
++    printf("\n=== Exponential Growth (N=%d elements) ===\n", N);
++    
++    benchmark([&]() {
++        vector<int> v;
++        int count = 0;
++        for (int i = 0; count < N; ++i) {
++            for (int j = 0; j < (1 << i) && count < N; ++j) {
++                v.push_back(count++);
++            }
++        }
++    }, "std::vector");
++    
++    benchmark([&]() {
++        Vector_int* v = Vector_int_Create(8);
++        if (!v) return;
++        int count = 0;
++        for (int i = 0; count < N; ++i) {
++            for (int j = 0; j < (1 << i) && count < N; ++j) {
++                Vector_int_Add(v, count++);
++            }
++        }
++        Vector_int_Free(v);
++    }, "Vector_int");
++}
++
++int main() {
++#ifdef VECTOR_USE_LIBRARY
++    printf("VectorPtr Benchmark (LIBRARY version)\n");
++#else
++    printf("VectorPtr Benchmark (STATIC INLINE version)\n");
++#endif
++    printf("(Each test averaged over %d runs)\n", BENCHMARK_RUNS);
++    printf("=====================================================\n");
++    
++    test_sequential_append(100000);
++    test_sequential_append(1000000);
++    
++    test_reserved_capacity(100000);
++    test_reserved_capacity(1000000);
++    
++    test_repeated_clear_refill(100000, 100);
++    test_repeated_clear_refill(1000000, 10);
++    
++    test_many_small_vectors(10000, 10);
++    test_many_small_vectors(1000, 100);
++    
++    test_mixed_workload(100000);
++    test_mixed_workload(1000000);
++    
++    test_exponential_growth(100000);
++    
++    printf("\n=====================================================\n");
++    printf("All tests completed successfully!\n");
++    
++    return 0;
++}
+\ No newline at end of file
+diff --git a/libraries/Containers/benchmarks/vector_int.cpp b/libraries/Containers/benchmarks/vector_int.cpp
+new file mode 100644
+index 0000000..ab8ec39
+--- /dev/null
++++ b/libraries/Containers/benchmarks/vector_int.cpp
+@@ -0,0 +1,3 @@
++
++#include "vector_int.h"
++VECTOR_IMPLEMENTATION(int)
+\ No newline at end of file
+diff --git a/libraries/Containers/benchmarks/vector_int.h b/libraries/Containers/benchmarks/vector_int.h
+new file mode 100644
+index 0000000..dc14466
+--- /dev/null
++++ b/libraries/Containers/benchmarks/vector_int.h
+@@ -0,0 +1,11 @@
++#ifndef VOXEL_MANIA_VECTOR_INT_H
++#define VOXEL_MANIA_VECTOR_INT_H
++
++
++#include "vector_container.h"
++
++
++VECTOR_DECLARATION_LIBRARY(int)
++
++
++#endif //VOXEL_MANIA_VECTOR_INT_H
+\ No newline at end of file
+diff --git a/libraries/Containers/queue_container.h b/libraries/Containers/queue_container.h
+index c25f51d..6615aec 100644
+--- a/libraries/Containers/queue_container.h
++++ b/libraries/Containers/queue_container.h
+@@ -61,7 +61,7 @@ void Queue_##T##_Free(Queue_##T*);
+ #define QUEUE_IMPLEMENTATION(T)                                             \
+ static bool Queue_##T##_Resize(Queue_##T *q) {                              \
+     int new_capacity = q->capacity * 2;                                     \
+-    T *new_data = (T *)calloc(new_capacity, sizeof(T));                     \
++    T *new_data = (T *)malloc(new_capacity * sizeof(T));                     \
+                                                                             \
+     if (!new_data) return false;                                            \
+                                                                             \
+@@ -104,7 +104,7 @@ Queue_##T *Queue_##T##_Create(int min_capacity) {                           \
+                                                                             \
+     q->capacity = cap;                                                      \
+     q->mask = cap - 1;                                                      \
+-    q->data =(T *) calloc(cap, sizeof(T));                                       \
++    q->data =(T *) malloc(cap * sizeof(T));                                       \
+     if (!q->data) {                                                         \
+         free(q);                                                            \
+         return NULL;                                                        \
+diff --git a/libraries/Containers/vector_container.h b/libraries/Containers/vector_container.h
+index 06abef2..c2c26f0 100644
+--- a/libraries/Containers/vector_container.h
++++ b/libraries/Containers/vector_container.h
+@@ -6,101 +6,160 @@
+ #define VOXEL_MANIA_VECTOR_H
+ 
+ #include "export.h"
+-#include <string.h> 
++#include <string.h>
+ #include <stdlib.h>
++#include <stdbool.h>
+ 
+ #ifdef __cplusplus
+ extern "C" {
+ #endif
+-#define VECTOR_DECLARATION_LIBRARY(T)                           \
+-typedef struct Vector_##T {                     \
+-int capacity;                              \
+-T *data;                                   \
+-int length;                                 \
+-} Vector_##T;                                   \
+-\
+-EXPORTED bool Vector_##T##_Add(Vector_##T*, T);        \
+-EXPORTED Vector_##T *Vector_##T##_Create(int);             \
+-EXPORTED void Vector_##T##_Clear(Vector_##T*);             \
+-EXPORTED void Vector_##T##_Free(Vector_##T*);
+-    
+-#ifdef __cplusplus
+-    }
+-#endif
+ 
+-#ifdef __cplusplus
+-extern "C" {
+-#endif
+-#define VECTOR_DECLARATION_STATIC(T)                           \
+-typedef struct Vector_##T {                     \
+-int capacity;                              \
+-T *data;                                   \
+-int length;                                 \
+-} Vector_##T;                                   \
+-\
+-bool Vector_##T##_Add(Vector_##T*, T);        \
+-Vector_##T *Vector_##T##_Create(int);             \
+-void Vector_##T##_Clear(Vector_##T*);             \
+-void Vector_##T##_Free(Vector_##T*);
++// ==========================================================================
++// Library version (exported, for use across translation units)
++// ==========================================================================
++
++#define VECTOR_DECLARATION_LIBRARY(T)                                       \
++typedef struct Vector_##T {                                                 \
++    T* data;                                                               \
++    T* end;                                                                 \
++    T* cap_end;                                                             \
++} Vector_##T;                                                               \
++                                                                            \
++EXPORTED bool Vector_##T##_Add(Vector_##T*, T);                             \
++EXPORTED Vector_##T* Vector_##T##_Create(int);                              \
++EXPORTED void Vector_##T##_Clear(Vector_##T*);                              \
++EXPORTED void Vector_##T##_Free(Vector_##T*);                               \
++EXPORTED int Vector_##T##_Length(Vector_##T*);                              \
++EXPORTED int Vector_##T##_Capacity(Vector_##T*);                            \
++EXPORTED T* Vector_##T##_Data(Vector_##T*);
+     
++#define VECTOR_DECLARATION_LIBRARY_STATIC(T)                                       \
++typedef struct Vector_##T {                                                 \
++T* data;                                                               \
++T* end;                                                                 \
++T* cap_end;                                                             \
++} Vector_##T;                                                               \
++\
++bool Vector_##T##_Add(Vector_##T*, T);                             \
++Vector_##T* Vector_##T##_Create(int);                              \
++void Vector_##T##_Clear(Vector_##T*);                              \
++void Vector_##T##_Free(Vector_##T*);                               \
++int Vector_##T##_Length(Vector_##T*);                              \
++int Vector_##T##_Capacity(Vector_##T*);                            \
++T* Vector_##T##_Data(Vector_##T*);
++
++#define VECTOR_IMPLEMENTATION(T)                                            \
++static bool Vector_##T##_Resize(Vector_##T *v) {                            \
++    size_t old_size = v->end - v->data;                                    \
++    size_t old_cap = v->cap_end - v->data;                                 \
++    size_t new_cap = old_cap * 2;                                           \
++    T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
++    if (!new_data) return false;                                            \
++    v->data = new_data;                                                    \
++    v->end = new_data + old_size;                                           \
++    v->cap_end = new_data + new_cap;                                        \
++    return true;                                                            \
++}                                                                           \
++                                                                            \
++bool Vector_##T##_Add(Vector_##T *v, T value) {                             \
++    if (v->end == v->cap_end && !Vector_##T##_Resize(v)) return false;      \
++    *v->end++ = value;                                                      \
++    return true;                                                            \
++}                                                                           \
++                                                                            \
++Vector_##T* Vector_##T##_Create(int min_capacity) {                         \
++    if (min_capacity <= 0) min_capacity = 8;                                \
++    Vector_##T *v = (Vector_##T *)malloc(sizeof(Vector_##T));               \
++    if (!v) return NULL;                                                    \
++    v->data = (T *)malloc(min_capacity * sizeof(T));                       \
++    if (!v->data) { free(v); return NULL; }                                \
++    v->end = v->data;                                                      \
++    v->cap_end = v->data + min_capacity;                                   \
++    return v;                                                               \
++}                                                                           \
++                                                                            \
++int Vector_##T##_Length(Vector_##T *v) {                                    \
++    return (int)(v->end - v->data);                                        \
++}                                                                           \
++                                                                            \
++int Vector_##T##_Capacity(Vector_##T *v) {                                  \
++    return (int)(v->cap_end - v->data);                                    \
++}                                                                           \
++                                                                            \
++T* Vector_##T##_Data(Vector_##T *v) {                                       \
++    return v->data;                                                        \
++}                                                                           \
++                                                                            \
++void Vector_##T##_Clear(Vector_##T *v) {                                    \
++    v->end = v->data;                                                      \
++}                                                                           \
++                                                                            \
++void Vector_##T##_Free(Vector_##T *v) {                                     \
++    if (!v) return;                                                         \
++    free(v->data);                                                         \
++    free(v);                                                                \
++}
++
+ #ifdef __cplusplus
+ }
+ #endif
+ 
++// ==========================================================================
++// Static inline version (header-only, for maximum performance)
++// ==========================================================================
+ 
+-#define VECTOR_IMPLEMENTATION(T)                                            \
+-static bool Vector_##T##_Resize(Vector_##T *v) {                            \
+-    int new_capacity = v->capacity * 2;                                     \
+-    T *new_data = (T *)calloc(new_capacity, sizeof(T));                     \
++#define VECTOR_IMPLEMENTATION_STATIC(T)                                     \
++typedef struct Vector_##T {                                                 \
++    T* data;                                                               \
++    T* end;                                                                 \
++    T* cap_end;                                                             \
++} Vector_##T;                                                               \
+                                                                             \
++static inline bool Vector_##T##_Resize(Vector_##T *v) {                     \
++    size_t old_size = v->end - v->data;                                    \
++    size_t old_cap = v->cap_end - v->data;                                 \
++    size_t new_cap = old_cap * 2;                                           \
++    T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
+     if (!new_data) return false;                                            \
+-                                                                            \
+-    memcpy(new_data, v->data, v->length * sizeof(T));                       \
+-                                                                            \
+-    free(v->data);                                                          \
+-    v->data = new_data;                                                     \
+-    v->capacity = new_capacity;                                             \
++    v->data = new_data;                                                    \
++    v->end = new_data + old_size;                                           \
++    v->cap_end = new_data + new_cap;                                        \
+     return true;                                                            \
+ }                                                                           \
+                                                                             \
+-bool Vector_##T##_Add(Vector_##T *v, T value) {                             \
+-    if (v->length == v->capacity && !Vector_##T##_Resize(v)) return false;  \
+-    v->data[v->length] = value;                                             \
+-    ++v->length;                                                            \
++static inline bool Vector_##T##_Add(Vector_##T *v, T value) {               \
++    if (v->end == v->cap_end && !Vector_##T##_Resize(v)) return false;      \
++    *v->end++ = value;                                                      \
+     return true;                                                            \
+ }                                                                           \
+                                                                             \
+-Vector_##T *Vector_##T##_Create(int min_capacity) {                         \
+-    if (min_capacity <= 0) min_capacity = 8; /* reasonable default */       \
+-                                                                            \
++static inline Vector_##T* Vector_##T##_Create(int min_capacity) {           \
++    if (min_capacity <= 0) min_capacity = 8;                                \
+     Vector_##T *v = (Vector_##T *)malloc(sizeof(Vector_##T));               \
+     if (!v) return NULL;                                                    \
++    v->data = (T *)malloc(min_capacity * sizeof(T));                       \
++    if (!v->data) { free(v); return NULL; }                                \
++    v->end = v->data;                                                      \
++    v->cap_end = v->data + min_capacity;                                   \
++    return v;                                                               \
++}                                                                           \
+                                                                             \
+-    /* Next power of 2 >= min_capacity */                                   \
+-    unsigned int cap = (unsigned int)min_capacity - 1;                      \
+-    cap |= cap >> 1;                                                        \
+-    cap |= cap >> 2;                                                        \
+-    cap |= cap >> 4;                                                        \
+-    cap |= cap >> 8;                                                        \
+-    cap |= cap >> 16;                                                       \
+-    ++cap;                                                                  \
++static inline int Vector_##T##_Length(Vector_##T *v) {                      \
++    return (int)(v->end - v->data);                                        \
++}                                                                           \
+                                                                             \
+-    v->capacity = cap;                                                      \
+-    v->data =(T *) calloc(cap, sizeof(T));                                  \
+-    if (!v->data) {                                                         \
+-        free(v);                                                            \
+-        return NULL;                                                        \
+-    }                                                                       \
+-    v->length = 0;                                                          \
+-    return v;                                                               \
++static inline int Vector_##T##_Capacity(Vector_##T *v) {                    \
++    return (int)(v->cap_end - v->data);                                    \
+ }                                                                           \
+                                                                             \
+-void Vector_##T##_Clear(Vector_##T *pv) {                                   \
+-pv->length=0;                                                               \
++static inline void Vector_##T##_Clear(Vector_##T *v) {                      \
++    v->end = v->data;                                                      \
+ }                                                                           \
+-void Vector_##T##_Free(Vector_##T *pv) {                                    \
+-    free(pv->data);                                                         \
+-    free(pv);                                                               \
+-}                                
++                                                                            \
++static inline void Vector_##T##_Free(Vector_##T *v) {                       \
++    if (!v) return;                                                         \
++    free(v->data);                                                         \
++    free(v);                                                                \
++}
+ 
+ #endif //VOXEL_MANIA_VECTOR_H
+\ No newline at end of file
+diff --git a/libraries/Renderer/Renderer.cpp b/libraries/Renderer/Renderer.cpp
+index 8927c12..d6ae7d3 100644
+--- a/libraries/Renderer/Renderer.cpp
++++ b/libraries/Renderer/Renderer.cpp
+@@ -25,6 +25,7 @@
+ 
+ typedef aiNode *aiNodePtr;
+ QUEUE_DECLARATION_STATIC(aiNodePtr)
++
+ QUEUE_IMPLEMENTATION(aiNodePtr)
+ 
+ 
+@@ -146,25 +147,11 @@ static Point_Lights Point_Lights{};
+ static Directional_Lights Directional_Lights{};
+ static Spot_Lights Spot_Lights{};
+ 
+-VECTOR_DECLARATION_STATIC(Mesh)
+-
+-VECTOR_IMPLEMENTATION(Mesh)
+-
+-VECTOR_DECLARATION_STATIC(Model)
+-
+-VECTOR_IMPLEMENTATION(Model)
+-
+-VECTOR_DECLARATION_STATIC(Texture)
+-
+-VECTOR_IMPLEMENTATION(Texture)
+-
+-VECTOR_DECLARATION_STATIC(uint32_t)
+-
+-VECTOR_IMPLEMENTATION(uint32_t)
+-
+-VECTOR_DECLARATION_STATIC(float)
+-
+-VECTOR_IMPLEMENTATION(float)
++VECTOR_IMPLEMENTATION_STATIC(Mesh);
++VECTOR_IMPLEMENTATION_STATIC(Model);
++VECTOR_IMPLEMENTATION_STATIC(Texture);
++VECTOR_IMPLEMENTATION_STATIC(uint32_t);
++VECTOR_IMPLEMENTATION_STATIC(float);
+ 
+ static Vector_Model *Models = Vector_Model_Create(100);
+ static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
+@@ -424,7 +411,7 @@ int Renderer_RegisterPrimitiveMeshData(
+     const uint32_t *indices,
+     const size_t index_count
+ ) {
+-    const int currentId = Meshes->length;
++    const int currentId = Vector_Mesh_Length(Meshes);
+ 
+     Mesh m{};
+ 
+@@ -528,7 +515,7 @@ int Renderer_RegisterUnshadedTexture(
+     const uint32_t *indices,
+     const size_t index_count
+ ) {
+-    const int currentId = UnshadedMeshes->length;
++    const int currentId = Vector_Mesh_Length(UnshadedMeshes);
+ 
+     Mesh m{};
+ 
+@@ -576,7 +563,7 @@ int Renderer_RegisterTexture(const char *path, TextureWrapMode wrap_mode_s, Text
+     assert(("Texture path", data));
+     assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
+ 
+-    const int id = Textures->length;
++    const int id = Vector_Texture_Length(Textures);
+ 
+     char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
+     strcpy(texture_path, path);
+@@ -606,11 +593,11 @@ int Renderer_RegisterTexturedMesh(
+     const uint32_t *indices,
+     const size_t index_count
+ ) {
+-    assert(("Texture should be indexable", diffuse_texture_id < Textures->length));
+-    assert(("Texture should be indexable", specular_texture_id < Textures->length));
+-    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Textures->length));
++    assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
++    assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
++    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Vector_Texture_Length(Textures)));
+ 
+-    const int mesh_id = Meshes->length;
++    const int mesh_id = Vector_Mesh_Length(Meshes);
+     Mesh m{};
+ 
+     m.vertice_count = vertice_count;
+@@ -720,7 +707,7 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
+         }
+     }
+ 
+-    const int currentId = Meshes->length;
++    const int currentId = Vector_Mesh_Length(Meshes);
+     m.id = currentId;
+ 
+     m.diffuse_texture_id = texture_id;
+@@ -821,9 +808,9 @@ int Renderer_Register_Model(const char *path) {
+                 specular_texture_id,
+                 -1,
+                 vertex_data->data,
+-                vertex_data->length,
++                Vector_float_Length(vertex_data),
+                 index_data->data,
+-                index_data->length
++                Vector_uint32_t_Length(index_data)
+             );
+ 
+             Vector_uint32_t_Clear(index_data);
+@@ -842,7 +829,7 @@ int Renderer_Register_Model(const char *path) {
+ 
+     Vector_Model_Add(Models, model_to_register);
+ 
+-    const int model_id = Models->length;
++    const int model_id = Vector_Model_Length(Models);
+ 
+     return model_id;
+ }
+@@ -968,18 +955,18 @@ void Renderer_FrameEnd() {
+     // point back to the default buffer
+     glBindFramebuffer(GL_FRAMEBUFFER, 0);
+     glViewport(0, 0, Screen_Texture.Width, Screen_Texture.Height);
+-    
++
+     // clear the color of the screen buffer
+     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+     glClear(GL_COLOR_BUFFER_BIT);
+ 
+-    
++
+     // since we are only drawin on the screen we don't need any of those things so we disable them
+     glDisable(GL_DEPTH_TEST);
+     glDisable(GL_STENCIL_TEST);
+     glDisable(GL_BLEND);
+ 
+-    
++
+     //draw the quad here
+     glUseProgram(Screen_Texture.screen_texture_program);
+     glBindVertexArray(Screen_Texture.VAO);
+@@ -998,21 +985,21 @@ void Renderer_FrameEnd() {
+ 
+ 
+ void Renderer_Destroy() {
+-    for (size_t i = 0; i < Meshes->length; ++i) {
++    for (size_t i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
+         const Mesh m = Meshes->data[i];
+         glDeleteVertexArrays(1, &m.VAO);
+         glDeleteBuffers(1, &m.VBO);
+         glDeleteBuffers(1, &m.VBE);
+     }
+ 
+-    for (size_t i = 0; i < UnshadedMeshes->length; ++i) {
++    for (size_t i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
+         const Mesh m = UnshadedMeshes->data[i];
+         glDeleteVertexArrays(1, &m.VAO);
+         glDeleteBuffers(1, &m.VBO);
+         glDeleteBuffers(1, &m.VBE);
+     }
+ 
+-    for (size_t i = 0; i < Models->length; ++i) {
++    for (size_t i = 0; i < Vector_Model_Length(Models); ++i) {
+         const Model m = Models->data[i];
+         free(m.mesh_ids);
+     }
+@@ -1068,7 +1055,8 @@ void SendLightUBOsToTheGPU() {
+ 
+ // this is for untextured meshes ;)
+ void SendGeometryDataToTheGPU() {
+-    for (int i = 0; i < Meshes->length; ++i) {
++    volatile int a=Vector_Model_Length(Models);
++    for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
+         auto &m = Meshes->data[i];
+ 
+         glGenVertexArrays(1, &m.VAO);
+@@ -1105,7 +1093,7 @@ void SendGeometryDataToTheGPU() {
+ 
+ // this is for untextured meshes ;)
+ void SendLightGeometryDataToTheGPU() {
+-    for (int i = 0; i < UnshadedMeshes->length; ++i) {
++    for (int i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
+         auto &light = UnshadedMeshes->data[i];
+         glUseProgram(light.program_id);
+ 
+@@ -1139,7 +1127,7 @@ void SendLightGeometryDataToTheGPU() {
+ }
+ 
+ void SendTextureDataToTheGPU() {
+-    for (size_t i = 0; i < Textures->length; ++i) {
++    for (size_t i = 0; i < Vector_Texture_Length(Textures); ++i) {
+         Texture &t = Textures->data[i];
+         glGenTextures(1, &t.texture_id);
+         glBindTexture(GL_TEXTURE_2D, t.texture_id);
+diff --git a/main.cpp b/main.cpp
+index 60b7e63..c650ad4 100644
+--- a/main.cpp
++++ b/main.cpp
+@@ -266,7 +266,7 @@ int main() {
+ 
+ 
+         Vector3D light_color = {1, 1, 1};
+-
++                           
+ 
+         Vector_model_instance *opaque_models = Vector_model_instance_Create(30);
+         Vector_model_instance *transparent_models = Vector_model_instance_Create(30);
+@@ -367,20 +367,20 @@ int main() {
+                 Renderer_DrawUnshadedTexture(m.mesh_id, m.pos, light_color);
+             }
+ 
+-            for (size_t i = 0; i < opaque_models->length; ++i) {
++            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
+                 const model_instance m = opaque_models->data[i];
+                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+             }
+ 
+-            for (size_t i = 0; i < opaque_models->length; ++i) {
++            for (size_t i = 0; i < Vector_model_instance_Length(opaque_models); ++i) {
+                 const model_instance m = opaque_models->data[i];
+                 Renderer_Draw_Outline(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+             }
+ 
+ 
+-            sort_objects_based_on_camera_distance(transparent_models->data, transparent_models->length);
++            sort_objects_based_on_camera_distance(transparent_models->data, Vector_model_instance_Length(transparent_models));
+ 
+-            for (size_t i = 0; i < transparent_models->length; ++i) {
++            for (size_t i = 0; i < Vector_model_instance_Length(transparent_models); ++i) {
+                 const model_instance m = transparent_models->data[i];
+                 Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
+             }

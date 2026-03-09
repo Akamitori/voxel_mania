@@ -130,7 +130,7 @@ EXPORTED void Renderer_CameraUpdate();
 
 EXPORTED void Renderer_Change_Emission(int mesh_id, int emission_texture_id);
 
-EXPORTED void Renderer_Toggle_Shadow_Map_Rendering();
+EXPORTED void Renderer_Toggle_Shadow_Map_Rendering(int layer);
 
 EXPORTED void Renderer_Align_Camera_With_Light();
 
