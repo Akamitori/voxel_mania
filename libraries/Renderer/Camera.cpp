@@ -75,21 +75,4 @@ Matrix4D CameraLookAtMatrix(const Camera &camera) {
     return LookAtMatrix(camera.position, camera.forward, camera.up);
 }
 
-Matrix4D PerspectiveMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
-    Matrix4D perspectiveMatrix(0);
 
-    const float tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
-
-    const float z_diff = 1 / (z_near - z_far);
-    perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
-
-    // flip y since it takes the place of z and we want bigger values to equal higher instead of lower points
-    perspectiveMatrix[1].y = -tan_fov_2_invert;
-
-    // map from [0,1] with 1 being the closest for better precision
-    perspectiveMatrix[2].z = z_near * z_diff;
-    perspectiveMatrix[2].w = 1;
-    perspectiveMatrix[3].z = - z_far * z_diff;
-
-    return perspectiveMatrix;
-}

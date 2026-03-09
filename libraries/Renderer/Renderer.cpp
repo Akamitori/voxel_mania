@@ -1157,7 +1157,7 @@ void Renderer_Destroy() {
 
 
 void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen_height) {
-    auto m = PerspectiveMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
+    auto m = PerspectiveProjectionMatrix(ProjectionParams.FOV, ProjectionParams.Z_near, ProjectionParams.Z_far,
                                static_cast<float>(new_screen_width) / static_cast<float>(new_screen_height));
 
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
@@ -1169,7 +1169,12 @@ void Renderer_ResolutionChanged(const int new_screen_width, const int new_screen
 }
 
 void Renderer_CameraUpdate() {
-    auto m = CameraLookAtMatrix(*SceneCamera);
+    const auto m = CameraLookAtMatrix(*SceneCamera);
+    const auto m_inverse= inverse(m);
+
+    SceneCamera->Camera_Matrix = m_inverse;
+    SceneCamera->Camera_Matrix_Inverse = CameraLookAtMatrix(*SceneCamera);
+    
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
     glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
