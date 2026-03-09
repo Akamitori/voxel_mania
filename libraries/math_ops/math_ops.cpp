@@ -33,3 +33,27 @@ double math_ops::clamp(const double value, const double lower, const double uppe
 uint8_t math_ops::max(const uint8_t a, const uint8_t b) {
     return a > b ? a : b;
 }
+
+float math_ops::max(const float a, const float b) {
+    return a > b ? a : b;
+}
+
+float math_ops::min(const float a, const float b) {
+    return a < b ? a : b;
+}
+
+float math_ops::ceil(const float a) {
+    return static_cast<float>(static_cast<int>(a) + 1);
+}
+
+int math_ops::ceil_to_int(const float a) {
+    return static_cast<int>(a)+1;
+}
+
+float math_ops::floor(const float a) {
+    return static_cast<float>(static_cast<int>(a));
+}
+
+int math_ops::floor_to_int(const float a) {
+    return static_cast<int>(a);
+}

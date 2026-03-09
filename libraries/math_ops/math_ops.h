@@ -14,6 +14,14 @@ namespace math_ops {
     EXPORTED double clamp(double value, double lower,double upper);
     
     EXPORTED uint8_t max(uint8_t a, uint8_t b);
+    EXPORTED float max(float a, float b);
+    EXPORTED float min(float a, float b);
+    
+    EXPORTED float ceil(float a); 
+    EXPORTED int ceil_to_int(float a);
+    
+    EXPORTED float floor(float a);
+    EXPORTED int floor_to_int(float a);
 }
 
 
