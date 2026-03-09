@@ -2,6 +2,8 @@
 
 #include <cmath>
 
+#include "Vector4D.h"
+
 float dot(const Vector3D &a, const Vector3D &b) {
     return a.x * b.x + a.y * b.y + a.z * b.z;
 }
@@ -81,3 +83,8 @@ Vector3D operator +(const Vector3D &a, const Vector3D &b) {
 Vector3D operator -(const Vector3D &a, const Vector3D &b) {
     return Vector3D(a.x - b.x, a.y - b.y, a.z - b.z);
 }
+
+Vector4D Vector3D_To_Vector4D(const Vector3D v, const float w) {
+    return {v.x,v.y,v.z,w};
+}
+
