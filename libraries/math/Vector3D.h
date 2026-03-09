@@ -9,6 +9,8 @@ struct EXPORTED Vector3D {
     float z;
 };
 
+class Vector4D;
+
 EXPORTED float dot(const Vector3D &a, const Vector3D &b);
 
 EXPORTED float magnitude(const Vector3D &v);
@@ -38,6 +40,8 @@ EXPORTED Vector3D operator -(const Vector3D &v);
 EXPORTED Vector3D operator +(const Vector3D &a, const Vector3D &b);
 
 EXPORTED Vector3D operator -(const Vector3D &a, const Vector3D &b);
+
+EXPORTED Vector4D Vector3D_To_Vector4D(Vector3D v,float w);
 
 
 #endif //Vector3D_H

@@ -47,3 +47,9 @@ Vector4D operator *(const Vector4D &v, const float s) {
 Vector4D operator +(const Vector4D &a, const Vector4D &b) {
     return Vector4D(a.x + b.x, a.y + b.y, a.z + b.z, a.w + b.w);
 }
+
+Vector4D operator/(const Vector4D &v, const float s) {
+    Vector4D v1(v);
+    v1 /= s;
+    return v1;
+}
