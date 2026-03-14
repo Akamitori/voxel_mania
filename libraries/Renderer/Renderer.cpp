@@ -332,10 +332,10 @@ static void Initialize_frustum_partitions(float z_near, float z_far) {
         printf("%d-partition in space [%f, %f]\n", i, f.near, f.far);
     }
     
-    frustum_splits[0] = {0, 8.0f};
-    frustum_splits[1] = {7.5f, 32.0f};
-    frustum_splits[2] = {30.0f, 128.0f};
-    frustum_splits[3] = {122.0f, z_far};
+    // frustum_splits[0] = {0, 8.0f};
+    // frustum_splits[1] = {7.5f, 32.0f};
+    // frustum_splits[2] = {30.0f, 128.0f};
+    // frustum_splits[3] = {122.0f, z_far};
 }
 
 
@@ -1968,7 +1968,7 @@ void Set_Camera_Params() {
     const auto camera_matrix = inverse(camera_matrix_inverse);
 
     SceneCamera->Camera_Matrix = camera_matrix;
-    SceneCamera->Camera_Matrix_Inverse = CameraLookAtMatrix(*SceneCamera);
+    SceneCamera->Camera_Matrix_Inverse = camera_matrix_inverse;
 
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
     glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
@@ -2025,9 +2025,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
         bb_min = {FLT_MAX,FLT_MAX,FLT_MAX};
         bb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-        Matrix4D world_space_to_cascade_camera_space_zero_cascade{};
-
-        //
+        
         for (int j = 0; j < camera_corners; ++j) {
             const Vector3D &light_space_vertice = light_space_vertices[cascade_index * camera_corners + j];
 
@@ -2059,6 +2057,9 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
         // z_k_min and z_k_max
         frustum_split.bounding_box_z_min = bb_min.z;
         frustum_split.bounding_box_z_max = bb_max.z;
+        
+        float z_range = bb_max.z -  bb_min.z;
+        printf("cascade %d: z_min=%.4f z_max=%.4f range=%.4f\n", 0, bb_min.z, bb_max.z, z_range);
 
         //get the camera space position for this particular light (in light space)
         const float texel_size = frustum_split.physica_texel_size_t;
@@ -2069,6 +2070,12 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
 
         const Vector3D camera_pos_light_space = {x_camera_light_space, y_camera_light_space, z_camera_light_space};
         frustum_split.camera_pos_light_space = camera_pos_light_space;
+        
+        printf("camera space \n");
+        print_matrix(camera_matrix);
+        printf("camera pos light space :");
+        print_vector(camera_pos_light_space);
+        printf("\n");
 
         // calculate an ortho projection matrix
         // we assume our camera is placed at 0 hence no translation

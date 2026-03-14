@@ -159,7 +159,7 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
 int main() {
     try {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
-        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 512, 8);
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 300, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
