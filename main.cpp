@@ -103,24 +103,24 @@ int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int e
     );
 }
 
-int compare_models_descending(const void *p, const void *q) {
-    const mesh_instance m1 = *(const mesh_instance *) p;
-    const mesh_instance m2 = *(const mesh_instance *) q;
-
-    const float distance1 = magnitude_squared(SceneCamera->position - m1.transform.Position);
-    const float distance2 = magnitude_squared(SceneCamera->position - m2.transform.Position);
-
-    return (distance1 < distance2) - (distance1 > distance2);
-}
-
-void sort_objects_based_on_camera_distance(mesh_instance *models, const size_t number) {
-    qsort(models, number, sizeof(mesh_instance), compare_models_descending);
-}
+// int compare_models_descending(const void *p, const void *q) {
+//     const mesh_instance m1 = *(const mesh_instance *) p;
+//     const mesh_instance m2 = *(const mesh_instance *) q;
+//
+//     const float distance1 = magnitude_squared(SceneCamera->position - m1.transform.Position);
+//     const float distance2 = magnitude_squared(SceneCamera->position - m2.transform.Position);
+//
+//     return (distance1 < distance2) - (distance1 > distance2);
+// }
+//
+// void sort_objects_based_on_camera_distance(mesh_instance *models, const size_t number) {
+//     qsort(models, number, sizeof(mesh_instance), compare_models_descending);
+// }
 
 void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_instance *opaque_meshes) {
     // create a scene for shadow testing
     for (int x = 0; x < 50; ++x) {
-        for (int y = 0; y < 10; ++y) {
+        for (int y = 0; y < 100; ++y) {
             Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) x - 5, (float) y + 2, -1}});
         }
     }
@@ -159,7 +159,7 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
 int main() {
     try {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
-        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 300, 8);
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
@@ -220,6 +220,8 @@ int main() {
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // so we can dock things to windows
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // so our ui can exist outside the window
+        
+        ImGui::GetStyle().ScaleAllSizes(1.2f);
         //io.ConfigViewportsNoAutoMerge = true;
         //io.ConfigViewportsNoTaskBarIcon = true;
 
@@ -263,7 +265,7 @@ int main() {
         //         };
 
 
-        Vector3D spotLightpos = SceneCamera->position;
+        Vector3D spotLightpos = MainCamera->position;
         spotLightpos.z += 0.5f;
         SpotLight our_spot_light{
             {5, 5, 3},
@@ -325,9 +327,20 @@ int main() {
         Uint64 lastTime = SDL_GetPerformanceCounter(); // do this once, outside the loop
         double ms_per_frame = 0.0;
 
+       
+        static int tick_counter = 0;
+        static char debug_text[1024] = {};
+        debug_data d={};
+        d=Renderer_Get_Debug_Data();
+
+        
+        
+        
+        
         // Rendering loop
         int layer=0;
         while (keepRunning) {
+            tick_counter++;
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
             lastTime = now;
@@ -346,7 +359,7 @@ int main() {
                         break;
                     }
                     case SDL_EVENT_KEY_DOWN: {
-                        KeyDown(event.key.scancode, *SceneCamera);
+                        KeyDown(event.key.scancode, *MainCamera);
                         break;
                     }
                     default: {
@@ -358,43 +371,85 @@ int main() {
             }
 
             Renderer_FrameStart();
-
-
-            // for (const auto &m: lights) {
-            //     Renderer_DrawUnshadedTexture(m.mesh_id, m.transform, light_color);
-            // }
-
-            // for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
-            //     const mesh_instance m = opaque_meshes->data[i];
-            //     Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
-            // }
-
+            
             for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
                 const mesh_instance m = opaque_meshes->data[i];
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
+        
             Renderer_ResolveDrawCalls();
-
-            // sort_objects_based_on_camera_distance(transparent_models->data, Vector_mesh_instance_Length(transparent_models));
-            //
-            // for (size_t i = 0; i < Vector_mesh_instance_Length(transparent_models); ++i) {
-            //     const model_instance m = transparent_models->data[i];
-            //     Renderer_Draw(m.mesh_id, m.pos, {1, 1, 1}, our_material);
-            // }
-
-            //Renderer_Draw_Model(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
-            //Renderer_Draw_Model_Outline(back_pack_model, {1, 5, 1}, {0, 0, 0}, {32});
-
-            //
-            // // // Start the Dear ImGui frame
-            // ImGui_ImplOpenGL3_NewFrame();
-            // ImGui_ImplSDL3_NewFrame();
-            // ImGui::NewFrame();
+            
+            // // Start the Dear ImGui frame
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL3_NewFrame();
+            ImGui::NewFrame();
             // //
-            // IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
+            IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
             // //
             // // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
-            // IMGUI_CHECKVERSION();
+            IMGUI_CHECKVERSION();
+            
+            
+            if (tick_counter % 60 == 0) {
+                d=Renderer_Get_Debug_Data();
+                snprintf(debug_text, sizeof(debug_text),
+                    "c0: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
+                    "c1: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
+                    "c2: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
+                    "c3: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n",
+                    d.bb_min_light_space[0].x, d.bb_min_light_space[0].y, d.bb_min_light_space[0].z,
+                    d.bb_max_light_space[0].x, d.bb_max_light_space[0].y, d.bb_max_light_space[0].z,d.diameter[0],
+                    d.bb_min_light_space[1].x, d.bb_min_light_space[1].y, d.bb_min_light_space[1].z,
+                    d.bb_max_light_space[1].x, d.bb_max_light_space[1].y, d.bb_max_light_space[1].z,d.diameter[1],
+                    d.bb_min_light_space[2].x, d.bb_min_light_space[2].y, d.bb_min_light_space[2].z,
+                    d.bb_max_light_space[2].x, d.bb_max_light_space[2].y, d.bb_max_light_space[2].z,d.diameter[2],
+                    d.bb_min_light_space[3].x, d.bb_min_light_space[3].y, d.bb_min_light_space[3].z,
+                    d.bb_max_light_space[3].x, d.bb_max_light_space[3].y, d.bb_max_light_space[3].z,d.diameter[3]
+                );
+            }
+
+            ImGui::Begin("CSM Debug");
+            ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text), 
+                ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
+            ImGui::End();
+            
+            
+            // ImGui::Begin("Demo window");
+            // ImGui::BeginGroup();
+            // ImGui::Text("Camera matrix");
+            // ImGui::BeginTable("Camera_Space",4);
+            //
+            //
+            // // for (int i=0;i<4;++i) {
+            // //     ImGui::TableNextRow();
+            // //     
+            // //     int column=0;
+            // //     ImGui::TableSetColumnIndex(column++);
+            // //     ImGui::Text("%.2f",d.camera_space[i].x);
+            // //     
+            // //     ImGui::TableSetColumnIndex(column++);
+            // //     ImGui::Text("%.2f",d.camera_space[i].y);
+            // //     
+            // //     ImGui::TableSetColumnIndex(column++);
+            // //     ImGui::Text("%.2f",d.camera_space[i].z);
+            // //     
+            // //     ImGui::TableSetColumnIndex(column++);
+            // //     ImGui::Text("%.2f",d.camera_space[i].w);
+            // // }
+            //
+            // ImGui::EndTable();
+            // ImGui::EndGroup();
+            
+            // ImGui::BeginGroup();
+            //
+            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[0].x, d.camera_space[0].y,d.camera_space[0].z,d.camera_space[0].w);
+            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[1].x, d.camera_space[1].y,d.camera_space[1].z,d.camera_space[1].w);
+            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[2].x, d.camera_space[2].y,d.camera_space[2].z,d.camera_space[2].w);
+            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[3].x, d.camera_space[3].y,d.camera_space[3].z,d.camera_space[3].w);
+            // ImGui::EndGroup();
+            
+            
+            //ImGui::End();
             //
             // ImGui::Text("Ms/frame : %f", ms_per_frame);
             //
@@ -431,19 +486,19 @@ int main() {
             // // }
             // // Show demo window! :)
             //
-            // ImGui::Render();
-            // ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             // // Update and Render additional Platform Windows
             // // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
             // //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
-            // if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
-            //     SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
-            //     const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
-            //     ImGui::UpdatePlatformWindows();
-            //     ImGui::RenderPlatformWindowsDefault();
-            //     SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-            // }
-
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+                SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
+                const SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext(); // NOLINT(*-misplaced-const) , we want this as is
+                ImGui::UpdatePlatformWindows();
+                ImGui::RenderPlatformWindowsDefault();
+                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+            }
+            
             Renderer_FrameEnd();
             
         }

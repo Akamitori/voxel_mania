@@ -33,10 +33,13 @@ QUEUE_DECLARATION_STATIC(aiNodePtr)
 QUEUE_IMPLEMENTATION(aiNodePtr)
 
 
-Camera *SceneCamera = nullptr;
+static Camera *MainCamera = nullptr;
+static Camera *SceneCamera = nullptr;
+static Camera *ObserverCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
+static unsigned int line_drawing_program;
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
@@ -45,6 +48,9 @@ static unsigned int cursor_program;
 static unsigned int debug_render_shadow_map = 0;
 static int debug_shadow_cascade_layer = 0;
 static unsigned int debug_pcf_on = 0;
+static unsigned int use_observer_camera = 0;
+
+debug_data debug_display{};
 
 
 struct screen {
@@ -142,6 +148,9 @@ struct Texture {
 static unsigned int cursor_vao;
 static unsigned int cursor_vbo;
 
+static unsigned int line_vao;
+static unsigned int line_vbo;
+
 struct Mesh {
     int id{};
     float *vertices{nullptr};
@@ -197,7 +206,8 @@ typedef struct frustum_splits {
     float bounding_box_z_min;
     float bounding_box_z_max;
 
-    // ----------- fields that are not relevant to the 0-th cascade -------
+    Vector3D bb_min_light_space;
+    Vector3D bb_max_light_space;
 } frustum_split;
 
 typedef struct cascade_mapping_data {
@@ -311,35 +321,35 @@ static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
 
 static void Initialize_frustum_partitions(float z_near, float z_far) {
     constexpr float lambda = 0.5f;
-    
+
     for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        // Standard cascade split (log + uniform)
         float log_split = z_near * powf(z_far / z_near, (i + 1.0f) / SHADOW_CASCADE_COUNT);
         float uniform_split = z_near + (z_far - z_near) * ((i + 1.0f) / SHADOW_CASCADE_COUNT);
         float split_far = lambda * log_split + (1.0f - lambda) * uniform_split;
 
-        float split_near = i == 0 ? z_near : frustum_splits[i - 1].far;
+        // First cascade starts at 0
+        float split_near = (i == 0) ? 0.0f : frustum_splits[i - 1].far;
 
+        // Optional overlap (skip for first cascade)
         constexpr float overlap = 0.1f;
-        float overlap_amount = i == 0 ? 0.0f : overlap * (frustum_splits[i-1].far - frustum_splits[i-1].near);
+        float overlap_amount = (i == 0) ? 0.0f : overlap * (frustum_splits[i - 1].far - frustum_splits[i - 1].near);
 
         frustum_splits[i] = {split_near - overlap_amount, split_far};
 
         printf("%d-partition in space [%f, %f]\n", i, frustum_splits[i].near, frustum_splits[i].far);
     }
 
+    // Print final partitions
     for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
         const frustum_split f = frustum_splits[i];
         printf("%d-partition in space [%f, %f]\n", i, f.near, f.far);
     }
-    
-    // frustum_splits[0] = {0, 8.0f};
-    // frustum_splits[1] = {7.5f, 32.0f};
-    // frustum_splits[2] = {30.0f, 128.0f};
-    // frustum_splits[3] = {122.0f, z_far};
 }
 
 
 void OpenGLGlobalSetup() {
+    line_drawing_program = InitializeProgram("program_for_lines");
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
@@ -350,6 +360,17 @@ void OpenGLGlobalSetup() {
 
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
 
+    glGenVertexArrays(1, &line_vao);
+    glGenBuffers(1, &line_vbo);
+
+    glBindVertexArray(line_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, line_vbo);
+
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
+    glEnableVertexAttribArray(0);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
 
     constexpr unsigned char whitePixel[4] = {255, 255, 255, 255};
 
@@ -375,6 +396,40 @@ void OpenGLGlobalSetup() {
     glClearDepth(0.0f);
     // set the clear value for the stencil buffer
     glClearStencil(0);
+}
+
+debug_data Renderer_Get_Debug_Data() {
+    debug_data data{};
+
+    data.camera_space = SceneCamera->Camera_Matrix;
+
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 8; ++j) {
+            data.vertices_camera_space[i * 8 + j] = frustum_splits[i].camera_space_corners[j];
+        }
+    }
+
+    // there's only one directional light!
+    const Matrix4D &light_matrix_inverse = Directional_Lights_Matrices.Light_Space_Matrix_Inverse[0];
+
+    const Matrix4D camera_space_to_world_space = data.camera_space;
+    const Matrix4D camera_space_to_light_space = light_matrix_inverse * data.camera_space;
+
+    for (int i = 0; i < 4; ++i) {
+        data.bb_min_light_space[i]= frustum_splits[i].bb_min_light_space;
+        data.bb_max_light_space[i]= frustum_splits[i].bb_max_light_space;
+        data.diameter[i]=frustum_splits[i].shadow_map_size_d;
+        for (int j = 0; j < 8; ++j) {
+            const Vector4D camera_corner = Vector3D_To_Vector4D(frustum_splits[i].camera_space_corners[j], 1);
+            const Vector4D corner_world_space = camera_space_to_world_space * camera_corner;
+            const Vector4D corner_light_space = camera_space_to_light_space * camera_corner;
+
+            data.vertices_light_space[i * 8 + j] = {corner_light_space.x, corner_light_space.y, corner_light_space.z};
+            data.vertices_world_space[i * 8 + j] = {corner_world_space.x, corner_world_space.y, corner_world_space.z};
+        }
+    }
+
+    return data;
 }
 
 void Renderer_Init(const int screen_width,
@@ -409,6 +464,8 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     SceneCamera = new Camera{};
+    ObserverCamera = new Camera{};
+    MainCamera = SceneCamera;
 
 
     auto display_properties = SDL_GetCurrentDisplayMode(1);
@@ -513,7 +570,8 @@ void Renderer_Init(const int screen_width,
         world_geometry_program,
         world_geometry_program_cross_textures,
         world_unshaded_geometry_program,
-        Screen_Texture.shadow_map_program
+        Screen_Texture.shadow_map_program,
+        line_drawing_program
     };
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
@@ -652,17 +710,17 @@ void Renderer_Init(const int screen_width,
     // this could work with both linear and nearest depending on the shadow styel
     glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D_ARRAY,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
-    
+
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-    float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+    float borderColor[] = {1.0f, 1.0f, 1.0f, 1.0f};
     glTexParameterfv(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_BORDER_COLOR, borderColor);
-    
+
     // hardware comparison depth
     // since all things are in the same space we dont have to worry too much
-    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE); 
+    glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_MODE, GL_COMPARE_REF_TO_TEXTURE);
     glTexParameteri(GL_TEXTURE_2D_ARRAY, GL_TEXTURE_COMPARE_FUNC, GL_LESS);
-    
+
     // attach this to buffer
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
     glDrawBuffer(GL_NONE);
@@ -1144,7 +1202,7 @@ int Renderer_Register_Directional_Light(const DirectionalLight &light) {
     Directional_Lights.Lights[currentId] = light;
     ++Directional_Lights.num_of_light;
 
-    const Vector3D light_forward = light.direction;
+    const Vector3D light_forward = normalize(light.direction);
 
     // get a proper orthocanonical basis
     constexpr Vector3D world_basis_x{1, 0, 0};
@@ -1182,7 +1240,7 @@ int Renderer_Register_Directional_Light(const DirectionalLight &light) {
     Directional_Lights_Matrices.Light_Space_Matrix[currentId] = light_matrix;
 
     // since the light matrix has no translation we can just transpose it for the inverse
-    Directional_Lights_Matrices.Light_Space_Matrix_Inverse[currentId] = transpose(light_matrix);;
+    Directional_Lights_Matrices.Light_Space_Matrix_Inverse[currentId] = transpose(light_matrix);
 
     Calculate_Directional_Light_MVP_Matrix(currentId);
 
@@ -1240,7 +1298,7 @@ void Shadow_Pass() {
     glDepthFunc(GL_LEQUAL);
 
 
-    glEnable(GL_POLYGON_OFFSET_FILL);   
+    glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(2.0f, 4.0f);
     glEnable(GL_DEPTH_CLAMP);
     for (int shadow_cascade_layer = 0; shadow_cascade_layer < SHADOW_CASCADE_COUNT; ++shadow_cascade_layer) {
@@ -1255,6 +1313,196 @@ void Shadow_Pass() {
     glDepthFunc(GL_GEQUAL);
 }
 
+void Draw_Light_Space_Bounding_Boxes() {
+    const Matrix4D &light_matrix = Directional_Lights_Matrices.Light_Space_Matrix[0];
+
+    const Vector3D cascade_colors[4] = {
+        {1, 0, 0},
+        {0, 1, 0},
+        {0, 0, 1},
+        {1, 1, 0}
+    };
+
+    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        const frustum_split &fs = frustum_splits[i];
+        const Vector3D &mn = fs.bb_min_light_space;
+        const Vector3D &mx = fs.bb_max_light_space;
+
+        // 8 corners of the AABB in light space
+        Vector3D corners_light_space[8] = {
+            {mn.x, mn.y, mn.z},
+            {mx.x, mn.y, mn.z},
+            {mx.x, mx.y, mn.z},
+            {mn.x, mx.y, mn.z},
+            {mn.x, mn.y, mx.z},
+            {mx.x, mn.y, mx.z},
+            {mx.x, mx.y, mx.z},
+            {mn.x, mx.y, mx.z},
+        };
+
+        // transform each corner back to world space
+        Vector3D corners_world_space[8];
+        for (int j = 0; j < 8; ++j) {
+            const Vector4D transformed = light_matrix * Vector3D_To_Vector4D(corners_light_space[j], 1);
+            corners_world_space[j] = {transformed.x, transformed.y, transformed.z};
+        }
+
+        // same edge layout as the frustum boxes
+        Vector3D lines[24];
+        int idx = 0;
+        auto push_line = [&](Vector3D a, Vector3D b) {
+            lines[idx++] = a;
+            lines[idx++] = b;
+        };
+
+        push_line(corners_world_space[0], corners_world_space[1]);
+        push_line(corners_world_space[1], corners_world_space[2]);
+        push_line(corners_world_space[2], corners_world_space[3]);
+        push_line(corners_world_space[3], corners_world_space[0]);
+
+        push_line(corners_world_space[4], corners_world_space[5]);
+        push_line(corners_world_space[5], corners_world_space[6]);
+        push_line(corners_world_space[6], corners_world_space[7]);
+        push_line(corners_world_space[7], corners_world_space[4]);
+
+        push_line(corners_world_space[0], corners_world_space[4]);
+        push_line(corners_world_space[1], corners_world_space[5]);
+        push_line(corners_world_space[2], corners_world_space[6]);
+        push_line(corners_world_space[3], corners_world_space[7]);
+
+        Renderer_Draw_Lines(lines, idx, cascade_colors[i]);
+    }
+}
+
+void Draw_Debug_Lines() {
+    auto d = Renderer_Get_Debug_Data();
+    auto &x = d.vertices_world_space;
+
+    const Vector3D cascade_colors[4] = {
+        {1, 0, 0},
+        {0, 1, 0},
+        {0, 0, 1},
+        {1, 1, 0}
+    };
+
+    for (int i = 0; i < 4; i++) {
+        Vector3D lines[24];
+        int idx = 0;
+        int b = i * 8;
+
+        auto push_line = [&](Vector3D a, Vector3D b) {
+            lines[idx++] = a;
+            lines[idx++] = b;
+        };
+
+        push_line(x[b + 0], x[b + 1]);
+        push_line(x[b + 1], x[b + 2]);
+        push_line(x[b + 2], x[b + 3]);
+        push_line(x[b + 3], x[b + 0]);
+
+        push_line(x[b + 4], x[b + 5]);
+        push_line(x[b + 5], x[b + 6]);
+        push_line(x[b + 6], x[b + 7]);
+        push_line(x[b + 7], x[b + 4]);
+
+        push_line(x[b + 0], x[b + 4]);
+        push_line(x[b + 1], x[b + 5]);
+        push_line(x[b + 2], x[b + 6]);
+        push_line(x[b + 3], x[b + 7]);
+
+        Renderer_Draw_Lines(lines, idx, cascade_colors[i]);
+    }
+}
+
+void Print_Cascade_Debug() {
+    return;
+
+    printf("--- cascade front planes (world space) ---\n");
+    for (int i = 0; i < SHADOW_CASCADE_COUNT - 1; ++i) {
+        const Plane &p = cascade_mapping.frustum_front_plane_world_space[i];
+        printf("  plane %d: normal=(%f, %f, %f) w=%f\n", i, p.normal.x, p.normal.y, p.normal.z, p.w);
+    }
+    return;
+
+    const Matrix4D &light_matrix = Directional_Lights_Matrices.Light_Space_Matrix[0];
+    const Matrix4D &camera_matrix = SceneCamera->Camera_Matrix;
+
+    printf("=== FRAME DEBUG ===\n");
+    printf("Camera pos: ");
+    print_vector(camera_matrix[3]);
+    printf("\n");
+    printf("Camera fwd: ");
+    print_vector(camera_matrix[2]);
+    printf("\n");
+
+
+    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        const frustum_split &fs = frustum_splits[i];
+        const float z_range = fs.bounding_box_z_max - fs.bounding_box_z_min;
+        const float xy_range = fs.shadow_map_size_d;
+
+        printf("--- cascade %d [near=%.2f far=%.2f] ---\n", i, fs.near, fs.far);
+        printf("  bb_min: ");
+        print_vector(fs.bb_min_light_space);
+        printf("\n");
+        printf("  bb_max: ");
+        print_vector(fs.bb_max_light_space);
+        printf("\n");
+        printf("  z_range: %.4f  xy_range: %.4f  texel_size: %.4f\n", z_range, xy_range, fs.physica_texel_size_t);
+        printf("  cam_pos_light_space: ");
+        print_vector(fs.camera_pos_light_space);
+        printf("\n");
+
+
+        const Matrix4D &mvp = Directional_Lights.MVP_Matrix_per_cascade[
+            Calculate_Light_Space_Matrix_Index(i, 0)
+        ];
+        printf("  MVP[0]: ");
+        print_vector(mvp[0]);
+        printf(" w=%.4f\n", mvp[0].w);
+        printf("  MVP[1]: ");
+        print_vector(mvp[1]);
+        printf(" w=%.4f\n", mvp[1].w);
+        printf("  MVP[2]: ");
+        print_vector(mvp[2]);
+        printf(" w=%.4f\n", mvp[2].w);
+        printf("  MVP[3]: ");
+        print_vector(mvp[3]);
+        printf(" w=%.4f\n", mvp[3].w);
+    }
+
+    printf("Light basis:\n");
+    printf("  right:   ");
+    print_vector(light_matrix[0]);
+    printf("\n");
+    printf("  up:      ");
+    print_vector(light_matrix[1]);
+    printf("\n");
+    printf("  forward: ");
+    print_vector(light_matrix[2]);
+    printf("\n");
+
+    const Matrix4D &light_matrix_inverse = Directional_Lights_Matrices.Light_Space_Matrix_Inverse[0];
+    const Matrix4D cam_to_light = light_matrix_inverse * camera_matrix;
+    printf("Camera->Light:\n");
+    printf("  [0]: ");
+    print_vector(cam_to_light[0]);
+    printf("\n");
+    printf("  [1]: ");
+    print_vector(cam_to_light[1]);
+    printf("\n");
+    printf("  [2]: ");
+    print_vector(cam_to_light[2]);
+    printf("\n");
+    printf("  [3]: ");
+    print_vector(cam_to_light[3]);
+    printf("\n");
+
+
+    printf("===================\n");
+}
+
+
 void Draw_Without_Anti_Aliasing() {
     // off screen texture pass without anti-aliasing
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
@@ -1263,11 +1511,14 @@ void Draw_Without_Anti_Aliasing() {
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
 
+    //Draw_Debug_Lines();
+    //Print_Cascade_Debug();
     Draw_Cursor();
 
     // screen pass
     Draw_To_Screen_Texture();
 }
+
 
 void Draw_With_Anti_Aliasing() {
     // off screen texture pass with anti-aliasing
@@ -1277,6 +1528,8 @@ void Draw_With_Anti_Aliasing() {
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
 
+
+    //Print_Cascade_Debug();
     Draw_Cursor();
 
     // blit the anti alias buffer
@@ -1394,6 +1647,9 @@ void Renderer_Destroy() {
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 
+    glDeleteVertexArrays(1, &line_vao);
+    glDeleteBuffers(1, &line_vbo);
+
     glDeleteBuffers(1, &ViewMatricesBlock);
     glDeleteFramebuffers(1, &Screen_Texture.buffer_screen);
     SDL_DestroyWindow(window);
@@ -1450,6 +1706,34 @@ void Renderer_Toggle_PCF() {
     debug_pcf_on = !debug_pcf_on;
     const GLint id = glGetUniformLocation(world_geometry_program, "usePCF");
     glUniform1i(id, debug_pcf_on);
+}
+
+void Renderer_Draw_Lines(const Vector3D *vectors, const int vectors_count, const Vector3D color) {
+    glDisable(GL_DEPTH_TEST);
+    glUseProgram(line_drawing_program);
+
+    const GLint color_id = glGetUniformLocation(line_drawing_program, "u_color");
+    const Vector4D color4{color.x, color.y, color.z, 1.0f};
+    glUniform4fv(color_id, 1, &color4.x);
+
+    glBindVertexArray(line_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, line_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * vectors_count, vectors, GL_DYNAMIC_DRAW);
+    glDrawArrays(GL_LINES, 0, vectors_count);
+    glBindVertexArray(0);
+    glEnable(GL_DEPTH_TEST);
+}
+
+void Renderer_Use_Observer_Camera() {
+    use_observer_camera = !use_observer_camera;
+
+    if (use_observer_camera) {
+        MainCamera = ObserverCamera;
+    } else {
+        MainCamera = SceneCamera;
+    }
+
+    Set_Camera_Params();
 }
 
 void Draw_Cursor() {
@@ -1970,11 +2254,18 @@ void Set_Camera_Params() {
     SceneCamera->Camera_Matrix = camera_matrix;
     SceneCamera->Camera_Matrix_Inverse = camera_matrix_inverse;
 
+    debug_display.camera_space = camera_matrix;
+
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
+
+    if (use_observer_camera) {
+        const Matrix4D m = CameraLookAtMatrix(*ObserverCamera);
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
+    } else {
+        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
+    }
 
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
-
     CalculateCascadeFrontPlanes(camera_matrix);
 }
 
@@ -2025,7 +2316,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
         bb_min = {FLT_MAX,FLT_MAX,FLT_MAX};
         bb_max = {-FLT_MAX, -FLT_MAX, -FLT_MAX};
 
-        
+
         for (int j = 0; j < camera_corners; ++j) {
             const Vector3D &light_space_vertice = light_space_vertices[cascade_index * camera_corners + j];
 
@@ -2054,28 +2345,25 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
             }
         }
 
-        // z_k_min and z_k_max
         frustum_split.bounding_box_z_min = bb_min.z;
         frustum_split.bounding_box_z_max = bb_max.z;
+        // add these two
+        frustum_split.bb_min_light_space = bb_min;
+        frustum_split.bb_max_light_space = bb_max;
         
-        float z_range = bb_max.z -  bb_min.z;
-        printf("cascade %d: z_min=%.4f z_max=%.4f range=%.4f\n", 0, bb_min.z, bb_max.z, z_range);
+        
 
+        float z_range = bb_max.z - bb_min.z;
         //get the camera space position for this particular light (in light space)
         const float texel_size = frustum_split.physica_texel_size_t;
         const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
         const float y_camera_light_space = math_ops::floor_to_int((bb_max.y + bb_min.y) / (2 * texel_size)) * texel_size;
         const float z_camera_light_space = bb_min.z;
-
+        
+       
 
         const Vector3D camera_pos_light_space = {x_camera_light_space, y_camera_light_space, z_camera_light_space};
         frustum_split.camera_pos_light_space = camera_pos_light_space;
-        
-        printf("camera space \n");
-        print_matrix(camera_matrix);
-        printf("camera pos light space :");
-        print_vector(camera_pos_light_space);
-        printf("\n");
 
         // calculate an ortho projection matrix
         // we assume our camera is placed at 0 hence no translation
@@ -2116,9 +2404,9 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
     const float z_dif_inverse = 1.0f / z_diff_0_cascade;
 
     Matrix4D P_shadow_0_cascade = {
-        Vector4D{diameter_inverse, 0, 0},
-        Vector4D{0, diameter_inverse, 0},
-        Vector4D{0, 0, z_dif_inverse},
+        Vector4D{diameter_inverse, 0, 0, 0},
+        Vector4D{0, diameter_inverse, 0, 0},
+        Vector4D{0, 0, z_dif_inverse, 0},
         Vector4D{0.5, 0.5, 0, 1}
     };
 

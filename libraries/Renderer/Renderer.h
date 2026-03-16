@@ -6,13 +6,15 @@
 #include "SDL3/SDL_video.h"
 #include <cstdint>
 
+#include "Matrix4D.h"
 #include "GL/glew.h"
 
 struct Matrix4D;
 struct Vector4D;
 struct Camera;
 
-extern EXPORTED Camera *SceneCamera;
+extern EXPORTED Camera *MainCamera;
+extern EXPORTED Camera *ObserverCamera;
 extern EXPORTED SDL_Window *window;
 extern EXPORTED SDL_GLContext open_gl_context;
 
@@ -66,7 +68,18 @@ struct EXPORTED Transform {
     Vector3D Scale{1, 1, 1};
 };
 
+struct EXPORTED debug_data {
+    Matrix4D camera_space{};
+    Vector3D vertices_camera_space[8*4];
+    Vector3D vertices_light_space[8*4];
+    Vector3D vertices_world_space[8*4];
+    Vector3D light_camera_s_k[4];
+    Vector3D bb_min_light_space[4];
+    Vector3D bb_max_light_space[4];
+    float diameter[4];
+}; 
 
+EXPORTED debug_data Renderer_Get_Debug_Data();
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
 EXPORTED int Renderer_RegisterPrimitiveMeshData(
@@ -97,6 +110,7 @@ EXPORTED int Renderer_RegisterTexturedMesh(
     const uint32_t *indices,
     size_t index_count
 );
+
 
 EXPORTED int Renderer_RegisterTextured_Cross_Mesh(int texture_id, float scale = 1);
 
@@ -135,5 +149,9 @@ EXPORTED void Renderer_Toggle_Shadow_Map_Rendering(int layer);
 EXPORTED void Renderer_Align_Camera_With_Light();
 
 EXPORTED void Renderer_Toggle_PCF();
+
+EXPORTED void Renderer_Draw_Lines(const Vector3D *vectors, int vectors_count, Vector3D color);
+
+EXPORTED void Renderer_Use_Observer_Camera();
 
 #endif //RENDERER_H
