@@ -68,18 +68,6 @@ struct EXPORTED Transform {
     Vector3D Scale{1, 1, 1};
 };
 
-struct EXPORTED debug_data {
-    Matrix4D camera_space{};
-    Vector3D vertices_camera_space[8*4];
-    Vector3D vertices_light_space[8*4];
-    Vector3D vertices_world_space[8*4];
-    Vector3D light_camera_s_k[4];
-    Vector3D bb_min_light_space[4];
-    Vector3D bb_max_light_space[4];
-    float diameter[4];
-}; 
-
-EXPORTED debug_data Renderer_Get_Debug_Data();
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
 EXPORTED int Renderer_RegisterPrimitiveMeshData(

@@ -384,40 +384,6 @@ void OpenGLGlobalSetup() {
     glClearStencil(0);
 }
 
-debug_data Renderer_Get_Debug_Data() {
-    debug_data data{};
-
-    data.camera_space = SceneCamera->Camera_Matrix;
-
-    for (int i = 0; i < 4; ++i) {
-        for (int j = 0; j < 8; ++j) {
-            data.vertices_camera_space[i * 8 + j] = frustum_splits[i].camera_space_corners[j];
-        }
-    }
-
-    // there's only one directional light!
-    const Matrix4D &light_matrix_inverse = Directional_Lights_Matrices.Light_Space_Matrix_Inverse[0];
-
-    const Matrix4D camera_space_to_world_space = data.camera_space;
-    const Matrix4D camera_space_to_light_space = light_matrix_inverse * data.camera_space;
-
-    for (int i = 0; i < 4; ++i) {
-        data.bb_min_light_space[i]= frustum_splits[i].bb_min_light_space;
-        data.bb_max_light_space[i]= frustum_splits[i].bb_max_light_space;
-        data.diameter[i]=frustum_splits[i].shadow_map_size_d;
-        for (int j = 0; j < 8; ++j) {
-            const Vector4D camera_corner = Vector3D_To_Vector4D(frustum_splits[i].camera_space_corners[j], 1);
-            const Vector4D corner_world_space = camera_space_to_world_space * camera_corner;
-            const Vector4D corner_light_space = camera_space_to_light_space * camera_corner;
-
-            data.vertices_light_space[i * 8 + j] = {corner_light_space.x, corner_light_space.y, corner_light_space.z};
-            data.vertices_world_space[i * 8 + j] = {corner_world_space.x, corner_world_space.y, corner_world_space.z};
-        }
-    }
-
-    return data;
-}
-
 void Renderer_Init(const int screen_width,
                    const int screen_height,
                    const float fov,
