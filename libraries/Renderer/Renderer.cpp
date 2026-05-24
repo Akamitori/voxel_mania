@@ -1189,28 +1189,29 @@ void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, 
 
 
 void Shadow_Pass() {
+    // use the buffer shadow map with the proper viewport 
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
     glViewport(0, 0, Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height);
-    // we need to clear the buffer with 1 instead of 0
-    // this is because we use the default depth buffer mapping where 1 is the furthest
-
-    // use the default clear git for depth
+    
+    // use the default depth clear value and default depth comparison
     glClearDepth(1.0);
-    // use the default depth comparison
     glDepthFunc(GL_LEQUAL);
-
-
+    
+    // enable polygon offset to deal with shadow acne
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(2.0f, 4.0f);
+    
+    // clamp depth so we won't lose any objects that fall beyond the view frustum
     glEnable(GL_DEPTH_CLAMP);
     for (int shadow_cascade_layer = 0; shadow_cascade_layer < SHADOW_CASCADE_COUNT; ++shadow_cascade_layer) {
         glFramebufferTextureLayer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, Screen_Texture.texture_shadow_map, 0, shadow_cascade_layer);
         glClear(GL_DEPTH_BUFFER_BIT);
         Render_Draw_Commands_To_Shadow_Depth_Buffer(shadow_cascade_layer);
     }
+    
+    // restore everything back to the values that rendering assumes we use
     glDisable(GL_DEPTH_CLAMP);
     glDisable(GL_POLYGON_OFFSET_FILL);
-    // restore the depth comparison to what everything else uses
     glClearDepth(0);
     glDepthFunc(GL_GEQUAL);
 }
@@ -1683,7 +1684,7 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
     glUseProgram(Screen_Texture.shadow_map_program);
 
 
-    // TODO we can probably in the future stop fetching those all the time!
+    // TODO at some point we should stop doing uniform id fetches per frame
     const GLint model_matrix_id = glGetUniformLocation(Screen_Texture.shadow_map_program, "model_matrix");
     const GLint light_space_matrix_index_id = glGetUniformLocation(Screen_Texture.shadow_map_program, "light_space_matrix_index");
 

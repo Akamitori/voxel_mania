@@ -354,7 +354,6 @@ int main() {
             double ms = (now - lastTime) * 1000.0 / freq;
             lastTime = now;
             ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
-            ms_per_frame = ms;
             objects = Vector_mesh_instance_Length(opaque_meshes);
 
             SDL_Event event;
