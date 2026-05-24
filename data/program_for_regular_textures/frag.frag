@@ -78,8 +78,6 @@ uniform vec3 cascade_scale[3];
 uniform vec3 cascade_offset[3];
 uniform vec4 shadow_offset[2];
 
-uniform bool usePCF;
-
 vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);

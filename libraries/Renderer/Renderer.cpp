@@ -9,7 +9,6 @@
 #include "Matrix4D.h"
 #include "vector"
 #include <cstddef>
-#include <cstdint>
 
 #define STB_IMAGE_IMPLEMENTATION
 
@@ -44,7 +43,6 @@ static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
 static unsigned int cursor_program;
 
-static unsigned int debug_render_shadow_map = 0;
 static int debug_shadow_cascade_layer = 0;
 static unsigned int debug_pcf_on = 0;
 static unsigned int use_observer_camera = 0;
@@ -53,7 +51,6 @@ debug_data debug_display{};
 
 struct screen {
     unsigned int screen_texture_program{0};
-    unsigned int screen_texture_program_for_shadow_maps{0};
     int Width{};
     int Height{};
 
@@ -347,9 +344,6 @@ void OpenGLGlobalSetup() {
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
-    Screen_Texture.screen_texture_program_for_shadow_maps = InitializeProgram("program_for_screen_texture_for_shadow_maps");
-
-
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
 
     glGenVertexArrays(1, &line_vao);
@@ -1304,94 +1298,6 @@ void Shadow_Pass() {
     glDepthFunc(GL_GEQUAL);
 }
 
-void Print_Cascade_Debug() {
-    return;
-
-    printf("--- cascade front planes (world space) ---\n");
-    for (int i = 0; i < SHADOW_CASCADE_COUNT - 1; ++i) {
-        const Plane &p = cascade_mapping.frustum_front_plane_world_space[i];
-        printf("  plane %d: normal=(%f, %f, %f) w=%f\n", i, p.normal.x, p.normal.y, p.normal.z, p.w);
-    }
-    return;
-
-    const Matrix4D &light_matrix = Directional_Lights_Matrices.Light_Space_Matrix[0];
-    const Matrix4D &camera_matrix = SceneCamera->Camera_Matrix;
-
-    printf("=== FRAME DEBUG ===\n");
-    printf("Camera pos: ");
-    print_vector(camera_matrix[3]);
-    printf("\n");
-    printf("Camera fwd: ");
-    print_vector(camera_matrix[2]);
-    printf("\n");
-
-
-    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
-        const frustum_split &fs = frustum_splits[i];
-        const float z_range = fs.bounding_box_z_max - fs.bounding_box_z_min;
-        const float xy_range = fs.shadow_map_size_d;
-
-        printf("--- cascade %d [near=%.2f far=%.2f] ---\n", i, fs.near, fs.far);
-        printf("  bb_min: ");
-        print_vector(fs.bb_min_light_space);
-        printf("\n");
-        printf("  bb_max: ");
-        print_vector(fs.bb_max_light_space);
-        printf("\n");
-        printf("  z_range: %.4f  xy_range: %.4f  texel_size: %.4f\n", z_range, xy_range, fs.physica_texel_size_t);
-        printf("  cam_pos_light_space: ");
-        print_vector(fs.camera_pos_light_space);
-        printf("\n");
-
-
-        const Matrix4D &mvp = Directional_Lights.MVP_Matrix_per_cascade[
-            Calculate_Light_Space_Matrix_Index(i, 0)
-        ];
-        printf("  MVP[0]: ");
-        print_vector(mvp[0]);
-        printf(" w=%.4f\n", mvp[0].w);
-        printf("  MVP[1]: ");
-        print_vector(mvp[1]);
-        printf(" w=%.4f\n", mvp[1].w);
-        printf("  MVP[2]: ");
-        print_vector(mvp[2]);
-        printf(" w=%.4f\n", mvp[2].w);
-        printf("  MVP[3]: ");
-        print_vector(mvp[3]);
-        printf(" w=%.4f\n", mvp[3].w);
-    }
-
-    printf("Light basis:\n");
-    printf("  right:   ");
-    print_vector(light_matrix[0]);
-    printf("\n");
-    printf("  up:      ");
-    print_vector(light_matrix[1]);
-    printf("\n");
-    printf("  forward: ");
-    print_vector(light_matrix[2]);
-    printf("\n");
-
-    const Matrix4D &light_matrix_inverse = Directional_Lights_Matrices.Light_Space_Matrix_Inverse[0];
-    const Matrix4D cam_to_light = light_matrix_inverse * camera_matrix;
-    printf("Camera->Light:\n");
-    printf("  [0]: ");
-    print_vector(cam_to_light[0]);
-    printf("\n");
-    printf("  [1]: ");
-    print_vector(cam_to_light[1]);
-    printf("\n");
-    printf("  [2]: ");
-    print_vector(cam_to_light[2]);
-    printf("\n");
-    printf("  [3]: ");
-    print_vector(cam_to_light[3]);
-    printf("\n");
-
-
-    printf("===================\n");
-}
-
 
 void Draw_Without_Anti_Aliasing() {
     // off screen texture pass without anti-aliasing
@@ -1401,8 +1307,6 @@ void Draw_Without_Anti_Aliasing() {
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
 
-    //Draw_Debug_Lines();
-    //Print_Cascade_Debug();
     Draw_Cursor();
 
     // screen pass
@@ -1417,9 +1321,7 @@ void Draw_With_Anti_Aliasing() {
 
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
-
-
-    //Print_Cascade_Debug();
+    
     Draw_Cursor();
 
     // blit the anti alias buffer
@@ -1447,19 +1349,10 @@ void Draw_To_Screen_Texture() {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
-
-    // we can bind the shadow program and texture here
-    if (!debug_render_shadow_map) {
-        glUseProgram(Screen_Texture.screen_texture_program);
-        glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_screen);
-    } else {
-        glUseProgram(Screen_Texture.screen_texture_program_for_shadow_maps);
-        glActiveTexture(GL_TEXTURE0);
-        const GLint layer_uniform_location = glGetUniformLocation(Screen_Texture.screen_texture_program_for_shadow_maps, "layer");
-        glUniform1i(layer_uniform_location, debug_shadow_cascade_layer);
-        glBindTexture(GL_TEXTURE_2D_ARRAY, Screen_Texture.texture_shadow_map);
-    }
+    
+    glUseProgram(Screen_Texture.screen_texture_program);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_screen);
 
     glBindVertexArray(Screen_Texture.VAO);
     glDrawElements(GL_TRIANGLES, Screen_Texture.IndexCount, GL_UNSIGNED_INT, nullptr);
@@ -1570,34 +1463,6 @@ void Renderer_CameraUpdate() {
 void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
     Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
 }
-
-// TODO noone prevents us from splitting a header into many cpp files so we should do exactly
-// TODO that in the future for helper functions
-void Renderer_Toggle_Shadow_Map_Rendering(int layer) {
-    debug_render_shadow_map = !debug_render_shadow_map;
-
-    if (layer < 0 || layer >= SHADOW_CASCADE_COUNT) {
-        layer = 0;
-    }
-    debug_shadow_cascade_layer = layer;
-}
-
-void Renderer_Align_Camera_With_Light() {
-    return;
-    // TODO this is no op for now because it doesn't make much sense since we now can have many lights
-    // auto m = DirectionalLight_SpaceMatrices.Look_At_Matrix[0];
-    // glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
-    // glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
-    // glBindBuffer(GL_UNIFORM_BUFFER, 0);
-}
-
-void Renderer_Toggle_PCF() {
-    glUseProgram(world_geometry_program);
-    debug_pcf_on = !debug_pcf_on;
-    const GLint id = glGetUniformLocation(world_geometry_program, "usePCF");
-    glUniform1i(id, debug_pcf_on);
-}
-
 
 
 void Draw_Cursor() {
