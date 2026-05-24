@@ -14,7 +14,6 @@ struct Vector4D;
 struct Camera;
 
 extern EXPORTED Camera *MainCamera;
-extern EXPORTED Camera *ObserverCamera;
 extern EXPORTED SDL_Window *window;
 extern EXPORTED SDL_GLContext open_gl_context;
 

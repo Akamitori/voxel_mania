@@ -34,7 +34,6 @@ QUEUE_IMPLEMENTATION(aiNodePtr)
 
 static Camera *MainCamera = nullptr;
 static Camera *SceneCamera = nullptr;
-static Camera *ObserverCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
@@ -43,11 +42,6 @@ static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
 static unsigned int cursor_program;
 
-static int debug_shadow_cascade_layer = 0;
-static unsigned int debug_pcf_on = 0;
-static unsigned int use_observer_camera = 0;
-
-debug_data debug_display{};
 
 struct screen {
     unsigned int screen_texture_program{0};
@@ -310,9 +304,9 @@ static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
 
 static void Initialize_frustum_partitions(float z_near, float z_far) {
     // we can also try 0.5
-    constexpr float lambda = 0.9f;
 
     for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
+        constexpr float lambda = 0.9f;
         // Standard cascade split (log + uniform)
         float log_split = z_near * powf(z_far / z_near, (i + 1.0f) / SHADOW_CASCADE_COUNT);
         float uniform_split = z_near + (z_far - z_near) * ((i + 1.0f) / SHADOW_CASCADE_COUNT);
@@ -416,7 +410,6 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     SceneCamera = new Camera{};
-    ObserverCamera = new Camera{};
     MainCamera = SceneCamera;
 
 
@@ -1129,24 +1122,6 @@ int Renderer_Register_Model(const char *path) {
     return model_id;
 }
 
-
-void print_vector(const Vector3D &v) {
-    printf("(%f, %f, %f)", v.x, v.y, v.z);
-}
-
-void print_vector(const Vector4D &v) {
-    printf("(%f, %f, %f, %f)", v.x, v.y, v.z, v.w);
-}
-
-void print_matrix(const Matrix4D &m) {
-    printf("----MATRIX START( column vectors---\n");
-    for (int i = 0; i < 4; ++i) {
-        print_vector(m[i]);
-        printf("\n");
-    }
-    printf("----MATRIX END( column vectors---\n");
-}
-
 int Renderer_Register_Directional_Light(const DirectionalLight &light) {
     assert(("Registered more lights than possible", Directional_Lights.num_of_light<MAX_DIRECTIONAL_LIGHTS));
     const int currentId = Directional_Lights.num_of_light;
@@ -1287,7 +1262,7 @@ void Draw_With_Anti_Aliasing() {
 
     glViewport(0, 0, Screen_Texture.screen_texture_Width, Screen_Texture.screen_texture_Height);
     ExecuteDrawCommands();
-    
+
     Draw_Cursor();
 
     // blit the anti alias buffer
@@ -1315,7 +1290,7 @@ void Draw_To_Screen_Texture() {
     glDisable(GL_DEPTH_TEST);
     glDisable(GL_STENCIL_TEST);
     glDisable(GL_BLEND);
-    
+
     glUseProgram(Screen_Texture.screen_texture_program);
     glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, Screen_Texture.texture_screen);
@@ -1949,17 +1924,12 @@ void Set_Camera_Params() {
     SceneCamera->Camera_Matrix = camera_matrix;
     SceneCamera->Camera_Matrix_Inverse = camera_matrix_inverse;
 
-    debug_display.camera_space = camera_matrix;
 
     glBindBuffer(GL_UNIFORM_BUFFER, ViewMatricesBlock);
 
-    if (use_observer_camera) {
-        const Matrix4D m = CameraLookAtMatrix(*ObserverCamera);
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &m[0].x);
-    } else {
-        glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
-    }
 
+    glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
+    
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     CalculateCascadeFrontPlanes(camera_matrix);
 }
@@ -2045,8 +2015,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
         // add these two
         frustum_split.bb_min_light_space = bb_min;
         frustum_split.bb_max_light_space = bb_max;
-        
-        
+
 
         float z_range = bb_max.z - bb_min.z;
         //get the camera space position for this particular light (in light space)
@@ -2054,8 +2023,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
         const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
         const float y_camera_light_space = math_ops::floor_to_int((bb_max.y + bb_min.y) / (2 * texel_size)) * texel_size;
         const float z_camera_light_space = bb_min.z;
-        
-       
+
 
         const Vector3D camera_pos_light_space = {x_camera_light_space, y_camera_light_space, z_camera_light_space};
         frustum_split.camera_pos_light_space = camera_pos_light_space;
