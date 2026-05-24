@@ -284,7 +284,7 @@ int main() {
         //         };
 
 
-        Vector3D spotLightpos = MainCamera->position;
+        Vector3D spotLightpos = SceneCamera->position;
         spotLightpos.z += 0.5f;
         SpotLight our_spot_light{
             {5, 5, 3},
@@ -369,7 +369,7 @@ int main() {
                         break;
                     }
                     case SDL_EVENT_KEY_DOWN: {
-                        KeyDown(event.key.scancode, *MainCamera);
+                        KeyDown(event.key.scancode, *SceneCamera);
                         break;
                     }
                     default: {

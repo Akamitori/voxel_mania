@@ -13,7 +13,7 @@ struct Matrix4D;
 struct Vector4D;
 struct Camera;
 
-extern EXPORTED Camera *MainCamera;
+extern EXPORTED Camera *SceneCamera;
 extern EXPORTED SDL_Window *window;
 extern EXPORTED SDL_GLContext open_gl_context;
 

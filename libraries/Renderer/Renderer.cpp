@@ -31,8 +31,6 @@ QUEUE_DECLARATION_STATIC(aiNodePtr)
 
 QUEUE_IMPLEMENTATION(aiNodePtr)
 
-
-static Camera *MainCamera = nullptr;
 static Camera *SceneCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
@@ -410,7 +408,6 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
 
     SceneCamera = new Camera{};
-    MainCamera = SceneCamera;
 
 
     auto display_properties = SDL_GetCurrentDisplayMode(1);
