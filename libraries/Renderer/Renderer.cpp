@@ -129,9 +129,6 @@ struct Texture {
 static unsigned int cursor_vao;
 static unsigned int cursor_vbo;
 
-static unsigned int line_vao;
-static unsigned int line_vbo;
-
 struct Mesh {
     int id{};
     float *vertices{nullptr};
@@ -337,19 +334,7 @@ void OpenGLGlobalSetup() {
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
-
-    glGenVertexArrays(1, &line_vao);
-    glGenBuffers(1, &line_vbo);
-
-    glBindVertexArray(line_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, line_vbo);
-
-    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 0, nullptr);
-    glEnableVertexAttribArray(0);
-
-    glBindVertexArray(0);
-    glBindBuffer(GL_ARRAY_BUFFER, 0);
-
+    
     constexpr unsigned char whitePixel[4] = {255, 255, 255, 255};
 
     glGenTextures(1, &defaultTexture);
@@ -1367,10 +1352,7 @@ void Renderer_Destroy() {
 
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
-
-    glDeleteVertexArrays(1, &line_vao);
-    glDeleteBuffers(1, &line_vbo);
-
+    
     glDeleteBuffers(1, &ViewMatricesBlock);
     glDeleteFramebuffers(1, &Screen_Texture.buffer_screen);
     SDL_DestroyWindow(window);
