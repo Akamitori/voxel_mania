@@ -183,9 +183,6 @@ typedef struct frustum_splits {
     Vector3D camera_pos_light_space;
     float bounding_box_z_min;
     float bounding_box_z_max;
-
-    Vector3D bb_min_light_space;
-    Vector3D bb_max_light_space;
 } frustum_split;
 
 typedef struct cascade_mapping_data {
@@ -286,9 +283,6 @@ static void Set_Resolution_Params(int new_screen_width, int new_screen_height);
 
 static void Set_Camera_Params();
 
-
-static void print_vector(const Vector3D &v);
-
 static int Calculate_Light_Space_Matrix_Index(int cascade_index, int directional_light_index);
 
 static void Upload_Directional_Light_Data_To_GPU();
@@ -334,7 +328,7 @@ void OpenGLGlobalSetup() {
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
-    
+
     constexpr unsigned char whitePixel[4] = {255, 255, 255, 255};
 
     glGenTextures(1, &defaultTexture);
@@ -1352,7 +1346,7 @@ void Renderer_Destroy() {
 
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
-    
+
     glDeleteBuffers(1, &ViewMatricesBlock);
     glDeleteFramebuffers(1, &Screen_Texture.buffer_screen);
     SDL_DestroyWindow(window);
@@ -1908,7 +1902,7 @@ void Set_Camera_Params() {
 
 
     glBufferSubData(GL_UNIFORM_BUFFER, sizeof(Matrix4D), sizeof(Matrix4D), &camera_matrix_inverse[0].x);
-    
+
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
     CalculateCascadeFrontPlanes(camera_matrix);
 }
@@ -1991,18 +1985,12 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
 
         frustum_split.bounding_box_z_min = bb_min.z;
         frustum_split.bounding_box_z_max = bb_max.z;
-        // add these two
-        frustum_split.bb_min_light_space = bb_min;
-        frustum_split.bb_max_light_space = bb_max;
-
-
-        float z_range = bb_max.z - bb_min.z;
+        
         //get the camera space position for this particular light (in light space)
         const float texel_size = frustum_split.physica_texel_size_t;
         const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
         const float y_camera_light_space = math_ops::floor_to_int((bb_max.y + bb_min.y) / (2 * texel_size)) * texel_size;
         const float z_camera_light_space = bb_min.z;
-
 
         const Vector3D camera_pos_light_space = {x_camera_light_space, y_camera_light_space, z_camera_light_space};
         frustum_split.camera_pos_light_space = camera_pos_light_space;
