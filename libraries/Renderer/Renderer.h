@@ -150,8 +150,4 @@ EXPORTED void Renderer_Align_Camera_With_Light();
 
 EXPORTED void Renderer_Toggle_PCF();
 
-EXPORTED void Renderer_Draw_Lines(const Vector3D *vectors, int vectors_count, Vector3D color);
-
-EXPORTED void Renderer_Use_Observer_Camera();
-
 #endif //RENDERER_H

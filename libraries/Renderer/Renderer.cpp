@@ -39,7 +39,6 @@ static Camera *ObserverCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
-static unsigned int line_drawing_program;
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
@@ -51,7 +50,6 @@ static unsigned int debug_pcf_on = 0;
 static unsigned int use_observer_camera = 0;
 
 debug_data debug_display{};
-
 
 struct screen {
     unsigned int screen_texture_program{0};
@@ -100,7 +98,6 @@ static unsigned int Point_Lights_binding_point = 1;
 static unsigned int Directional_Lights_binding_point = 2;
 static unsigned int Spot_Lights_binding_point = 3;
 
-
 static unsigned int defaultTexture;
 static unsigned int defaultEmissionTexture;
 
@@ -124,11 +121,6 @@ enum class TextureType {
     RGB_ALPHA,
     SRGB,
     SRGB_ALPHA
-};
-
-enum class TextureInternalStorageConversion {
-    None,
-    Linear,
 };
 
 struct Texture {
@@ -350,7 +342,6 @@ static void Initialize_frustum_partitions(float z_near, float z_far) {
 
 
 void OpenGLGlobalSetup() {
-    line_drawing_program = InitializeProgram("program_for_lines");
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
@@ -572,7 +563,6 @@ void Renderer_Init(const int screen_width,
         world_geometry_program_cross_textures,
         world_unshaded_geometry_program,
         Screen_Texture.shadow_map_program,
-        line_drawing_program
     };
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
@@ -1314,107 +1304,6 @@ void Shadow_Pass() {
     glDepthFunc(GL_GEQUAL);
 }
 
-void Draw_Light_Space_Bounding_Boxes() {
-    const Matrix4D &light_matrix = Directional_Lights_Matrices.Light_Space_Matrix[0];
-
-    const Vector3D cascade_colors[4] = {
-        {1, 0, 0},
-        {0, 1, 0},
-        {0, 0, 1},
-        {1, 1, 0}
-    };
-
-    for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
-        const frustum_split &fs = frustum_splits[i];
-        const Vector3D &mn = fs.bb_min_light_space;
-        const Vector3D &mx = fs.bb_max_light_space;
-
-        // 8 corners of the AABB in light space
-        Vector3D corners_light_space[8] = {
-            {mn.x, mn.y, mn.z},
-            {mx.x, mn.y, mn.z},
-            {mx.x, mx.y, mn.z},
-            {mn.x, mx.y, mn.z},
-            {mn.x, mn.y, mx.z},
-            {mx.x, mn.y, mx.z},
-            {mx.x, mx.y, mx.z},
-            {mn.x, mx.y, mx.z},
-        };
-
-        // transform each corner back to world space
-        Vector3D corners_world_space[8];
-        for (int j = 0; j < 8; ++j) {
-            const Vector4D transformed = light_matrix * Vector3D_To_Vector4D(corners_light_space[j], 1);
-            corners_world_space[j] = {transformed.x, transformed.y, transformed.z};
-        }
-
-        // same edge layout as the frustum boxes
-        Vector3D lines[24];
-        int idx = 0;
-        auto push_line = [&](Vector3D a, Vector3D b) {
-            lines[idx++] = a;
-            lines[idx++] = b;
-        };
-
-        push_line(corners_world_space[0], corners_world_space[1]);
-        push_line(corners_world_space[1], corners_world_space[2]);
-        push_line(corners_world_space[2], corners_world_space[3]);
-        push_line(corners_world_space[3], corners_world_space[0]);
-
-        push_line(corners_world_space[4], corners_world_space[5]);
-        push_line(corners_world_space[5], corners_world_space[6]);
-        push_line(corners_world_space[6], corners_world_space[7]);
-        push_line(corners_world_space[7], corners_world_space[4]);
-
-        push_line(corners_world_space[0], corners_world_space[4]);
-        push_line(corners_world_space[1], corners_world_space[5]);
-        push_line(corners_world_space[2], corners_world_space[6]);
-        push_line(corners_world_space[3], corners_world_space[7]);
-
-        Renderer_Draw_Lines(lines, idx, cascade_colors[i]);
-    }
-}
-
-void Draw_Debug_Lines() {
-    auto d = Renderer_Get_Debug_Data();
-    auto &x = d.vertices_world_space;
-
-    const Vector3D cascade_colors[4] = {
-        {1, 0, 0},
-        {0, 1, 0},
-        {0, 0, 1},
-        {1, 1, 0}
-    };
-
-    for (int i = 0; i < 4; i++) {
-        Vector3D lines[24];
-        int idx = 0;
-        int b = i * 8;
-
-        auto push_line = [&](Vector3D a, Vector3D b) {
-            lines[idx++] = a;
-            lines[idx++] = b;
-        };
-
-        push_line(x[b + 0], x[b + 1]);
-        push_line(x[b + 1], x[b + 2]);
-        push_line(x[b + 2], x[b + 3]);
-        push_line(x[b + 3], x[b + 0]);
-
-        push_line(x[b + 4], x[b + 5]);
-        push_line(x[b + 5], x[b + 6]);
-        push_line(x[b + 6], x[b + 7]);
-        push_line(x[b + 7], x[b + 4]);
-
-        push_line(x[b + 0], x[b + 4]);
-        push_line(x[b + 1], x[b + 5]);
-        push_line(x[b + 2], x[b + 6]);
-        push_line(x[b + 3], x[b + 7]);
-
-        Renderer_Draw_Lines(lines, idx, cascade_colors[i]);
-    }
-}
-
 void Print_Cascade_Debug() {
     return;
 
@@ -1709,33 +1598,7 @@ void Renderer_Toggle_PCF() {
     glUniform1i(id, debug_pcf_on);
 }
 
-void Renderer_Draw_Lines(const Vector3D *vectors, const int vectors_count, const Vector3D color) {
-    glDisable(GL_DEPTH_TEST);
-    glUseProgram(line_drawing_program);
 
-    const GLint color_id = glGetUniformLocation(line_drawing_program, "u_color");
-    const Vector4D color4{color.x, color.y, color.z, 1.0f};
-    glUniform4fv(color_id, 1, &color4.x);
-
-    glBindVertexArray(line_vao);
-    glBindBuffer(GL_ARRAY_BUFFER, line_vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * vectors_count, vectors, GL_DYNAMIC_DRAW);
-    glDrawArrays(GL_LINES, 0, vectors_count);
-    glBindVertexArray(0);
-    glEnable(GL_DEPTH_TEST);
-}
-
-void Renderer_Use_Observer_Camera() {
-    use_observer_camera = !use_observer_camera;
-
-    if (use_observer_camera) {
-        MainCamera = ObserverCamera;
-    } else {
-        MainCamera = SceneCamera;
-    }
-
-    Set_Camera_Params();
-}
 
 void Draw_Cursor() {
     glDisable(GL_STENCIL_TEST);
