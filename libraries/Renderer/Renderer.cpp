@@ -373,7 +373,9 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+    
+    // use this when you want to debug opengl
+    //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 
 
     Screen_Texture.Samples = anti_aliasing_samples;
@@ -499,7 +501,7 @@ void Renderer_Init(const int screen_width,
         const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
         const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
         const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
-
+        
         //bind it to the buffer we made at a specific binding point
         // in the geometry program, our uniform that map to a UBO  can be found at global binding pointViewMatrices_binding_point
         // in practice this mean the first call of this actually creates that association at the index
@@ -1401,8 +1403,7 @@ void Upload_Directional_Light_Data_To_GPU() {
 void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
-
-    // killed because we now upload those everytime we recalculate them
+    
     Upload_Directional_Light_Data_To_GPU();
 
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
@@ -1853,6 +1854,7 @@ void Set_Resolution_Params(const int new_screen_width, const int new_screen_heig
     const float g = 1 / tan(DegreeToRadians(ProjectionParams.FOV) * 0.5f);
 
 
+    // TODO we can probably make this its own function but in practice this update goes together anyways so this is not a huge deal
     // resolution params would require recalculating those
     // but what can you do
     const int shadow_map_size = Screen_Texture.shadow_map_size;
@@ -1913,6 +1915,7 @@ static int Calculate_Light_Space_Matrix_Index(int cascade_index, const int direc
 }
 
 
+// TODO we need to actually decide whether we need more than 1 directional light per scene
 // camera changes? we need to recalculate
 // fov , znear or zfar chagnes ? we need to recalclate
 // as a result this is called once we register our single directional right OR when either of the above applies

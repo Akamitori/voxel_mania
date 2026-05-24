@@ -5,8 +5,6 @@
 #include "export.h"
 #include "SDL3/SDL_video.h"
 #include <cstdint>
-
-#include "Matrix4D.h"
 #include "GL/glew.h"
 
 struct Matrix4D;
@@ -55,7 +53,7 @@ enum class TextureWrapMode : uint32_t {
     CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
 };
 
- struct EXPORTED Texture_Parameters {
+struct EXPORTED Texture_Parameters {
     TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
     TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
     bool convert_from_srgb_to_linear_space = false;
@@ -98,7 +96,6 @@ EXPORTED int Renderer_RegisterTexturedMesh(
     size_t index_count
 );
 
-
 EXPORTED int Renderer_RegisterTextured_Cross_Mesh(int texture_id, float scale = 1);
 
 EXPORTED int Renderer_Register_Model(const char *path);
@@ -119,11 +116,11 @@ EXPORTED void Renderer_ResolveDrawCalls();
 
 EXPORTED void Renderer_FrameEnd();
 
-EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform& transform, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform &transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Model(int model_id, const Transform& transform, Vector3D color, Material material);
+EXPORTED void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform& transform, Vector3D color);
+EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
 
 EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
 
