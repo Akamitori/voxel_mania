@@ -11,6 +11,3 @@
 [submodule "libraries/3rd_party/assimp"]
 	path = libraries/3rd_party/assimp
 	url = https://github.com/assimp/assimp
-[submodule "libraries/3rd_party/tracy"]
-	path = libraries/3rd_party/tracy
-	url = https://github.com/wolfpld/tracy

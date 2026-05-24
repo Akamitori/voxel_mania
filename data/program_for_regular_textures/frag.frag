@@ -154,7 +154,7 @@ float CalculateInfiniteShadow(vec3 cascadeCoord0, vec3 cascadeBlend, vec3 normal
     p2.xy= shadow_coord_2 + shadow_offset[1].zw;
     light2+= texture(shadowMap, vec4(p2, depth2));
 
-    float blended_value=mix(light1, light2, weight);
+    float blended_value=mix(light2, light1, weight);
     float dividant=0.25;
 
     return blended_value* dividant;

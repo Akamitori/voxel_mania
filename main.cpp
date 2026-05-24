@@ -1,12 +1,10 @@
 ﻿#include <array>
 #include <exception>
 
-#include <GL/glew.h>
 #include <SDL3/SDL_init.h>
 
 #include "InputHandling.h"
 #include "cube.h"
-#include "Matrix4D.h"
 
 #include <imgui.h>
 #include <imgui_impl_sdl3.h>
@@ -21,7 +19,6 @@
 
 #include "Main_Containers.h"
 #include "Perlin.h"
-
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,
@@ -120,7 +117,7 @@ int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int e
 void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_instance *opaque_meshes) {
     // create a scene for shadow testing
     for (int x = 0; x < 50; ++x) {
-        for (int y = 0; y < 100; ++y) {
+        for (int y = 0; y < 50; ++y) {
             Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) x - 5, (float) y + 2, -1}});
         }
     }
@@ -130,36 +127,58 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
 
     Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 0}});
     Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 1}});
-
-    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 5 - 5, (float) 6, 2}});
-    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 7 - 5, (float) 4, 0}});
-    Vector_mesh_instance_Add(opaque_meshes, {
-                                 crate_cube_id, {
-                                     (float) 3 - 5, (float) 3, 0,
-                                     0, DegreeToRadians(45), DegreeToRadians(45)
-                                 }
-
-                             });
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 2}});
+    Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 4 + 2, (float) 11, 3}});
 
 
-    for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
-        const Vector3D v = opaque_meshes->data[i].transform.Position;
-        printf("(%3f, %3f, %3f)", v.x, v.y, v.z);
-    }
-
-
-    const int offset = 40;
-    for (int x = 0; x < 10; ++x) {
-        for (int y = 0; y < 10; ++y) {
-            Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) offset + x - 5, (float) y + 2, -1}});
+    for (int i = 0; i < 4; ++i) {
+        for (int j = 0; j < 10; ++j) {
+            Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 1, (float) 10 + i * 2 + 1, 0}});
+            Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 1, (float) 10 + i * 2 + 1, 1}});
+            Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 1, (float) 10 + i * 2 + 1, 2}});
+            Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 1, (float) 10 + i * 2 + 1, 3}});
         }
     }
+
+    // for (int i = 0; i < 4; ++i) {
+    //     for (int j = 0; j < 10; ++j) {
+    //         Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 20, (float) 30 + i * 2 + 1, 0}});
+    //         Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 20, (float) 30 + i * 2 + 1, 1}});
+    //         Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 20, (float) 30 + i * 2 + 1, 2}});
+    //         Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) j + 20, (float) 30 + i * 2 + 1, 3}});
+    //     }
+    // }
+
+
+    // Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 5 - 5, (float) 6, 2}});
+    // Vector_mesh_instance_Add(opaque_meshes, {crate_cube_id, {(float) 7 - 5, (float) 4, 0}});
+    // Vector_mesh_instance_Add(opaque_meshes, {
+    //                              crate_cube_id, {
+    //                                  (float) 3 - 5, (float) 3, 0,
+    //                                  0, DegreeToRadians(45), DegreeToRadians(45)
+    //                              }
+    //
+    //                          });
+
+
+    // for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
+    //     const Vector3D v = opaque_meshes->data[i].transform.Position;
+    //     printf("(%3f, %3f, %3f)", v.x, v.y, v.z);
+    // }
+
+
+    // const int offset = 40;
+    // for (int x = 0; x < 10; ++x) {
+    //     for (int y = 0; y < 10; ++y) {
+    //         Vector_mesh_instance_Add(opaque_meshes, {wood_cube_id, {(float) offset + x - 5, (float) y + 2, -1}});
+    //     }
+    // }
 }
 
 int main() {
     try {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
-        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 100, 8);
+        Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
 
         const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
         const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
@@ -220,7 +239,7 @@ int main() {
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable; // so we can dock things to windows
         io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // so our ui can exist outside the window
-        
+
         ImGui::GetStyle().ScaleAllSizes(1.2f);
         //io.ConfigViewportsNoAutoMerge = true;
         //io.ConfigViewportsNoTaskBarIcon = true;
@@ -307,7 +326,7 @@ int main() {
         //Renderer_Register_Point_Light(our_light);
         //Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
-        
+
         Transform t{};
         t.Position = our_light.position;
         mesh_instance lights[]{
@@ -326,26 +345,17 @@ int main() {
         Uint64 freq = SDL_GetPerformanceFrequency(); // do this once, outside the loop
         Uint64 lastTime = SDL_GetPerformanceCounter(); // do this once, outside the loop
         double ms_per_frame = 0.0;
-
-       
-        static int tick_counter = 0;
+        int objects = 0;
         static char debug_text[1024] = {};
-        debug_data d={};
-        d=Renderer_Get_Debug_Data();
 
-        
-        
-        
-        
-        // Rendering loop
-        int layer=0;
+
         while (keepRunning) {
-            tick_counter++;
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
             lastTime = now;
             ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
-
+            ms_per_frame = ms;
+            objects = Vector_mesh_instance_Length(opaque_meshes);
 
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
@@ -371,14 +381,14 @@ int main() {
             }
 
             Renderer_FrameStart();
-            
+
             for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
                 const mesh_instance m = opaque_meshes->data[i];
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
-        
+
             Renderer_ResolveDrawCalls();
-            
+
             // // Start the Dear ImGui frame
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
@@ -388,104 +398,14 @@ int main() {
             // //
             // // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
             IMGUI_CHECKVERSION();
-            
-            
-            if (tick_counter % 60 == 0) {
-                d=Renderer_Get_Debug_Data();
-                snprintf(debug_text, sizeof(debug_text),
-                    "c0: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
-                    "c1: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
-                    "c2: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n"
-                    "c3: min=(%.2f,%.2f,%.2f) max=(%.2f,%.2f,%.2f) diameter: %.2f\n",
-                    d.bb_min_light_space[0].x, d.bb_min_light_space[0].y, d.bb_min_light_space[0].z,
-                    d.bb_max_light_space[0].x, d.bb_max_light_space[0].y, d.bb_max_light_space[0].z,d.diameter[0],
-                    d.bb_min_light_space[1].x, d.bb_min_light_space[1].y, d.bb_min_light_space[1].z,
-                    d.bb_max_light_space[1].x, d.bb_max_light_space[1].y, d.bb_max_light_space[1].z,d.diameter[1],
-                    d.bb_min_light_space[2].x, d.bb_min_light_space[2].y, d.bb_min_light_space[2].z,
-                    d.bb_max_light_space[2].x, d.bb_max_light_space[2].y, d.bb_max_light_space[2].z,d.diameter[2],
-                    d.bb_min_light_space[3].x, d.bb_min_light_space[3].y, d.bb_min_light_space[3].z,
-                    d.bb_max_light_space[3].x, d.bb_max_light_space[3].y, d.bb_max_light_space[3].z,d.diameter[3]
-                );
-            }
 
+
+            snprintf(debug_text, sizeof(debug_text), "ms: %f\n objects:%d\n", ms_per_frame, objects);
             ImGui::Begin("CSM Debug");
-            ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text), 
-                ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
+            ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text),
+                                      ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
             ImGui::End();
-            
-            
-            // ImGui::Begin("Demo window");
-            // ImGui::BeginGroup();
-            // ImGui::Text("Camera matrix");
-            // ImGui::BeginTable("Camera_Space",4);
-            //
-            //
-            // // for (int i=0;i<4;++i) {
-            // //     ImGui::TableNextRow();
-            // //     
-            // //     int column=0;
-            // //     ImGui::TableSetColumnIndex(column++);
-            // //     ImGui::Text("%.2f",d.camera_space[i].x);
-            // //     
-            // //     ImGui::TableSetColumnIndex(column++);
-            // //     ImGui::Text("%.2f",d.camera_space[i].y);
-            // //     
-            // //     ImGui::TableSetColumnIndex(column++);
-            // //     ImGui::Text("%.2f",d.camera_space[i].z);
-            // //     
-            // //     ImGui::TableSetColumnIndex(column++);
-            // //     ImGui::Text("%.2f",d.camera_space[i].w);
-            // // }
-            //
-            // ImGui::EndTable();
-            // ImGui::EndGroup();
-            
-            // ImGui::BeginGroup();
-            //
-            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[0].x, d.camera_space[0].y,d.camera_space[0].z,d.camera_space[0].w);
-            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[1].x, d.camera_space[1].y,d.camera_space[1].z,d.camera_space[1].w);
-            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[2].x, d.camera_space[2].y,d.camera_space[2].z,d.camera_space[2].w);
-            // ImGui::LabelText("[%f, %f, %f, %f]", d.camera_space[3].x, d.camera_space[3].y,d.camera_space[3].z,d.camera_space[3].w);
-            // ImGui::EndGroup();
-            
-            
-            //ImGui::End();
-            //
-            // ImGui::Text("Ms/frame : %f", ms_per_frame);
-            //
-            //
-            //
-            //
-            // ImGui::InputInt("Layer :",&layer);
-            //
-            // if (ImGui::Button("Test")) {
-            //     Renderer_Toggle_Shadow_Map_Rendering(layer);
-            // }
-            //
-            //
-            // if (ImGui::Button("Camera_As_Light")) {
-            //     Renderer_Align_Camera_With_Light();
-            // }
-            //
-            // if (ImGui::Button("Toggle_PCF")) {
-            //     Renderer_Toggle_PCF();
-            // }
-            //
-            // //float *p_as_float3 = reinterpret_cast<float *>(&lights[0].pos);
-            //
-            // // if (ImGui::Button("Matrixxx")) {
-            // //     const int value = matrix ? -1 : crate_Texture_emission_id;
-            // //     matrix = !matrix;
-            // //     Renderer_Change_Emission(crate_cube_id, value);
-            // // }
-            // //
-            // // if (ImGui::InputFloat3("test", p_as_float3, "%.3f")
-            // // ) {
-            // //     lights[0].pos = *reinterpret_cast<Vector3D *>(p_as_float3);
-            // //     our_light.position = lights[0].pos;
-            // // }
-            // // Show demo window! :)
-            //
+
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             // // Update and Render additional Platform Windows
@@ -498,9 +418,8 @@ int main() {
                 ImGui::RenderPlatformWindowsDefault();
                 SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
             }
-            
+
             Renderer_FrameEnd();
-            
         }
 
 

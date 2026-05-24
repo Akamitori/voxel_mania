@@ -320,7 +320,8 @@ static void Calculate_Directional_Light_MVP_Matrix(int light_index);
 static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
 
 static void Initialize_frustum_partitions(float z_near, float z_far) {
-    constexpr float lambda = 0.5f;
+    // we can also try 0.5
+    constexpr float lambda = 0.9f;
 
     for (int i = 0; i < SHADOW_CASCADE_COUNT; ++i) {
         // Standard cascade split (log + uniform)
