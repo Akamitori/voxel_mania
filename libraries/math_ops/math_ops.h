@@ -22,6 +22,9 @@ namespace math_ops {
     
     EXPORTED float floor(float a);
     EXPORTED int floor_to_int(float a);
+    
+    EXPORTED float round(float a);
+    EXPORTED int round_to_int(float a);
 }
 
 

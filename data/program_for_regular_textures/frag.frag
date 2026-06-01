@@ -81,7 +81,7 @@ uniform vec4 shadow_offset[2];
 vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
-float CalculateShadowFactor(vec3 frag_pos_world_space, vec3 normal, vec3 light_dir);
+
 float saturate(float value);
 
 void main() {
@@ -96,9 +96,9 @@ void main() {
     output_color+=CalculateDirectionalLights(diffuseTexMap, specularTexMap, normal, fs_in.FragPosWorldSpace);
     output_color+=CalculatePointLights(diffuseTexMap, specularTexMap, normal, fs_in.FragPosWorldSpace);
     output_color+=CalculateSpotLights(diffuseTexMap, specularTexMap, normal, fs_in.FragPosWorldSpace);
-    output_color+=emisionTexMap;
+    output_color+=emisionTexMap;                             
 
-    FragColor= vec4(output_color, texture_color.a);
+    FragColor= vec4(texture_color.rgb, 1);
 }
 
 float saturate(float value){
@@ -208,7 +208,6 @@ vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 no
         vec3 halfwayDir = normalize(light_direction + viewDir);
         float spec=pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
         vec3 specular= light.specular * spec* specularTexMap;
-
         output_color+= ambient+ (shadow_factor)*(diffuse + specular);
     }
     return output_color;

@@ -8,6 +8,7 @@ add_and_export_library(Renderer TYPE SHARED FILES
 target_link_libraries(Renderer
         PUBLIC
         LinearAlgebra        # Camera uses Vector3D in public header
+        Common_Types
         PRIVATE
         SDL3::SDL3          # Internal only
         OpenGlHelpers       # Internal only
@@ -18,4 +19,6 @@ target_link_libraries(Renderer
         math_ops           # Internal only
         assimp::assimp
         Custom_Containers
+        AssetLoader
+        
 )

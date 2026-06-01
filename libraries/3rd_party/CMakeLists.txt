@@ -9,6 +9,14 @@ if (NOT git_result EQUAL 0)
     message(FATAL_ERROR "Failed to initialize git submodules")
 endif ()
 
+# Absolute path to the assimp submodule. Uses CMAKE_CURRENT_LIST_DIR because
+# CMAKE_CURRENT_SOURCE_DIR is overwritten below by the GLEW workaround.
+set(ASSIMP_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/assimp")
+if (NOT EXISTS "${ASSIMP_SOURCE_DIR}/include/assimp/scene.h")
+    message(FATAL_ERROR "assimp not found at: ${ASSIMP_SOURCE_DIR}")
+endif ()
+message(STATUS "ASSIMP_SOURCE_DIR = ${ASSIMP_SOURCE_DIR}")
+
 include(${CMAKE_SOURCE_DIR}/cmake_scripts/external_lib_import.cmake)
 
 # SDL3 with incremental building
@@ -40,7 +48,7 @@ endif ()
 # assimp with incremental building
 import_external_library(${ASSIMP_LIB_NAME}
         SHARED
-        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/assimp"         # point to the proper dir since we can't rely on the lib name
+        SOURCE_DIR "${ASSIMP_SOURCE_DIR}"                       # point to the proper dir since we can't rely on the lib name
         TARGET_NAME assimp::assimp                              # cross platform target
         CMAKE_ARGS
         -DASSIMP_BUILD_TESTS=OFF                                # skip building tests
@@ -53,3 +61,24 @@ import_external_library(${ASSIMP_LIB_NAME}
 include(imgui_build.cmake)
 add_subdirectory(stb_image)
 
+# assimp API docs (build on demand: cmake --build <build dir> --target assimp_docs)
+find_package(Doxygen)
+if (DOXYGEN_FOUND)
+    set(DOXYGEN_PROJECT_NAME         "assimp")
+    set(DOXYGEN_EXTRACT_ALL          YES)
+    set(DOXYGEN_RECURSIVE            YES)
+    set(DOXYGEN_GENERATE_LATEX       NO)
+    set(DOXYGEN_ENABLE_PREPROCESSING YES)
+    set(DOXYGEN_MACRO_EXPANSION      YES)
+    set(DOXYGEN_PREDEFINED __cplusplus C_STRUCT= C_ENUM= ASSIMP_API= AI_NO_EXCEPT=)
+    set(DOXYGEN_IMAGE_PATH ${ASSIMP_SOURCE_DIR}/doc/images
+            ${ASSIMP_SOURCE_DIR}/doc/architecture)
+    set(DOXYGEN_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/assimp-docs)
+
+    doxygen_add_docs(assimp_docs
+            ${ASSIMP_SOURCE_DIR}/include/assimp
+            ${ASSIMP_SOURCE_DIR}/doc/dox.h
+            COMMENT "Generating assimp docs")
+else ()
+    message(STATUS "Doxygen not found - assimp_docs target unavailable")
+endif ()

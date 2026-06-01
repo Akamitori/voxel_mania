@@ -3,6 +3,7 @@
 
 #include "Vector4D.h"
 #include "export.h"
+struct Vector3D;
 
 struct EXPORTED Matrix4D {
     Vector4D column_vectors[4];
@@ -33,4 +34,10 @@ EXPORTED Matrix4D transpose(const Matrix4D &M);
 
 EXPORTED Matrix4D operator *(const Matrix4D& A, const Matrix4D& B);
 EXPORTED Vector4D operator*(const Matrix4D &m, const Vector4D &v);
+
+EXPORTED Matrix4D from_scale_vector(const Vector3D& v);
+
+EXPORTED Matrix4D from_translation_vector(const Vector3D& v);
+
+const Matrix4D IdentityMatrix{1};
 #endif //MATRIX4D_H

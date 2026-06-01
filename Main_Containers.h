@@ -7,6 +7,7 @@
 
 #include "vector_container.h"
 #include "Renderer.h"
+#include "hashmap_container.h"
 
 struct mesh_instance {
     int mesh_id{};
