@@ -180,13 +180,13 @@ int main() {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
 
-        const int whiteTextureId = Renderer_RegisterTexture("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
-        const int woodTextureId = Renderer_RegisterTexture("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
-        const int grassTextureId = Renderer_RegisterTexture("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
-        const int mushroomTextureId = Renderer_RegisterTexture("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
-        const int crate_Texture_diffuse_id = Renderer_RegisterTexture("data/textures/box_container.png", {.convert_from_srgb_to_linear_space = true});
-        const int crate_Texture_specular_id = Renderer_RegisterTexture("data/textures/box_container_specular.png"); // specular stays as is
-        const int tranrsparent_window_texture = Renderer_RegisterTexture(
+        const int whiteTextureId = Renderer_RegisterTextureFromPath("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
+        const int woodTextureId = Renderer_RegisterTextureFromPath("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
+        const int grassTextureId = Renderer_RegisterTextureFromPath("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
+        const int mushroomTextureId = Renderer_RegisterTextureFromPath("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
+        const int crate_Texture_diffuse_id = Renderer_RegisterTextureFromPath("data/textures/box_container.png", {.convert_from_srgb_to_linear_space = true});
+        const int crate_Texture_specular_id = Renderer_RegisterTextureFromPath("data/textures/box_container_specular.png"); // specular stays as is
+        const int tranrsparent_window_texture = Renderer_RegisterTextureFromPath(
             "data/textures/blending_transparent_window.png",
             {
                 TextureWrapMode::CLAMP_TO_EDGE,
@@ -228,7 +228,7 @@ int main() {
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
         // loads a model . skip for now because this is slow as fuck
-        //const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
+        const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
 
 
         // Setup Dear ImGui context
@@ -385,6 +385,8 @@ int main() {
                 const mesh_instance m = opaque_meshes->data[i];
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
+            
+            Renderer_Draw_Model(back_pack_model,{},{},{});
 
             Renderer_ResolveDrawCalls();
 

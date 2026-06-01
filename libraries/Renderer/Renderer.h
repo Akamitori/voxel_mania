@@ -81,7 +81,7 @@ EXPORTED int Renderer_RegisterUnshadedTexture(
     size_t index_count
 );
 
-EXPORTED int Renderer_RegisterTexture(
+EXPORTED int Renderer_RegisterTextureFromPath(
     const char *path,
     Texture_Parameters texture_parameters = {}
 );

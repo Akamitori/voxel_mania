@@ -209,6 +209,7 @@ vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 no
         float spec=pow(max(dot(normal, halfwayDir), 0.0), material.shininess);
         vec3 specular= light.specular * spec* specularTexMap;
 
+        shadow_factor=1;
         output_color+= ambient+ (shadow_factor)*(diffuse + specular);
     }
     return output_color;

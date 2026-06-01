@@ -13,17 +13,21 @@
 #define STB_IMAGE_IMPLEMENTATION
 
 
-#include "stb_image.h"
+#include <assert.h>
 #include "Transformations.h"
 #include "Trigonometry.h"
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+
 
 #include "math_ops.h"
 #include "Plane.h"
 #include "queue_container.h"
 #include "vector_container.h"
+
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
+#include <assimp/postprocess.h>
+
+#include "AssetLoader.h"
 
 
 typedef aiNode *aiNodePtr;
@@ -259,7 +263,7 @@ static Matrix4D calculate_model_matrix_from_transform(const Transform &transform
 
 static Matrix3D calculate_matrix3d_for_normals_from_model_matrix(const Matrix4D &model_matrix);
 
-static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
+//static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
 
 static void OpenGLGlobalSetup();
 
@@ -290,6 +294,8 @@ static void Upload_Directional_Light_Data_To_GPU();
 static void Calculate_Directional_Light_MVP_Matrix(int light_index);
 
 static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
+
+static int RegisterTextureFromData(TextureData texture_data, Texture_Parameters parameters = {});
 
 static void Initialize_frustum_partitions(float z_near, float z_far) {
     // we can also try 0.5
@@ -373,7 +379,7 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    
+
     // use this when you want to debug opengl
     //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 
@@ -501,7 +507,7 @@ void Renderer_Init(const int screen_width,
         const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
         const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
         const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
-        
+
         //bind it to the buffer we made at a specific binding point
         // in the geometry program, our uniform that map to a UBO  can be found at global binding pointViewMatrices_binding_point
         // in practice this mean the first call of this actually creates that association at the index
@@ -811,44 +817,9 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-int Renderer_RegisterTexture(const char *path, const Texture_Parameters parameters) {
-    int width;
-    int height;
-    int nrChannels;
-
-    // let's assume for now that we are using rgb
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
-
-    assert(("Texture path", data));
-    assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
-
-    const int id = Vector_Texture_Length(Textures);
-
-    char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
-    strcpy(texture_path, path);
-
-    TextureType loaded_format = nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
-    TextureType internal_format = loaded_format;
-    if (parameters.convert_from_srgb_to_linear_space) {
-        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
-    }
-
-    const Texture t{
-        id,
-        width,
-        height,
-        loaded_format,
-        internal_format,
-        data,
-        texture_path,
-        parameters.wrap_mode_s,
-        parameters.wrap_mode_t
-    };
-
-    Vector_Texture_Add(Textures, t);
-
-    return id;
+int Renderer_RegisterTextureFromPath(const char *path, const Texture_Parameters parameters) {
+    TextureData texture_data = LoadTextureNew(path);
+    return RegisterTextureFromData(texture_data, parameters);
 }
 
 
@@ -1016,82 +987,24 @@ int Renderer_Register_Model(const char *path) {
 
     const Model &model_to_register = {(int *) malloc(scene->mNumMeshes * sizeof(int)), scene->mNumMeshes};
     int count = 0;
-    aiNodePtr node;
 
-    Vector_uint32_t *index_data = Vector_uint32_t_Create(1024);
-    Vector_float *vertex_data = Vector_float_Create(1024);
+    ModelData model = LoadModel(path);
+    for (size_t i = 0; i<Vector_ModelMesh_Length(model.mesh_data); ++i) {
+        const ModelMesh m = model.mesh_data->data[i];
+        const int diffuse_texture_id = RegisterTextureFromData(m.diffuse);
+        const int specular_texture_id = RegisterTextureFromData(m.specular);
 
-    while (Queue_aiNodePtr_Deque(nodes_to_process, &node)) {
-        for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
-            const aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-
-            // get the vertex data
-            for (unsigned int j = 0; j < mesh->mNumVertices; ++j) {
-                const Vector3D position{
-                    mesh->mVertices[j].x,
-                    mesh->mVertices[j].y,
-                    mesh->mVertices[j].z,
-                };
-
-                const Vector3D normal{
-                    mesh->mNormals[j].x,
-                    mesh->mNormals[j].y,
-                    mesh->mNormals[j].z,
-                };
-
-                float uv_x = 0;
-                float uv_y = 0;
-
-                if (mesh->mTextureCoords[0]) {
-                    uv_x = mesh->mTextureCoords[0][j].x;
-                    uv_y = mesh->mTextureCoords[0][j].y;
-                }
-
-                Vector_float_Add(vertex_data, position.x);
-                Vector_float_Add(vertex_data, position.z);
-                Vector_float_Add(vertex_data, position.y);
-                Vector_float_Add(vertex_data, normal.x);
-                Vector_float_Add(vertex_data, normal.z);
-                Vector_float_Add(vertex_data, normal.y);
-                Vector_float_Add(vertex_data, uv_x);
-                Vector_float_Add(vertex_data, uv_y);
-            }
-
-
-            for (size_t j = 0, indice_index = 0; j < mesh->mNumFaces; ++j) {
-                const aiFace face = mesh->mFaces[j];
-                for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index) {
-                    Vector_uint32_t_Add(index_data, face.mIndices[k]);
-                }
-            }
-
-            const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-            const int diffuse_texture_id = LoadTexture(aiTextureType_DIFFUSE, directory, material);
-            const int specular_texture_id = LoadTexture(aiTextureType_SPECULAR, directory, material);
-
-            model_to_register.mesh_ids[count++] = Renderer_RegisterTexturedMesh(
-                diffuse_texture_id,
-                specular_texture_id,
-                -1,
-                vertex_data->data,
-                Vector_float_Length(vertex_data),
-                index_data->data,
-                Vector_uint32_t_Length(index_data)
-            );
-
-            Vector_uint32_t_Clear(index_data);
-            Vector_float_Clear(vertex_data);
-        }
-
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            Queue_aiNodePtr_Enqueue(nodes_to_process, node->mChildren[i]);
-        }
+        model_to_register.mesh_ids[count++] = Renderer_RegisterTexturedMesh(
+            diffuse_texture_id,
+            specular_texture_id,
+            -1,
+            // THIS IS A HACK FIX LATER
+            (float *) m.vertices,
+            m.vertex_count * 8,
+            m.indices,
+            m.index_count
+        );
     }
-
-    Vector_uint32_t_Free(index_data);
-    Vector_float_Free(vertex_data);
-
-    Queue_aiNodePtr_Free(nodes_to_process);
 
     const int model_id = Vector_Model_Length(Models);
 
@@ -1194,15 +1107,15 @@ void Shadow_Pass() {
     // use the buffer shadow map with the proper viewport 
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
     glViewport(0, 0, Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height);
-    
+
     // use the default depth clear value and default depth comparison
     glClearDepth(1.0);
     glDepthFunc(GL_LEQUAL);
-    
+
     // enable polygon offset to deal with shadow acne
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(2.0f, 4.0f);
-    
+
     // clamp depth so we won't lose any objects that fall beyond the view frustum
     glEnable(GL_DEPTH_CLAMP);
     for (int shadow_cascade_layer = 0; shadow_cascade_layer < SHADOW_CASCADE_COUNT; ++shadow_cascade_layer) {
@@ -1210,7 +1123,7 @@ void Shadow_Pass() {
         glClear(GL_DEPTH_BUFFER_BIT);
         Render_Draw_Commands_To_Shadow_Depth_Buffer(shadow_cascade_layer);
     }
-    
+
     // restore everything back to the values that rendering assumes we use
     glDisable(GL_DEPTH_CLAMP);
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1403,7 +1316,7 @@ void Upload_Directional_Light_Data_To_GPU() {
 void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
-    
+
     Upload_Directional_Light_Data_To_GPU();
 
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
@@ -1518,7 +1431,7 @@ void SendTextureDataToTheGPU() {
 
         glTexImage2D(GL_TEXTURE_2D, 0, internal_format, t.width, t.height, 0, format, GL_UNSIGNED_BYTE, t.data);
         glGenerateMipmap(GL_TEXTURE_2D);
-        stbi_image_free(t.data);
+        free(t.data);
         t.data = nullptr;
     }
 }
@@ -1549,7 +1462,7 @@ int LoadTexture(const aiTextureType type, const char *directory, const aiMateria
         strcat(relative_path, file_name);
     }
 
-    const int texture_id = Renderer_RegisterTexture(relative_path);
+    const int texture_id = Renderer_RegisterTextureFromPath(relative_path);
     free(relative_path);
 
     return texture_id;
@@ -1989,7 +1902,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
 
         frustum_split.bounding_box_z_min = bb_min.z;
         frustum_split.bounding_box_z_max = bb_max.z;
-        
+
         //get the camera space position for this particular light (in light space)
         const float texel_size = frustum_split.physica_texel_size_t;
         const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
@@ -2092,4 +2005,32 @@ void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix) {
 
         cascade_mapping.frustum_front_plane_world_space[i - 1] = p;
     }
+}
+
+int RegisterTextureFromData(TextureData texture_data, Texture_Parameters parameters) {
+    char *texture_path = (char *) malloc((strlen(texture_data.path) + 1) * sizeof(char));
+    strcpy(texture_path, texture_data.path);
+
+    TextureType loaded_format = texture_data.nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
+    TextureType internal_format = loaded_format;
+    if (parameters.convert_from_srgb_to_linear_space) {
+        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
+    }
+
+    const int id = Vector_Texture_Length(Textures);
+    const Texture t{
+        id,
+        texture_data.width,
+        texture_data.height,
+        loaded_format,
+        internal_format,
+        texture_data.bytes,
+        texture_path,
+        parameters.wrap_mode_s,
+        parameters.wrap_mode_t
+    };
+
+    Vector_Texture_Add(Textures, t);
+
+    return id;
 }

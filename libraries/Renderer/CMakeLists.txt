@@ -18,4 +18,5 @@ target_link_libraries(Renderer
         math_ops           # Internal only
         assimp::assimp
         Custom_Containers
+        AssetLoader
 )
