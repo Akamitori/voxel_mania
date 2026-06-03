@@ -322,9 +322,23 @@ int main() {
             0.22f, // aggressive linear falloff
             0.20f // aggressive quadratic
         };
+        
+        our_dir_light={
+        {1.0f, 0.0f, -1.0f},
+        {0.1f, 0.1f, 0.1f},  // ambient - carries most of the visibility
+        {0.025f, 0.025f, 0.025f},  // diffuse - barely contributes
+        {0.0f, 0.0f, 0.0f}   // specular - off
+        };
+        
+        our_dir_light = {
+            {1.0f, 0.0f, -1.0f},
+            {0.01f, 0.01f, 0.01f},  // ambient - barely exists
+            {0.15f, 0.14f, 0.13f},  // diffuse - reveals shape, slightly warm
+            {0.0f, 0.0f, 0.0f}      // specular - off
+        };
 
         //Renderer_Register_Point_Light(our_light);
-        //Renderer_Register_Spot_Light(our_spot_light);
+        Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
 
         Transform t{};

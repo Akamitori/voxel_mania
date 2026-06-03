@@ -14,6 +14,8 @@
 
 
 #include <assert.h>
+#include <unordered_map>
+
 #include "Transformations.h"
 #include "Trigonometry.h"
 
@@ -262,8 +264,6 @@ static Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians);
 static Matrix4D calculate_model_matrix_from_transform(const Transform &transform);
 
 static Matrix3D calculate_matrix3d_for_normals_from_model_matrix(const Matrix4D &model_matrix);
-
-//static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
 
 static void OpenGLGlobalSetup();
 
@@ -818,7 +818,7 @@ int Renderer_RegisterUnshadedTexture(
 
 
 int Renderer_RegisterTextureFromPath(const char *path, const Texture_Parameters parameters) {
-    TextureData texture_data = LoadTextureNew(path);
+    TextureData texture_data = LoadTexture(path);
     return RegisterTextureFromData(texture_data, parameters);
 }
 
@@ -956,49 +956,48 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
     return currentId;
 }
 
+std::unordered_map<uint64_t, int> registered_textures{};
 
 int Renderer_Register_Model(const char *path) {
-    Assimp::Importer importer;
-    const aiScene *scene = importer.ReadFile(
-        path,
-        aiProcess_Triangulate |
-        aiProcess_FlipUVs |
-        aiProcess_MakeLeftHanded
-    );
+    const ModelData model = LoadModel(path);
 
-    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        fprintf(stderr, "ERROR::ASSIMP:: %s", importer.GetErrorString());
-        return -1;
-    }
+    const size_t meshes_to_register = Vector_ModelMesh_Length(model.mesh_data);
 
+    const Model model_to_register = {(int *) malloc(meshes_to_register * sizeof(int)), meshes_to_register};
+    for (size_t registration_count = 0; registration_count < meshes_to_register; ++registration_count) {
+        const ModelMesh m = model.mesh_data->data[registration_count];
 
-    // if we are here path is probably valid;
-    const char *last_slash = strrchr(path, '/');
-    const size_t chars_to_copy = last_slash ? last_slash - path : strlen(path);
-    char *directory = (char *) malloc((chars_to_copy + 1) * sizeof(char));
-    memcpy(directory, path, chars_to_copy * sizeof(char));
-    directory[chars_to_copy] = '\0';
+        const TextureData diffuse_texture = model.diffuse_textures->data[m.diffuse_index];
+        const TextureData specular_texture = model.specular_textures->data[m.specular_index];
 
-    // keep this bastard queue for now
-    // remove later because I hate STL
-    Queue_aiNodePtr *nodes_to_process = Queue_aiNodePtr_Create(100);
-    Queue_aiNodePtr_Enqueue(nodes_to_process, scene->mRootNode);
+        int diffuse_texture_id = -1;
+        int specular_texture_id = -1;
 
+        if (diffuse_texture.nrChannels != nil_texture.nrChannels) {
+            if (auto search = registered_textures.find(diffuse_texture.path_hash); search != registered_textures.end()) {
+                diffuse_texture_id = search->second;
+            } else {
+                diffuse_texture_id = RegisterTextureFromData(diffuse_texture);
+                registered_textures[diffuse_texture.path_hash] = diffuse_texture_id;
+            }
+            //load and register
+        }
 
-    const Model &model_to_register = {(int *) malloc(scene->mNumMeshes * sizeof(int)), scene->mNumMeshes};
-    int count = 0;
+        if (specular_texture.nrChannels != nil_texture.nrChannels) {
+            if (auto search = registered_textures.find(specular_texture.path_hash); search != registered_textures.end()) {
+                specular_texture_id = search->second;
+            } else {
+                specular_texture_id = RegisterTextureFromData(specular_texture);
+                registered_textures[specular_texture.path_hash] = specular_texture_id;
+            }
+            //load and register
+        }
 
-    ModelData model = LoadModel(path);
-    for (size_t i = 0; i<Vector_ModelMesh_Length(model.mesh_data); ++i) {
-        const ModelMesh m = model.mesh_data->data[i];
-        const int diffuse_texture_id = RegisterTextureFromData(m.diffuse);
-        const int specular_texture_id = RegisterTextureFromData(m.specular);
-
-        model_to_register.mesh_ids[count++] = Renderer_RegisterTexturedMesh(
+        model_to_register.mesh_ids[registration_count] = Renderer_RegisterTexturedMesh(
             diffuse_texture_id,
             specular_texture_id,
             -1,
-            // THIS IS A HACK FIX LATER
+            // TODO THIS IS A HACK that will work because everything is a float. FIX LATER!
             (float *) m.vertices,
             m.vertex_count * 8,
             m.indices,
@@ -1436,37 +1435,6 @@ void SendTextureDataToTheGPU() {
     }
 }
 
-
-int LoadTexture(const aiTextureType type, const char *directory, const aiMaterial *material) {
-    aiString str;
-    const unsigned int texture_count_for_type = material->GetTextureCount(type);
-    assert(("Currently we only support one texture per type", texture_count_for_type<=1));
-
-    if (texture_count_for_type == 0) {
-        return -1;
-    }
-
-
-    material->GetTexture(type, 0, &str);
-
-    const char *file_name = str.C_Str();
-    const size_t dir_name_len = strlen(directory);
-    const size_t file_name_len = strlen(file_name);
-
-    char *relative_path = (char *) malloc((dir_name_len + file_name_len + 2) * sizeof(char));
-    if (dir_name_len == 0) {
-        strcpy(relative_path, file_name);
-    } else {
-        strcpy(relative_path, directory);
-        strcat(relative_path, "/");
-        strcat(relative_path, file_name);
-    }
-
-    const int texture_id = Renderer_RegisterTextureFromPath(relative_path);
-    free(relative_path);
-
-    return texture_id;
-}
 
 Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians) {
     const Matrix4D m_z = rotation_z_matrix4D(v_comps_in_radians.z);

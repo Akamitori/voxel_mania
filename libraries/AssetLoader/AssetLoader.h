@@ -9,13 +9,18 @@
 #include "Vector3D.h"
 #include "export.h"
 
+
+
 struct TextureData {
     int width{};
     int height{};
     int nrChannels{};
     unsigned char *bytes{};
     char* path{};
+    uint64_t path_hash{};
 };
+
+constexpr TextureData nil_texture{-1,-1,-1,nullptr, nullptr,0};
 
 struct uv {
     float x;
@@ -29,10 +34,10 @@ struct Vertice {
 };
 
 struct ModelMesh {
-    TextureData diffuse;
-    TextureData specular;
-    TextureData emission;
-
+    int diffuse_index;
+    int specular_index;
+    int emission_index;
+    
     Vertice *vertices{};
     size_t vertex_count{};
 
@@ -43,7 +48,10 @@ struct ModelMesh {
 
 
 VECTOR_DECLARATION_LIBRARY(ModelMesh)
+VECTOR_DECLARATION_LIBRARY(TextureData)
 struct ModelData {
+    Vector_TextureData *diffuse_textures;
+    Vector_TextureData *specular_textures;
     Vector_ModelMesh* mesh_data{};
 };
 
@@ -52,7 +60,7 @@ struct ModelData {
 // emission
 
 
-EXPORTED TextureData LoadTextureNew(const char *path);
+EXPORTED TextureData LoadTexture(const char *path);
 EXPORTED ModelData LoadModel(const char *path);
 
 #endif //VOXEL_MANIA_ASSETLOADER_H
