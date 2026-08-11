@@ -34,7 +34,7 @@ if (MSVC)
         set(ASSIMP_LIB_NAME "assimp-vc143-mt")
     endif ()
 else ()
-    set(ASSIMP_LIB_NAME "assimp")
+    set(ASSIMP_LIB_NAME "assimpd")
 endif ()
 
 # assimp with incremental building

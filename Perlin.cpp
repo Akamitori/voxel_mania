@@ -1,5 +1,6 @@
 ﻿#include "Perlin.h"
 #include <cassert>
+#include <cstring>
 
 
 #include "math_ops.h"

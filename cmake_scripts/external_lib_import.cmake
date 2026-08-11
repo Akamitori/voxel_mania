@@ -152,6 +152,7 @@ function(import_external_library LIB_NAME)
                 -DCMAKE_POSITION_INDEPENDENT_CODE=ON
                 -DCMAKE_CXX_STANDARD=${CMAKE_CXX_STANDARD}
                 -DCMAKE_CXX_STANDARD_REQUIRED=ON
+                -DCMAKE_INSTALL_LIBDIR=lib
                 ${IMPORT_CMAKE_ARGS}
                 BUILD_BYPRODUCTS ${BUILD_BYPRODUCTS}
                 BUILD_ALWAYS 0

@@ -13,6 +13,8 @@
 #define STB_IMAGE_IMPLEMENTATION
 
 
+#include <cfloat>
+
 #include "stb_image.h"
 #include "Transformations.h"
 #include "Trigonometry.h"
@@ -31,7 +33,7 @@ QUEUE_DECLARATION_STATIC(aiNodePtr)
 
 QUEUE_IMPLEMENTATION(aiNodePtr)
 
-static Camera *SceneCamera = nullptr;
+Camera *SceneCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
