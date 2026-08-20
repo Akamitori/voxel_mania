@@ -1,11 +1,14 @@
 ﻿#ifndef RENDERER_H
 #define RENDERER_H
 
+#include <cassert>
+
 #include "Vector3D.h"
 #include "export.h"
 #include "SDL3/SDL_video.h"
 #include <cstdint>
-#include "GL/glew.h"
+#include <cstdio>
+#include "RendererTypes.h"
 
 struct Matrix4D;
 struct Vector4D;
@@ -15,58 +18,10 @@ extern EXPORTED Camera *SceneCamera;
 extern EXPORTED SDL_Window *window;
 extern EXPORTED SDL_GLContext open_gl_context;
 
-
-struct EXPORTED Material {
-    float shininess;
-};
-
-struct EXPORTED PointLight {
-    alignas(16)Vector3D position;
-    alignas(16)Vector3D ambient;
-    alignas(16)Vector3D diffuse;
-    alignas(16)Vector3D specular;
-    float linear_factor;
-    float quadric_factor;
-};
-
-struct EXPORTED DirectionalLight {
-    alignas(16)Vector3D direction;
-    alignas(16)Vector3D ambient;
-    alignas(16)Vector3D diffuse;
-    alignas(16)Vector3D specular;
-};
-
-struct EXPORTED SpotLight {
-    alignas(16)Vector3D position;
-    alignas(16)Vector3D direction;
-    alignas(16)Vector3D ambient;
-    alignas(16)Vector3D diffuse;
-    alignas(16)Vector3D specular;
-    float linear_factor;
-    float quadric_factor;
-    float inner_cutOff;
-    float outer_cutOff;
-};
-
-enum class TextureWrapMode : uint32_t {
-    REPEAT = GL_REPEAT,
-    CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
-};
-
-struct EXPORTED Texture_Parameters {
-    TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
-    TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
-    bool convert_from_srgb_to_linear_space = false;
-};
-
-struct EXPORTED Transform {
-    Vector3D Position{0, 0, 0};
-    Vector3D Rotation{0, 0, 0};
-    Vector3D Scale{1, 1, 1};
-};
-
 EXPORTED void Renderer_Init(int screen_width, int screen_height, float fov, float z_near, float z_far, int anti_aliasing_samples = 0);
 
+// this API uses just positions
+// we can update it to reflect that!
 EXPORTED int Renderer_RegisterPrimitiveMeshData(
     const float *vertices,
     size_t vertice_count,
@@ -74,6 +29,8 @@ EXPORTED int Renderer_RegisterPrimitiveMeshData(
     size_t index_count
 );
 
+// this API uses just positiosn and normals
+// we can update it to reflect that!
 EXPORTED int Renderer_RegisterUnshadedTexture(
     const float *vertices,
     size_t vertice_count,
@@ -86,6 +43,9 @@ EXPORTED int Renderer_RegisterTextureFromPath(
     Texture_Parameters texture_parameters = {}
 );
 
+// this is the full deal
+// so we can update the input to reflect this
+// work for later but it would be nice i guess
 EXPORTED int Renderer_RegisterTexturedMesh(
     int diffuse_texture_id,
     int specular_texture_id,
@@ -93,7 +53,9 @@ EXPORTED int Renderer_RegisterTexturedMesh(
     const float *vertices,
     size_t vertice_count,
     const uint32_t *indices,
-    size_t index_count
+    size_t index_count,
+    const VertexBoneData* vertex_bone_data,
+    size_t vertex_bone_data_count
 );
 
 EXPORTED int Renderer_RegisterTextured_Cross_Mesh(int texture_id, float scale = 1);
@@ -127,5 +89,7 @@ EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_he
 EXPORTED void Renderer_CameraUpdate();
 
 EXPORTED void Renderer_Change_Emission(int mesh_id, int emission_texture_id);
+
+EXPORTED void Mess_With_The_Bones();
 
 #endif //RENDERER_H

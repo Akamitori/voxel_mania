@@ -27,7 +27,6 @@
 
 #include <assimp/Importer.hpp>
 #include <assimp/scene.h>
-#include <assimp/postprocess.h>
 
 #include "AssetLoader.h"
 
@@ -44,6 +43,7 @@ SDL_GLContext open_gl_context{};
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
+static unsigned int world_geometry_program_skeletal_models;
 static unsigned int cursor_program;
 
 
@@ -142,6 +142,30 @@ struct Mesh {
 
     uint32_t *indices{nullptr};
     size_t index_count{0};
+    
+    VertexBoneData *BoneDataPerVertice{nullptr};
+    size_t bone_data_per_vertice_count{0};
+
+    GLuint VAO{0};
+    GLuint VBO{0};
+    GLuint VBO_Skeletal{0};
+    GLuint VBE{0};
+    int diffuse_texture_id{-1};
+    int specular_texture_id{-1};
+    int emission_texture_id{-1};
+    unsigned int program_id{0};
+};
+
+// oh noessss data duplication omg :'(
+struct SkinnedMesh {
+    int id{};
+    float *vertices{nullptr};
+    size_t vertice_count{0};
+
+    uint32_t *indices{nullptr};
+    size_t index_count{0};
+    
+  
 
     GLuint VAO{0};
     GLuint VBO{0};
@@ -150,6 +174,7 @@ struct Mesh {
     int specular_texture_id{-1};
     int emission_texture_id{-1};
     unsigned int program_id{0};
+    
 };
 
 struct Model {
@@ -226,6 +251,7 @@ static Spot_Lights Spot_Lights{};
 
 
 VECTOR_IMPLEMENTATION_STATIC(Mesh);
+VECTOR_IMPLEMENTATION_STATIC(SkinnedMesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
 VECTOR_IMPLEMENTATION_STATIC(Texture);
 VECTOR_IMPLEMENTATION_STATIC(uint32_t);
@@ -234,6 +260,7 @@ VECTOR_IMPLEMENTATION_STATIC(DrawCommand);
 
 static Vector_Model *Models = Vector_Model_Create(100);
 static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
+static Vector_SkinnedMesh *SkinnedMeshes = Vector_SkinnedMesh_Create(100);
 static Vector_Mesh *UnshadedMeshes = Vector_Mesh_Create(100);
 static Vector_Texture *Textures = Vector_Texture_Create(100);
 static Vector_DrawCommand *DrawCommands = Vector_DrawCommand_Create(1000);
@@ -242,7 +269,7 @@ static void SendLightUBOsToTheGPU();
 
 static void SendGeometryDataToTheGPU();
 
-static void SendLightGeometryDataToTheGPU();
+static void SendUnshadedGeometryDataToTheGPU();
 
 static void SendTextureDataToTheGPU();
 
@@ -331,6 +358,21 @@ void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
+    world_geometry_program_skeletal_models = InitializeProgram("program_for_skeletal_models");
+    
+    GLint linked = 0;
+    glGetProgramiv(world_geometry_program_skeletal_models, GL_LINK_STATUS, &linked);
+    if (!linked) {
+        char log[1024]; glGetProgramInfoLog(world_geometry_program_skeletal_models, 1024, nullptr, log);
+        fprintf(stderr, "skeletal link failed: %s\n", log);
+    }
+    GLint n = 0; glGetProgramiv(world_geometry_program_skeletal_models, GL_ACTIVE_UNIFORMS, &n);
+    for (GLint i = 0; i < n; ++i) {
+        char name[128]; GLsizei l; GLint sz; GLenum ty;
+        glGetActiveUniform(world_geometry_program_skeletal_models, i, sizeof(name), &l, &sz, &ty, name);
+        fprintf(stderr, "skeletal uniform: %s\n", name);
+    }
+    
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
@@ -498,8 +540,9 @@ void Renderer_Init(const int screen_width,
     unsigned int programs_to_initialize[]{
         world_geometry_program,
         world_geometry_program_cross_textures,
+        world_geometry_program_skeletal_models,
         world_unshaded_geometry_program,
-        Screen_Texture.shadow_map_program,
+        Screen_Texture.shadow_map_program
     };
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
@@ -702,6 +745,7 @@ int Renderer_RegisterPrimitiveMeshData(
         m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
         m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
 
+        // no normals for the wicked
         m.vertices[v * float_per_vertex + 3] = 0;
         m.vertices[v * float_per_vertex + 4] = 0;
         m.vertices[v * float_per_vertex + 5] = 0;
@@ -830,7 +874,9 @@ int Renderer_RegisterTexturedMesh(
     const float *vertices,
     const size_t vertice_count,
     const uint32_t *indices,
-    const size_t index_count
+    const size_t index_count,
+    const VertexBoneData* vertex_bone_data,
+    size_t vertex_bone_data_count
 ) {
     assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
     assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
@@ -841,9 +887,11 @@ int Renderer_RegisterTexturedMesh(
 
     m.vertice_count = vertice_count;
     m.index_count = index_count;
+    m.bone_data_per_vertice_count = vertex_bone_data_count;
 
     m.vertices = (float *) malloc(m.vertice_count * sizeof(float));
     m.indices = (uint32_t *) malloc(m.index_count * sizeof(uint32_t));
+    
 
     memcpy(m.vertices, vertices, m.vertice_count * sizeof(float));
     memcpy(m.indices, indices, m.index_count * sizeof(uint32_t));
@@ -852,7 +900,15 @@ int Renderer_RegisterTexturedMesh(
     m.diffuse_texture_id = diffuse_texture_id;
     m.specular_texture_id = specular_texture_id;
     m.emission_texture_id = emission_texture_id;
-    m.program_id = world_geometry_program;
+    
+    if (m.bone_data_per_vertice_count>0) {
+        m.program_id = world_geometry_program_skeletal_models;
+        m.BoneDataPerVertice=(VertexBoneData*) malloc(m.bone_data_per_vertice_count * sizeof(VertexBoneData));
+        memcpy(m.BoneDataPerVertice, vertex_bone_data, m.bone_data_per_vertice_count * sizeof(VertexBoneData));
+    }
+    else {
+        m.program_id = world_geometry_program;
+    }
 
     Vector_Mesh_Add(Meshes, m);
 
@@ -961,10 +1017,14 @@ std::unordered_map<uint64_t, int> registered_textures{};
 int Renderer_Register_Model(const char *path) {
     const ModelData model = LoadModel(path);
 
-    const size_t meshes_to_register = Vector_ModelMesh_Length(model.mesh_data);
+    const size_t regular_meshes_to_register = Vector_ModelMesh_Length(model.mesh_data);
 
-    const Model model_to_register = {(int *) malloc(meshes_to_register * sizeof(int)), meshes_to_register};
-    for (size_t registration_count = 0; registration_count < meshes_to_register; ++registration_count) {
+    const Model model_to_register = {
+        (int *) malloc(regular_meshes_to_register * sizeof(int)), 
+        regular_meshes_to_register
+    };
+    
+    for (size_t registration_count = 0; registration_count < regular_meshes_to_register; ++registration_count) {
         const ModelMesh m = model.mesh_data->data[registration_count];
 
         const TextureData diffuse_texture = model.diffuse_textures->data[m.diffuse_index];
@@ -992,7 +1052,7 @@ int Renderer_Register_Model(const char *path) {
             }
             //load and register
         }
-
+        
         model_to_register.mesh_ids[registration_count] = Renderer_RegisterTexturedMesh(
             diffuse_texture_id,
             specular_texture_id,
@@ -1001,7 +1061,9 @@ int Renderer_Register_Model(const char *path) {
             (float *) m.vertices,
             m.vertex_count * 8,
             m.indices,
-            m.index_count
+            m.index_count,
+            m.BoneDataPerVertice,
+            m.bone_data_per_vertice_count
         );
     }
 
@@ -1083,7 +1145,7 @@ int Renderer_Register_Spot_Light(const SpotLight &light) {
 // we can probably do some post-processing here if we want for the index sorting
 void Renderer_FinalizeMeshLoading() {
     SendGeometryDataToTheGPU();
-    SendLightGeometryDataToTheGPU();
+    SendUnshadedGeometryDataToTheGPU();
     SendTextureDataToTheGPU();
     SendLightUBOsToTheGPU();
     SendScreenTextureDataToTheGPU();
@@ -1245,6 +1307,7 @@ void Renderer_Destroy() {
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
+        glDeleteBuffers(1,&m.VBO_Skeletal);
     }
 
     for (size_t i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
@@ -1293,6 +1356,17 @@ void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) 
     Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
 }
 
+ int bones=0;
+
+void Mess_With_The_Bones() {
+    glUseProgram(world_geometry_program_skeletal_models);   // <-- ensure it's active
+    const GLint bones_loc = glGetUniformLocation(world_geometry_program_skeletal_models, "gDisplayBoneIndex");
+    bones++;
+    bones%=28;
+    glUniform1i(bones_loc,bones);
+    
+}
+
 
 void Draw_Cursor() {
     glDisable(GL_STENCIL_TEST);
@@ -1323,8 +1397,12 @@ void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-// this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
+    const int pos_location_attr = 0;
+    const int normal_location_attr = 1;
+    const int uv_location_attr=2;
+    const int BoneIDs_location_attr=3;
+    const int Weights_location_attr=4;
     for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         auto &m = Meshes->data[i];
 
@@ -1336,21 +1414,42 @@ void SendGeometryDataToTheGPU() {
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * m.vertice_count, m.vertices, GL_STATIC_DRAW);
 
         constexpr int float_per_vertex = 8;
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
+        
+        glEnableVertexAttribArray(pos_location_attr);
+        glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
 
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+        glEnableVertexAttribArray(normal_location_attr);
+        glVertexAttribPointer(normal_location_attr, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
                               reinterpret_cast<void *>(3 * sizeof(float)));
 
 
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+        glEnableVertexAttribArray(uv_location_attr);
+        glVertexAttribPointer(uv_location_attr, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
                               reinterpret_cast<void *>(6 * sizeof(float)));
 
         glGenBuffers(1, &m.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.VBE);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * m.index_count, m.indices, GL_STATIC_DRAW);
+
+        if (m.bone_data_per_vertice_count > 0) {
+            glGenBuffers(1, &m.VBO_Skeletal);
+            glBindBuffer(GL_ARRAY_BUFFER, m.VBO_Skeletal);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(VertexBoneData) * m.bone_data_per_vertice_count, m.BoneDataPerVertice, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(BoneIDs_location_attr);
+            glVertexAttribIPointer(BoneIDs_location_attr, MAX_NUM_BONES_PER_VERTEX,GL_UNSIGNED_INT, sizeof(VertexBoneData), nullptr);
+
+            glEnableVertexAttribArray(Weights_location_attr);
+            glVertexAttribPointer(Weights_location_attr, MAX_NUM_BONES_PER_VERTEX,GL_FLOAT, GL_FALSE, sizeof(VertexBoneData),
+                                  reinterpret_cast<void *>(MAX_NUM_BONES_PER_VERTEX * sizeof(uint32_t)));
+        }
+        
+        // generate the buffer here for the other data please
+        // our vertex bone data is nicely packed per vertice per mesh
+        // so we can literally sent it over
+        // as long as we tranlate our data wisely ;)
+        
+        // we have up to n vertices
 
         free(m.vertices);
         m.vertices = nullptr;
@@ -1361,7 +1460,7 @@ void SendGeometryDataToTheGPU() {
 }
 
 // this is for untextured meshes ;)
-void SendLightGeometryDataToTheGPU() {
+void SendUnshadedGeometryDataToTheGPU() {
     for (int i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
         auto &light = UnshadedMeshes->data[i];
         glUseProgram(light.program_id);

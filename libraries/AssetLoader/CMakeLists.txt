@@ -6,7 +6,8 @@ add_and_export_library(AssetLoader TYPE SHARED FILES
 
 target_link_libraries(AssetLoader
         PUBLIC
-        LinearAlgebra        # Camera uses Vector3D in public header
+        LinearAlgebra        # Camera uses Vector3D in public header      
+        Common_Types
         PRIVATE
         assimp::assimp
         Custom_Containers

@@ -19,6 +19,7 @@
 
 #include "Main_Containers.h"
 #include "Perlin.h"
+#include "AssetLoader/AssetLoader.h"
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,
@@ -60,7 +61,9 @@ int RegisterCubeMesh3Part(int diffuse_texture_id, int specular_texture_id, int e
         cube::vertex_data_uv_3_part_texture,
         cube::vertices_count_uv,
         cube::vertex_indices_uvs,
-        cube::vertex_indices_count_uv
+        cube::vertex_indices_count_uv,
+        {},
+        0
     );
 }
 
@@ -72,7 +75,9 @@ int RegisterCubeMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
         cube::vertex_data_uv_1_part_texture,
         cube::vertices_count_uv,
         cube::vertex_indices_uvs,
-        cube::vertex_indices_count_uv
+        cube::vertex_indices_count_uv,
+        {},
+        0
     );
 }
 
@@ -84,7 +89,9 @@ int RegisterQuadMesh1Part(int diffuse_texture_id, int specular_texture_id, int e
         quad::vertex_data_uv_1_part_texture_single_faced,
         quad::vertices_count_uv_single_faced,
         quad::vertex_indices_uvs_single_faced,
-        quad::vertex_indices_count_uv_single_faced
+        quad::vertex_indices_count_uv_single_faced,
+        {},
+        0
     );
 }
 
@@ -96,7 +103,9 @@ int RegisterQuadMesh2Part(int diffuse_texture_id, int specular_texture_id, int e
         quad::vertex_data_uv_1_part_texture,
         quad::vertices_count_uv,
         quad::vertex_indices_uvs,
-        quad::vertex_indices_count_uv
+        quad::vertex_indices_count_uv,
+        {},
+        0
     );
 }
 
@@ -177,6 +186,8 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
 
 int main() {
     try {
+        //parse_scene("data/models/boblampclean.md5mesh");
+        //return 0;
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
 
@@ -184,7 +195,9 @@ int main() {
         const int woodTextureId = Renderer_RegisterTextureFromPath("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
         const int grassTextureId = Renderer_RegisterTextureFromPath("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
         const int mushroomTextureId = Renderer_RegisterTextureFromPath("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
-        const int crate_Texture_diffuse_id = Renderer_RegisterTextureFromPath("data/textures/box_container.png", {.convert_from_srgb_to_linear_space = true});
+        const int crate_Texture_diffuse_id = Renderer_RegisterTextureFromPath("data/textures/box_container.png", {
+                                                                                  .convert_from_srgb_to_linear_space = true
+                                                                              });
         const int crate_Texture_specular_id = Renderer_RegisterTextureFromPath("data/textures/box_container_specular.png"); // specular stays as is
         const int tranrsparent_window_texture = Renderer_RegisterTextureFromPath(
             "data/textures/blending_transparent_window.png",
@@ -195,28 +208,28 @@ int main() {
             }
         );
 
-        // if our problem is wrapping cubes and data like that
-        // we can probably have the API acknowledge that
-        const int grass_cube_id = RegisterCubeMesh3Part(
-            grassTextureId, grassTextureId
-        );
-
-        const int white_cube_id = RegisterCubeMesh3Part(
-            whiteTextureId, whiteTextureId
-        );
-
-        const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId, woodTextureId);
-
-        const int crate_cube_id = RegisterCubeMesh1Part(crate_Texture_diffuse_id, crate_Texture_specular_id);
-
-        const int glass_cube_id = RegisterQuadMesh2Part(tranrsparent_window_texture, tranrsparent_window_texture);
-
-        const int mushroom_cube_id = Renderer_RegisterTextured_Cross_Mesh(
-            mushroomTextureId,
-            0.5f
-        );
-
-
+        // // if our problem is wrapping cubes and data like that
+        // // we can probably have the API acknowledge that
+        // const int grass_cube_id = RegisterCubeMesh3Part(
+        //     grassTextureId, grassTextureId
+        // );
+        //
+        // const int white_cube_id = RegisterCubeMesh3Part(
+        //     whiteTextureId, whiteTextureId
+        // );
+        //
+        // const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId, woodTextureId);
+        //
+        // const int crate_cube_id = RegisterCubeMesh1Part(crate_Texture_diffuse_id, crate_Texture_specular_id);
+        //
+        // const int glass_cube_id = RegisterQuadMesh2Part(tranrsparent_window_texture, tranrsparent_window_texture);
+        //
+        // const int mushroom_cube_id = Renderer_RegisterTextured_Cross_Mesh(
+        //     mushroomTextureId,
+        //     0.5f
+        // );
+        //
+        //
         const int light_source = Renderer_RegisterUnshadedTexture(
             cube::vertex_data,
             cube::vertices_count,
@@ -228,7 +241,8 @@ int main() {
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
         // loads a model . skip for now because this is slow as fuck
-        const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
+        //const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
+        const int bob = Renderer_Register_Model("data/models/boblampclean.md5mesh");
 
 
         // Setup Dear ImGui context
@@ -264,7 +278,7 @@ int main() {
         Vector_mesh_instance *opaque_meshes = Vector_mesh_instance_Create(30);
         Vector_mesh_instance *transparent_models = Vector_mesh_instance_Create(30);
 
-        Create_Scene(wood_cube_id, crate_cube_id, opaque_meshes);
+        //Create_Scene(wood_cube_id, crate_cube_id, opaque_meshes);
 
         // Target cube πιο μακριά
         // Vector_mesh_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
@@ -322,22 +336,32 @@ int main() {
             0.22f, // aggressive linear falloff
             0.20f // aggressive quadratic
         };
-        
-        our_dir_light={
-        {1.0f, 0.0f, -1.0f},
-        {0.1f, 0.1f, 0.1f},  // ambient - carries most of the visibility
-        {0.025f, 0.025f, 0.025f},  // diffuse - barely contributes
-        {0.0f, 0.0f, 0.0f}   // specular - off
-        };
-        
-        our_dir_light = {
-            {1.0f, 0.0f, -1.0f},
-            {0.01f, 0.01f, 0.01f},  // ambient - barely exists
-            {0.15f, 0.14f, 0.13f},  // diffuse - reveals shape, slightly warm
-            {0.0f, 0.0f, 0.0f}      // specular - off
-        };
+
+        // our_dir_light={
+        // {1.0f, 0.0f, -1.0f},
+        // {0.1f, 0.1f, 0.1f},  // ambient - carries most of the visibility
+        // {0.025f, 0.025f, 0.025f},  // diffuse - barely contributes
+        // {0.0f, 0.0f, 0.0f}   // specular - off
+        // };
+        //
+        // our_dir_light = {
+        //     {1.0f, 0.0f, -1.0f},
+        //     {0.01f, 0.01f, 0.01f},  // ambient - barely exists
+        //     {0.15f, 0.14f, 0.13f},  // diffuse - reveals shape, slightly warm
+        //     {0.0f, 0.0f, 0.0f}      // specular - off
+        // };
 
         //Renderer_Register_Point_Light(our_light);
+
+
+        our_dir_light = {
+            {1.0f, -1.0f, -1.0f}, // direction - angled down and forward, easier to see volume
+
+            {0.2f, 0.2f, 0.2f}, // ambient - lifted so shadow areas aren't black
+            {1.0f, 0.95f, 0.9f}, // diffuse - close to white, strong
+            {0.8f, 0.8f, 0.8f} // specular - strong highlights
+        };
+
         Renderer_Register_Spot_Light(our_spot_light);
         Renderer_Register_Directional_Light(our_dir_light);
 
@@ -361,6 +385,14 @@ int main() {
         double ms_per_frame = 0.0;
         int objects = 0;
         static char debug_text[1024] = {};
+
+
+        Transform trans = {
+            {0, 1, -10},
+            {DegreeToRadians(0), 0, 0},
+            {0.25, 0.25, 0.25}
+
+        };
 
 
         while (keepRunning) {
@@ -399,8 +431,8 @@ int main() {
                 const mesh_instance m = opaque_meshes->data[i];
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
-            
-            Renderer_Draw_Model(back_pack_model,{},{},{});
+
+            Renderer_Draw_Model(bob, trans, {}, {});
 
             Renderer_ResolveDrawCalls();
 
@@ -419,7 +451,13 @@ int main() {
             ImGui::Begin("CSM Debug");
             ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text),
                                       ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
+            
+           
             ImGui::End();
+            
+            if (ImGui::Button("Test your might")) {
+                Mess_With_The_Bones();
+            }
 
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());

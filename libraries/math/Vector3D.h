@@ -9,7 +9,7 @@ struct EXPORTED Vector3D {
     float z;
 };
 
-class Vector4D;
+struct Vector4D;
 
 EXPORTED float dot(const Vector3D &a, const Vector3D &b);
 
