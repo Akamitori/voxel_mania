@@ -31,6 +31,70 @@
 #include "AssetLoader.h"
 
 
+static unsigned int gizmo_program;
+static unsigned int gizmo_vao, gizmo_vbo;
+
+void Initialize_Gizmo() {
+    gizmo_program = InitializeProgram("gizmo");
+
+    // 3 lines from origin: X=red, Y=green, Z=blue
+    // matches your world convention: x=right, y=north, z=up
+    const float axis_length = 15.0f;
+    const float verts[] = {
+        // pos                          // color
+        0,0,0,                          1,0,0,
+        axis_length,0,0,                1,0,0,   // X - red
+
+        0,0,0,                          0,1,0,
+        0,axis_length,0,                0,1,0,   // Y - green
+
+        0,0,0,                          0,0,1,
+        0,0,axis_length,                0,0,1,   // Z - blue
+    };
+
+    glGenVertexArrays(1, &gizmo_vao);
+    glGenBuffers(1, &gizmo_vbo);
+
+    glBindVertexArray(gizmo_vao);
+    glBindBuffer(GL_ARRAY_BUFFER, gizmo_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(verts), verts, GL_STATIC_DRAW);
+
+    constexpr int stride = 6 * sizeof(float);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, stride, nullptr);
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, stride, reinterpret_cast<void*>(3 * sizeof(float)));
+
+    glBindVertexArray(0);
+
+    // bind ViewMatrices UBO for this program too, same as the others
+    const unsigned int idx = glGetUniformBlockIndex(gizmo_program, "ViewMatrices");
+    if (idx != GL_INVALID_INDEX) {
+        glUniformBlockBinding(gizmo_program, idx, 0);
+    }
+}
+
+void Renderer_Draw_Gizmo(const Vector3D &world_position) {
+    glDisable(GL_DEPTH_TEST); // always visible, easier to read
+    glUseProgram(gizmo_program);
+
+    Matrix4D model_matrix = translation_matrix4D(world_position);
+    const GLint model_matrix_id = glGetUniformLocation(gizmo_program, "model_matrix");
+    glUniformMatrix4fv(model_matrix_id, 1, GL_FALSE, &model_matrix[0].x);
+
+    glBindVertexArray(gizmo_vao);
+    glLineWidth(3.0f);
+    glDrawArrays(GL_LINES, 0, 6);
+    glBindVertexArray(0);
+
+    glEnable(GL_DEPTH_TEST);
+}
+
+static Vector3D gizmo_pos;
+void Renderer_SetGizmoPosition(Vector3D v) {
+    gizmo_pos=v;
+}
+
 typedef aiNode *aiNodePtr;
 QUEUE_DECLARATION_STATIC(aiNodePtr)
 
@@ -99,7 +163,8 @@ static unsigned int defaultEmissionTexture;
 enum class DrawCommandType {
     None = 0,
     Mesh,
-    Model,
+    Static_Model,
+    Skeletal_Model,
     Mesh_Unshaded
 };
 
@@ -109,6 +174,7 @@ struct DrawCommand {
     Transform Transform{};
     Material Material{};
     Vector3D Color{};
+    double delta_time_ms{};
 };
 
 enum class TextureType {
@@ -143,6 +209,8 @@ struct Mesh {
     uint32_t *indices{nullptr};
     size_t index_count{0};
     
+    // giga structure for now because why not
+    // we can split later biatch
     VertexBoneData *BoneDataPerVertice{nullptr};
     size_t bone_data_per_vertice_count{0};
 
@@ -150,31 +218,10 @@ struct Mesh {
     GLuint VBO{0};
     GLuint VBO_Skeletal{0};
     GLuint VBE{0};
-    int diffuse_texture_id{-1};
-    int specular_texture_id{-1};
-    int emission_texture_id{-1};
+    uint32_t diffuse_texture_id{static_cast<uint32_t>(-1)};
+    uint32_t specular_texture_id{static_cast<uint32_t>(-1)};
+    uint32_t emission_texture_id{static_cast<uint32_t>(-1)};
     unsigned int program_id{0};
-};
-
-// oh noessss data duplication omg :'(
-struct SkinnedMesh {
-    int id{};
-    float *vertices{nullptr};
-    size_t vertice_count{0};
-
-    uint32_t *indices{nullptr};
-    size_t index_count{0};
-    
-  
-
-    GLuint VAO{0};
-    GLuint VBO{0};
-    GLuint VBE{0};
-    int diffuse_texture_id{-1};
-    int specular_texture_id{-1};
-    int emission_texture_id{-1};
-    unsigned int program_id{0};
-    
 };
 
 struct Model {
@@ -251,7 +298,6 @@ static Spot_Lights Spot_Lights{};
 
 
 VECTOR_IMPLEMENTATION_STATIC(Mesh);
-VECTOR_IMPLEMENTATION_STATIC(SkinnedMesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
 VECTOR_IMPLEMENTATION_STATIC(Texture);
 VECTOR_IMPLEMENTATION_STATIC(uint32_t);
@@ -260,7 +306,6 @@ VECTOR_IMPLEMENTATION_STATIC(DrawCommand);
 
 static Vector_Model *Models = Vector_Model_Create(100);
 static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
-static Vector_SkinnedMesh *SkinnedMeshes = Vector_SkinnedMesh_Create(100);
 static Vector_Mesh *UnshadedMeshes = Vector_Mesh_Create(100);
 static Vector_Texture *Textures = Vector_Texture_Create(100);
 static Vector_DrawCommand *DrawCommands = Vector_DrawCommand_Create(1000);
@@ -544,6 +589,9 @@ void Renderer_Init(const int screen_width,
         world_unshaded_geometry_program,
         Screen_Texture.shadow_map_program
     };
+    
+    Initialize_Gizmo();
+    
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
         const unsigned int ViewMatrices_Index = glGetUniformBlockIndex(program_to_initialize, "ViewMatrices");
@@ -1012,7 +1060,22 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
     return currentId;
 }
 
-std::unordered_map<uint64_t, int> registered_textures{};
+#include "hashmap_container.h"
+
+typedef const char* cstr;
+
+HASHMAP_IMPLEMENTATION_STATIC(cstr, uint32_t)
+static int cstr_uint32_t_Hashmap_key_eq(cstr key_a, cstr key_b) {
+    return strcmp(key_a,key_b) == 0;
+}
+
+static uint64_t cstr_uint32_t_Hashmap_key_hash(cstr key_a) {
+    const uint8_t* byte_ptr= (const uint8_t*)key_a; 
+    return fnv1a(byte_ptr,strlen(key_a));
+}   
+
+static cstr_uint32_t_hashmap* registered_textures= cstr_uint32_t_Hashmap_Create(1024,0.9);
+
 
 int Renderer_Register_Model(const char *path) {
     const ModelData model = LoadModel(path);
@@ -1030,28 +1093,36 @@ int Renderer_Register_Model(const char *path) {
         const TextureData diffuse_texture = model.diffuse_textures->data[m.diffuse_index];
         const TextureData specular_texture = model.specular_textures->data[m.specular_index];
 
-        int diffuse_texture_id = -1;
-        int specular_texture_id = -1;
+        uint32_t diffuse_texture_id = -1;
+        uint32_t specular_texture_id = -1;
 
         if (diffuse_texture.nrChannels != nil_texture.nrChannels) {
-            if (auto search = registered_textures.find(diffuse_texture.path_hash); search != registered_textures.end()) {
-                diffuse_texture_id = search->second;
+            uint32_t* diffuse_id= cstr_uint32_t_Hashmap_Find(registered_textures,diffuse_texture.path);
+            if (diffuse_id) {
+                diffuse_texture_id =*diffuse_id;
             } else {
                 diffuse_texture_id = RegisterTextureFromData(diffuse_texture);
-                registered_textures[diffuse_texture.path_hash] = diffuse_texture_id;
+                cstr_uint32_t_Hashmap_Insert(registered_textures, {diffuse_texture.path,diffuse_texture_id});
             }
             //load and register
         }
 
         if (specular_texture.nrChannels != nil_texture.nrChannels) {
-            if (auto search = registered_textures.find(specular_texture.path_hash); search != registered_textures.end()) {
-                specular_texture_id = search->second;
+            uint32_t* specular_id= cstr_uint32_t_Hashmap_Find(registered_textures,specular_texture.path);
+            if (specular_id) {
+                specular_texture_id =*specular_id;
             } else {
                 specular_texture_id = RegisterTextureFromData(specular_texture);
-                registered_textures[specular_texture.path_hash] = specular_texture_id;
+                cstr_uint32_t_Hashmap_Insert(registered_textures, {specular_texture.path,specular_texture_id});
             }
-            //load and register
         }
+        
+        
+        int offset_index=model.mesh_base_vertex->data[registration_count];
+        
+        // this is a hack to because i am lazy okay
+        VertexBoneData* data=(VertexBoneData*) calloc(m.vertex_count, sizeof(VertexBoneData));
+        memcpy(data,&model.BoneDataPerMeshPerVertice->data[offset_index],sizeof(VertexBoneData)*m.vertex_count);
         
         model_to_register.mesh_ids[registration_count] = Renderer_RegisterTexturedMesh(
             diffuse_texture_id,
@@ -1062,9 +1133,11 @@ int Renderer_Register_Model(const char *path) {
             m.vertex_count * 8,
             m.indices,
             m.index_count,
-            m.BoneDataPerVertice,
-            m.bone_data_per_vertice_count
+            data,
+            m.vertex_count
         );
+        
+        free(data);
     }
 
     const int model_id = Vector_Model_Length(Models);
@@ -1156,7 +1229,11 @@ void Renderer_Draw_Mesh(const int mesh_id, const Transform &transform, const Vec
 }
 
 void Renderer_Draw_Model(const int model_id, const Transform &transform, const Vector3D color, const Material material) {
-    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Model, model_id, transform, material, color});
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Static_Model, model_id, transform, material, color});
+}
+
+void Renderer_Draw_Skeletal_Model(int model_id, const Transform &transform, Vector3D color, Material material, const double delta_time_ms) {
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Skeletal_Model, model_id, transform, material, color, delta_time_ms});
 }
 
 void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, const Vector3D color) {
@@ -1202,6 +1279,7 @@ void Draw_Without_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
+    Renderer_Draw_Gizmo(gizmo_pos); 
 
     // screen pass
     Draw_To_Screen_Texture();
@@ -1217,6 +1295,8 @@ void Draw_With_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
+    Renderer_Draw_Gizmo(gizmo_pos);
+    
 
     // blit the anti alias buffer
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
@@ -1270,7 +1350,16 @@ void ExecuteDrawCommands() {
                 Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
                 break;
             }
-            case DrawCommandType::Model: {
+            case DrawCommandType::Static_Model: {
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
+                }
+                break;
+            }
+            case DrawCommandType::Skeletal_Model: {
+                // just drawing will probably not cut it but we are close bro!
                 const Model model = Models->data[draw_command.Draw_Entity_Id];
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];
@@ -1690,7 +1779,18 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
                 glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
                 break;
             }
-            case DrawCommandType::Model: {
+            case DrawCommandType::Static_Model: {
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    glBindVertexArray(mesh.VAO);
+                    assert(mesh.index_count <= INT_MAX); // this should never happen 
+                    glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
+                }
+                break;
+            }
+            // do some BS HERE
+            case DrawCommandType::Skeletal_Model: {
                 const Model model = Models->data[draw_command.Draw_Entity_Id];
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];

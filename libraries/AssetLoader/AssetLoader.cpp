@@ -7,8 +7,6 @@
 #define STB_IMAGE_IMPLEMENTATION
 
 
-#include <unordered_map>
-
 #include "stb_image.h"
 
 #include <assimp/Importer.hpp>
@@ -16,27 +14,50 @@
 #include <assimp/postprocess.h>
 
 
-#include <map>
 #include <string>
 
+#include "hashmap_container.h"
+#include "Matrix4D.h"
 
-size_t get_bone_id(const aiBone *pBone);
+struct bone_id_result {
+    size_t bone_id{};
+    bool new_bone{};
+};
 
-uint64_t fnv1a(const char *s) {
-    const size_t len = strlen(s);
-    uint64_t hash = 14695981039346656037ULL;
-    for (size_t i = 0; i < len; i++) {
-        hash ^= (uint8_t) s[i];
-        hash *= 1099511628211ULL;
-    }
-    return hash;
+VECTOR_IMPLEMENTATION(int)
+typedef const char *cstr;
+
+HASHMAP_IMPLEMENTATION_STATIC(cstr, uint32_t)
+
+static int cstr_uint32_t_Hashmap_key_eq(cstr key_a, cstr key_b) {
+    return strcmp(key_a, key_b) == 0;
 }
+
+static uint64_t cstr_uint32_t_Hashmap_key_hash(cstr key_a) {
+    const uint8_t *byte_ptr = (const uint8_t *) key_a;
+    return fnv1a(byte_ptr, strlen(key_a));
+}
+
+
+Matrix4D ConvertAssimptMatrix4dToMatrix4D(const aiMatrix4x4 &m) {
+    return Matrix4D{
+        m.a1, m.a2, m.a3, m.a4,
+        m.b1, m.b2, m.b3, m.b4,
+        m.c1, m.c2, m.c3, m.c4,
+        m.d1, m.d2, m.d3, m.d4,
+    };
+}
+
+bone_id_result get_bone_id(const aiBone *pBone, cstr_uint32_t_hashmap *bone_name_to_index_map);
 
 
 typedef aiNode *aiNodePtr;
 QUEUE_IMPLEMENTATION_STATIC(aiNodePtr)
 VECTOR_IMPLEMENTATION(ModelMesh)
 VECTOR_IMPLEMENTATION(TextureData)
+VECTOR_IMPLEMENTATION(VertexBoneData)
+VECTOR_IMPLEMENTATION(BoneInfo)
+
 
 static TextureData LoadTextureFromMaterial(const aiScene *scene, const aiTextureType type, const char *directory, const aiMaterial *material) {
     aiString str;
@@ -123,8 +144,7 @@ TextureData LoadTexture(const char *path) {
         height,
         nrChannels,
         data,
-        path_to_load,
-        fnv1a(path_to_load)
+        path_to_load
     };
 }
 
@@ -134,12 +154,28 @@ void AddBoneData(VertexBoneData *bone_data, uint32_t BoneId, float Weight) {
         if (bone_data->Weights[i] == 0) {
             bone_data->BoneIds[i] = BoneId;
             bone_data->Weights[i] = Weight;
-            printf("bone %d weight %f index %d\n", BoneId, Weight, i);
+            //printf("bone %d weight %f index %d\n", BoneId, Weight, i);
             return;
         }
     }
 
     assert(0 && "should never get here for our max limits");
+}
+
+void print_matrix(aiMatrix4x4 &matrix);
+
+void print_matrix(aiMatrix4x4 &matrix) {
+    printf("-------Matrixxxxxx start-----\n");
+    for (int i = 0; i < 4; i++) {
+        float *number_pt4 = matrix[i];
+        printf("[%f,%f,%f,%f]\n",
+               number_pt4[0],
+               number_pt4[1],
+               number_pt4[2],
+               number_pt4[3]
+        );
+    }
+    printf("---------Matrixxxxxx end--------\n");
 }
 
 ModelData LoadModel(const char *path) {
@@ -149,10 +185,9 @@ ModelData LoadModel(const char *path) {
         path,
         aiProcess_Triangulate |
         //aiProcess_FlipUVs |
-        //aiProcess_MakeLeftHanded |
+        aiProcess_MakeLeftHanded |
         aiProcess_JoinIdenticalVertices
-        |
-        aiProcess_GenNormals
+        | aiProcess_GenNormals
 
     );
 
@@ -178,170 +213,350 @@ ModelData LoadModel(const char *path) {
     model.mesh_data = Vector_ModelMesh_Create(100);
     model.diffuse_textures = Vector_TextureData_Create(scene->mNumMaterials);
     model.specular_textures = Vector_TextureData_Create(scene->mNumMaterials);
+    model.mesh_base_vertex = Vector_int_Create(scene->mNumMeshes);
+
+    model.BoneDataPerMeshPerVertice = Vector_VertexBoneData_Create(scene->mNumMeshes * 1024);
+    model.BoneMatrices = Vector_BoneInfo_Create(scene->mNumMeshes * 1024);
 
     Vector_TextureData_Add(model.diffuse_textures, nil_texture);
     Vector_TextureData_Add(model.specular_textures, nil_texture);
+    // start from 1 since the nill texture takes slot 0
+    uint32_t current_diffuse_index = 1;
+    uint32_t current_specular_index = 1;
 
-    int current_diffuse_index = 1;
-    int current_specular_index = 1;
+    cstr_uint32_t_hashmap *specular_keys = cstr_uint32_t_Hashmap_Create(1024, 0.9);
+    cstr_uint32_t_hashmap *diffuse_keys = cstr_uint32_t_Hashmap_Create(1024, 0.9);
+    cstr_uint32_t_hashmap *bone_to_index_map = cstr_uint32_t_Hashmap_Create(1024, 0.9);
 
-    std::unordered_map<size_t, int> specular_keys{};
-    std::unordered_map<size_t, int> diffuse_keys{};
 
-    while (Queue_aiNodePtr_Deque(nodes_to_process, &node)) {
-        for (unsigned int mesh_index = 0; mesh_index < node->mNumMeshes; ++mesh_index) {
-            const aiMesh *mesh = scene->mMeshes[node->mMeshes[mesh_index]];
-            ModelMesh mesh_data{};
+    int total_parse_vertices = 0;
 
-            // parse positions and normals
-            {
-                const unsigned int total_vertices = mesh->mNumVertices;
+    // parse all the meses
+    for (int mesh_index = 0; mesh_index < scene->mNumMeshes; ++mesh_index) {
+        const aiMesh *mesh = scene->mMeshes[mesh_index];
+        ModelMesh mesh_data{};
 
-                assert(total_vertices>0 && "a node with no vertices makes no sense");
+        model.mesh_base_vertex->data[mesh_index] = total_parse_vertices;
 
-                mesh_data.vertex_count = total_vertices;
-                mesh_data.vertices = (Vertice *) calloc(mesh->mNumVertices, sizeof(Vertice));
+        // parse positions and normals
+        {
+            const unsigned int total_vertices = mesh->mNumVertices;
+            total_parse_vertices += total_vertices;
 
-                assert(mesh_data.vertices && "Should get memory for vertices");
-                for (unsigned int j = 0; j < total_vertices; ++j) {
-                    Vertice vertex{};
+            assert(total_vertices>0 && "a node with no vertices makes no sense");
 
-                    vertex.Position = {
-                        mesh->mVertices[j].x,
-                        mesh->mVertices[j].y,
-                        mesh->mVertices[j].z,
+            mesh_data.vertex_count = total_vertices;
+            mesh_data.vertices = (Vertice *) calloc(mesh->mNumVertices, sizeof(Vertice));
 
-                    };
+            assert(mesh_data.vertices && "Should get memory for vertices");
+            for (unsigned int j = 0; j < total_vertices; ++j) {
+                Vertice vertex{};
 
-                    vertex.Normal = {
-                        mesh->mNormals[j].x,
-                        mesh->mNormals[j].y,
-                        mesh->mNormals[j].z,
-                    };
+                vertex.Position = {
+                    mesh->mVertices[j].x,
+                    mesh->mVertices[j].y,
+                    mesh->mVertices[j].z,
 
-                    vertex.UVs = {0, 0};
-                    if (mesh->mTextureCoords[0]) {
-                        vertex.UVs.x = mesh->mTextureCoords[0][j].x;
-                        vertex.UVs.y = mesh->mTextureCoords[0][j].y;
-                    }
+                };
 
-                    mesh_data.vertices[j] = vertex;
+                vertex.Normal = {
+                    mesh->mNormals[j].x,
+                    mesh->mNormals[j].y,
+                    mesh->mNormals[j].z,
+                };
+
+                vertex.UVs = {0, 0};
+                if (mesh->mTextureCoords[0]) {
+                    vertex.UVs.x = mesh->mTextureCoords[0][j].x;
+                    vertex.UVs.y = mesh->mTextureCoords[0][j].y;
                 }
+
+                mesh_data.vertices[j] = vertex;
             }
-
-            // parse the indices
-            {
-                mesh_data.index_count = 1024;
-                mesh_data.indices = (uint32_t *) calloc(1024, sizeof(uint32_t));
-
-                assert(mesh_data.indices && "Should get memory for indices");
-                size_t indice_total = 0;
-
-                // this will probably overallocate in some cases
-                // the alternative is to do a double pass
-                // one for getting the actual count
-                // and one for allocating
-                // i will argue that memory is kinda free
-                for (size_t face_index = 0; face_index < mesh->mNumFaces; ++face_index) {
-                    const aiFace face = mesh->mFaces[face_index];
-                    for (unsigned int face_indices_index = 0; face_indices_index < face.mNumIndices; ++face_indices_index) {
-                        if (indice_total >= mesh_data.index_count) {
-                            const size_t new_count = mesh_data.index_count * 2;
-                            uint32_t *new_memory = (uint32_t *) realloc(mesh_data.indices, sizeof(uint32_t) * new_count);
-
-                            assert(new_memory && "Should get memory for more indices");
-                            mesh_data.indices = new_memory;
-                            mesh_data.index_count = new_count;
-                        }
-
-                        mesh_data.indices[indice_total++] = face.mIndices[face_indices_index];
-                    }
-                }
-
-                mesh_data.index_count = indice_total;
-            }
-
-            // parse the materials
-            {
-                const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-
-                TextureData diffuse = //nil_texture; 
-                        LoadTextureFromMaterial(scene, aiTextureType_DIFFUSE, directory, material);
-                TextureData specular = //nil_texture; 
-                        LoadTextureFromMaterial(scene, aiTextureType_SPECULAR, directory, material);
-
-
-                int diffuse_index = 0;
-                if (diffuse.nrChannels != nil_texture.nrChannels) {
-                    if (auto search = diffuse_keys.find(diffuse.path_hash); search != diffuse_keys.end()) {
-                        // just get the id
-                        // and call it a day
-                        diffuse_index = search->second;
-                    } else {
-                        Vector_TextureData_Add(model.diffuse_textures, diffuse);
-                        diffuse_keys[diffuse.path_hash] = current_diffuse_index;
-                        diffuse_index = current_diffuse_index;
-                        ++current_diffuse_index;
-                    }
-                }
-                mesh_data.diffuse_index = diffuse_index;
-
-                int specular_index = 0;
-                if (specular.nrChannels != nil_texture.nrChannels) {
-                    if (auto search = specular_keys.find(specular.path_hash); search != specular_keys.end()) {
-                        // just get the id
-                        // and call it a day
-                        specular_index = search->second;
-                    } else {
-                        Vector_TextureData_Add(model.specular_textures, specular);
-                        specular_keys[specular.path_hash] = current_specular_index;
-                        specular_index = current_specular_index;
-                        ++current_specular_index;
-                    }
-                }
-                mesh_data.specular_index = specular_index;
-            }
-
-            // parse the bones if applicable
-            {
-                mesh_data.Type = Regular;
-                mesh_data.bone_data_per_vertice_count = 0;
-                if (mesh->HasBones()) {
-                    mesh_data.Type = Skinned;
-                    mesh_data.BoneDataPerVertice = (VertexBoneData *) calloc(mesh->mNumVertices, sizeof(VertexBoneData));
-                    mesh_data.bone_data_per_vertice_count = mesh->mNumVertices;
-                    assert(mesh_data.BoneDataPerVertice && "we either alloc or we dont DUH");
-                    for (int bone_index = 0; bone_index < mesh->mNumBones; ++bone_index) {
-                        aiBone *bone = mesh->mBones[bone_index];
-                        size_t bone_id = get_bone_id(bone);
-
-                        printf("\n");
-                        for (int bone_weight_index = 0; bone_weight_index < bone->mNumWeights; ++bone_weight_index) {
-                            const aiVertexWeight &vw = bone->mWeights[bone_weight_index];
-                            printf("    %d : vertex id %d weight %.2f\n", bone_weight_index, vw.mVertexId, vw.mWeight);
-
-                            AddBoneData(&mesh_data.BoneDataPerVertice[vw.mVertexId],bone_id, vw.mWeight);
-                        }
-                        printf("\n");
-                    }
-                }
-            }
-            Vector_ModelMesh_Add(model.mesh_data, mesh_data);
         }
 
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            Queue_aiNodePtr_Enqueue(nodes_to_process, node->mChildren[i]);
+        // parse the indices
+        {
+            mesh_data.index_count = 1024;
+            mesh_data.indices = (uint32_t *) calloc(1024, sizeof(uint32_t));
+
+            assert(mesh_data.indices && "Should get memory for indices");
+            size_t indice_total = 0;
+
+            // this will probably overallocate in some cases
+            // the alternative is to do a double pass
+            // one for getting the actual count
+            // and one for allocating
+            // i will argue that memory is kinda free
+            for (size_t face_index = 0; face_index < mesh->mNumFaces; ++face_index) {
+                const aiFace face = mesh->mFaces[face_index];
+                for (unsigned int face_indices_index = 0; face_indices_index < face.mNumIndices; ++face_indices_index) {
+                    if (indice_total >= mesh_data.index_count) {
+                        const size_t new_count = mesh_data.index_count * 2;
+                        uint32_t *new_memory = (uint32_t *) realloc(mesh_data.indices, sizeof(uint32_t) * new_count);
+
+                        assert(new_memory && "Should get memory for more indices");
+                        mesh_data.indices = new_memory;
+                        mesh_data.index_count = new_count;
+                    }
+
+                    mesh_data.indices[indice_total++] = face.mIndices[face_indices_index];
+                }
+            }
+
+            mesh_data.index_count = indice_total;
         }
+
+        // parse the materials
+        {
+            const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
+
+            fprintf(stderr, "mesh[%d] name='%s' materialIndex=%u diffuseCount=%u specularCount=%u\n",
+                    mesh_index,
+                    mesh->mName.C_Str(),
+                    mesh->mMaterialIndex,
+                    material->GetTextureCount(aiTextureType_DIFFUSE),
+                    material->GetTextureCount(aiTextureType_SPECULAR)
+            );
+
+            TextureData diffuse = LoadTextureFromMaterial(scene, aiTextureType_DIFFUSE, directory, material);
+            TextureData specular = LoadTextureFromMaterial(scene, aiTextureType_SPECULAR, directory, material);
+
+            fprintf(stderr, "  diffuse: %s (path='%s', channels=%d)\n",
+                    diffuse.nrChannels == nil_texture.nrChannels ? "MISSING" : "loaded",
+                    diffuse.path ? diffuse.path : "(null)",
+                    diffuse.nrChannels
+            );
+
+
+            uint32_t diffuse_index = 0;
+            if (diffuse.nrChannels != nil_texture.nrChannels) {
+                if (uint32_t *find_result = cstr_uint32_t_Hashmap_Find(diffuse_keys, diffuse.path)) {
+                    diffuse_index = *find_result;
+                } else {
+                    Vector_TextureData_Add(model.diffuse_textures, diffuse);
+                    // we can fix this api a bit by changing it
+                    cstr_uint32_t_Hashmap_Insert(diffuse_keys, {diffuse.path, current_diffuse_index});
+                    diffuse_index = current_diffuse_index;
+                    ++current_diffuse_index;
+                }
+            }
+            mesh_data.diffuse_index = diffuse_index;
+
+            uint32_t specular_index = 0;
+            if (specular.nrChannels != nil_texture.nrChannels) {
+                if (uint32_t *find_result = cstr_uint32_t_Hashmap_Find(specular_keys, specular.path)) {
+                    specular_index = *find_result;
+                } else {
+                    Vector_TextureData_Add(model.specular_textures, specular);
+                    cstr_uint32_t_Hashmap_Insert(specular_keys, {specular.path, current_specular_index});
+                    specular_index = current_specular_index;
+                    ++current_specular_index;
+                }
+            }
+            mesh_data.specular_index = specular_index;
+        }
+
+        // parse the bones if applicable
+        {
+            mesh_data.Type = Regular;
+            if (mesh->HasBones()) {
+                mesh_data.Type = Skinned;
+                mesh_data.bone_count = mesh->mNumBones;
+
+                for (int bone_index = 0; bone_index < mesh->mNumBones; ++bone_index) {
+                    aiBone *bone = mesh->mBones[bone_index];
+                    bone_id_result id_result = get_bone_id(bone, bone_to_index_map);
+
+                    if (id_result.new_bone) {
+                        Matrix4D offsetMatrix = ConvertAssimptMatrix4dToMatrix4D(bone->mOffsetMatrix);
+                        Vector_BoneInfo_Add(model.BoneMatrices, {offsetMatrix, Matrix4D(0)});
+                    }
+
+                    //print_matrix(bone->mOffsetMatrix);
+                    printf("\n");
+                    for (int bone_weight_index = 0; bone_weight_index < bone->mNumWeights; ++bone_weight_index) {
+                        // since we store the data per mesh we dont need a global vertex for obvious reasons
+                        const aiVertexWeight &vw = bone->mWeights[bone_weight_index];
+
+                        uint32_t global_vertex_id = model.mesh_base_vertex->data[mesh_index] + vw.mVertexId;
+                        //printf("    %d : vertex id %d weight %.2f\n", bone_weight_index, vw.mVertexId, vw.mWeight);
+
+                        assert(global_vertex_id< Vector_VertexBoneData_Capacity(model.BoneDataPerMeshPerVertice) && "We went over the limit bro");
+                        AddBoneData(&model.BoneDataPerMeshPerVertice->data[global_vertex_id], id_result.bone_id, vw.mWeight);
+                    }
+                    printf("\n");
+                }
+            }
+        }
+        Vector_ModelMesh_Add(model.mesh_data, mesh_data);
     }
 
+    // while (Queue_aiNodePtr_Deque(nodes_to_process, &node)) {
+    //     for (unsigned int mesh_index = 0; mesh_index < node->mNumMeshes; ++mesh_index) {
+    //         const aiMesh *mesh = scene->mMeshes[node->mMeshes[mesh_index]];
+    //         ModelMesh mesh_data{};
+    //
+    //         model.mesh_base_vertex->data[mesh_index] = total_parse_vertices;
+    //
+    //         // parse positions and normals
+    //         {
+    //             const unsigned int total_vertices = mesh->mNumVertices;
+    //             total_parse_vertices += total_vertices;
+    //
+    //             assert(total_vertices>0 && "a node with no vertices makes no sense");
+    //
+    //             mesh_data.vertex_count = total_vertices;
+    //             mesh_data.vertices = (Vertice *) calloc(mesh->mNumVertices, sizeof(Vertice));
+    //
+    //             assert(mesh_data.vertices && "Should get memory for vertices");
+    //             for (unsigned int j = 0; j < total_vertices; ++j) {
+    //                 Vertice vertex{};
+    //
+    //                 vertex.Position = {
+    //                     mesh->mVertices[j].x,
+    //                     mesh->mVertices[j].y,
+    //                     mesh->mVertices[j].z,
+    //
+    //                 };
+    //
+    //                 vertex.Normal = {
+    //                     mesh->mNormals[j].x,
+    //                     mesh->mNormals[j].y,
+    //                     mesh->mNormals[j].z,
+    //                 };
+    //
+    //                 vertex.UVs = {0, 0};
+    //                 if (mesh->mTextureCoords[0]) {
+    //                     vertex.UVs.x = mesh->mTextureCoords[0][j].x;
+    //                     vertex.UVs.y = mesh->mTextureCoords[0][j].y;
+    //                 }
+    //
+    //                 mesh_data.vertices[j] = vertex;
+    //             }
+    //         }
+    //
+    //         // parse the indices
+    //         {
+    //             mesh_data.index_count = 1024;
+    //             mesh_data.indices = (uint32_t *) calloc(1024, sizeof(uint32_t));
+    //
+    //             assert(mesh_data.indices && "Should get memory for indices");
+    //             size_t indice_total = 0;
+    //
+    //             // this will probably overallocate in some cases
+    //             // the alternative is to do a double pass
+    //             // one for getting the actual count
+    //             // and one for allocating
+    //             // i will argue that memory is kinda free
+    //             for (size_t face_index = 0; face_index < mesh->mNumFaces; ++face_index) {
+    //                 const aiFace face = mesh->mFaces[face_index];
+    //                 for (unsigned int face_indices_index = 0; face_indices_index < face.mNumIndices; ++face_indices_index) {
+    //                     if (indice_total >= mesh_data.index_count) {
+    //                         const size_t new_count = mesh_data.index_count * 2;
+    //                         uint32_t *new_memory = (uint32_t *) realloc(mesh_data.indices, sizeof(uint32_t) * new_count);
+    //
+    //                         assert(new_memory && "Should get memory for more indices");
+    //                         mesh_data.indices = new_memory;
+    //                         mesh_data.index_count = new_count;
+    //                     }
+    //
+    //                     mesh_data.indices[indice_total++] = face.mIndices[face_indices_index];
+    //                 }
+    //             }
+    //
+    //             mesh_data.index_count = indice_total;
+    //         }
+    //
+    //         // parse the materials
+    //         {
+    //             const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
+    //
+    //             TextureData diffuse = //nil_texture; 
+    //                     LoadTextureFromMaterial(scene, aiTextureType_DIFFUSE, directory, material);
+    //             TextureData specular = //nil_texture; 
+    //                     LoadTextureFromMaterial(scene, aiTextureType_SPECULAR, directory, material);
+    //
+    //
+    //             int diffuse_index = 0;
+    //             if (diffuse.nrChannels != nil_texture.nrChannels) {
+    //                 if (auto search = diffuse_keys.find(diffuse.path_hash); search != diffuse_keys.end()) {
+    //                     // just get the id
+    //                     // and call it a day
+    //                     diffuse_index = search->second;
+    //                 } else {
+    //                     Vector_TextureData_Add(model.diffuse_textures, diffuse);
+    //                     diffuse_keys[diffuse.path_hash] = current_diffuse_index;
+    //                     diffuse_index = current_diffuse_index;
+    //                     ++current_diffuse_index;
+    //                 }
+    //             }
+    //             mesh_data.diffuse_index = diffuse_index;
+    //
+    //             int specular_index = 0;
+    //             if (specular.nrChannels != nil_texture.nrChannels) {
+    //                 if (auto search = specular_keys.find(specular.path_hash); search != specular_keys.end()) {
+    //                     // just get the id
+    //                     // and call it a day
+    //                     specular_index = search->second;
+    //                 } else {
+    //                     Vector_TextureData_Add(model.specular_textures, specular);
+    //                     specular_keys[specular.path_hash] = current_specular_index;
+    //                     specular_index = current_specular_index;
+    //                     ++current_specular_index;
+    //                 }
+    //             }
+    //             mesh_data.specular_index = specular_index;
+    //         }
+    //
+    //         // parse the bones if applicable
+    //         {
+    //             mesh_data.Type = Regular;
+    //             if (mesh->HasBones()) {
+    //                 mesh_data.Type = Skinned;
+    //
+    //                 for (int bone_index = 0; bone_index < mesh->mNumBones; ++bone_index) {
+    //                     aiBone *bone = mesh->mBones[bone_index];
+    //                     bone_id_result id_result = get_bone_id(bone);
+    //
+    //                     if (id_result.new_bone) {
+    //                         Matrix4D offsetMatrix = ConvertAssimptMatrix4dToMatrix4D(bone->mOffsetMatrix);
+    //                         Vector_BoneInfo_Add(model.BoneMatrices, {offsetMatrix, Matrix4D(0)});
+    //                     }
+    //
+    //                     print_matrix(bone->mOffsetMatrix);
+    //                     printf("\n");
+    //                     for (int bone_weight_index = 0; bone_weight_index < bone->mNumWeights; ++bone_weight_index) {
+    //                         // since we store the data per mesh we dont need a global vertex for obvious reasons
+    //                         const aiVertexWeight &vw = bone->mWeights[bone_weight_index];
+    //
+    //                         uint32_t global_vertex_id = model.mesh_base_vertex->data[mesh_index] + vw.mVertexId;
+    //                         printf("    %d : vertex id %d weight %.2f\n", bone_weight_index, vw.mVertexId, vw.mWeight);
+    //
+    //                         assert(global_vertex_id< Vector_VertexBoneData_Capacity(model.BoneDataPerMeshPerVertice) && "We went over the limit bro");
+    //                         AddBoneData(&model.BoneDataPerMeshPerVertice->data[global_vertex_id], id_result.bone_id, vw.mWeight);
+    //                     }
+    //                     printf("\n");
+    //                 }
+    //             }
+    //         }
+    //         Vector_ModelMesh_Add(model.mesh_data, mesh_data);
+    //     }
+    //
+    //     for (unsigned int i = 0; i < node->mNumChildren; ++i) {
+    //         Queue_aiNodePtr_Enqueue(nodes_to_process, node->mChildren[i]);
+    //     }
+    // }
+
     Queue_aiNodePtr_Free(nodes_to_process);
+    cstr_uint32_t_Hashmap_Free(specular_keys);
+    cstr_uint32_t_Hashmap_Free(diffuse_keys);
+    cstr_uint32_t_Hashmap_Free(bone_to_index_map);
     free(directory);
     return model;
 }
 
 
-// this contains all the bones for every mesh
-// for each vertice 
 std::vector<VertexBoneData> vertex_to_bones;
 
 // this contains all the offsets for each of those mesh starts
@@ -354,28 +569,41 @@ std::vector<int> mesh_base_vertex;
 // so far this is so we can keep tags on individual bones internally
 // no usage(SO FAR)
 // TODO assuming this loads a bunch of models, then we need to clean it up... DUH
-std::map<std::string, uint32_t> bone_name_to_index_map;
+//std::map<std::string, uint32_t>
+//cstr_uint32_t_hashmap bone_name_to_index_map=cstr_uint32_t_hashmap;
 
-size_t get_bone_id(const aiBone *pBone) {
-    size_t bone_id = 0;
 
-    std::string bone_name(pBone->mName.C_Str());
+bone_id_result get_bone_id(const aiBone *pBone, cstr_uint32_t_hashmap *bone_name_to_index_map) {
+    uint32_t bone_id = 0;
 
-    if (const auto result = bone_name_to_index_map.find(bone_name); result == bone_name_to_index_map.end()) {
-        bone_id = bone_name_to_index_map.size();
-        bone_name_to_index_map[bone_name] = bone_id;
+    bone_id_result bone_result{};
+
+    //std::string bone_name(pBone->mName.C_Str());
+
+    cstr bone_name = pBone->mName.C_Str();
+
+    uint32_t *mapped_bone_id = cstr_uint32_t_Hashmap_Find(bone_name_to_index_map, bone_name);
+
+    if (!mapped_bone_id) {
+        bone_id = bone_name_to_index_map->num_elements;
+        cstr_uint32_t_Hashmap_Insert(bone_name_to_index_map, {bone_name, bone_id});
+        bone_result.new_bone = true;
     } else {
-        bone_id = result->second;
+        bone_id = *mapped_bone_id;
     }
 
-    return bone_id;
+    bone_result.bone_id = bone_id;
+    return bone_result;
 }
 
 
 void parse_single_bone(int mesh_index, aiBone *pBone) {
+    return;
     printf("Bone %d : '%s', num vertices affected by this bones %u\n", mesh_index, pBone->mName.C_Str(), pBone->mNumWeights);
 
-    size_t bone_id = get_bone_id(pBone);
+    //size_t bone_id = get_bone_id(pBone).bone_id;
+
+    print_matrix(pBone->mOffsetMatrix);
 
     printf("\n");
     for (int i = 0; i < pBone->mNumWeights; ++i) {
@@ -390,7 +618,7 @@ void parse_single_bone(int mesh_index, aiBone *pBone) {
         printf("vertex id %d", global_vertex_id);
 
         assert(global_vertex_id<vertex_to_bones.size());
-        AddBoneData(&vertex_to_bones[global_vertex_id], bone_id, vw.mWeight);
+        AddBoneData(&vertex_to_bones[global_vertex_id], 0, vw.mWeight);
     }
     printf("\n");
 }
@@ -445,7 +673,7 @@ void parse_scene(const char *path) {
         path,
         aiProcess_Triangulate |
         aiProcess_JoinIdenticalVertices
-        | aiProcess_GenNormals
+        //| aiProcess_GenNormals
     );
 
     if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {

@@ -3,10 +3,12 @@
 
 #include <cassert>
 
+#include "math_ops.h"
 #include "Matrix4D.h"
 #include "Matrix3D.h"
 #include "Vector3D.h"
 #include "Plane.h"
+#include "Quaternion.h"
 #include "Trigonometry.h"
 
 Matrix3D rotation_x_matrix3D(const float t) {
@@ -221,4 +223,59 @@ Matrix4D PerspectiveProjectionMatrix(const float FOV, const float z_near, const 
     perspectiveMatrix[3].z = - z_far * z_diff;
 
     return perspectiveMatrix;
+}
+
+Vector3D Lerp(const Vector3D &v1, const Vector3D &v2, float t) {
+    return {
+        math_ops::lerp(v1.x,v2.x,t),
+        math_ops::lerp(v1.y,v2.y,t),
+        math_ops::lerp(v1.z,v2.z,t),
+    };
+}
+
+Vector4D Lerp(const Vector4D &v1, const Vector4D &v2, float t) {
+    return {
+        math_ops::lerp(v1.x,v2.x,t),
+        math_ops::lerp(v1.y,v2.y,t),
+        math_ops::lerp(v1.z,v2.z,t),
+        math_ops::lerp(v1.w,v2.w,t),
+    };
+}
+
+Quaternion Lerp(const Quaternion &v1, const Quaternion &v2, float t) {
+    return {
+        math_ops::lerp(v1.x,v2.x,t),
+        math_ops::lerp(v1.y,v2.y,t),
+        math_ops::lerp(v1.z,v2.z,t),
+        math_ops::lerp(v1.w,v2.w,t),
+    };
+}
+
+Quaternion Slerp(Quaternion &q1, Quaternion &q2, float t) {
+     float cosBetweenQuats=dot(q1,q2);
+    
+    if ( cosBetweenQuats <0) {
+        q1=-q1;
+        cosBetweenQuats=-cosBetweenQuats;
+    }
+    
+    const float EPSILON=0.995;
+    Quaternion result;
+    if (cosBetweenQuats> EPSILON) {
+        result=Lerp(q1,q2,t);
+    }
+    else {
+        const double theta = acos(cosBetweenQuats);
+        const double sinTheta = sin(theta);
+
+        const double w0 = sin((1.0 - t) * theta) / sinTheta;
+        const double w1 = sin(t * theta) / sinTheta;
+        
+        result.x = w0*q1.x + w1*q2.x;
+        result.y = w0*q1.y + w1*q2.y;
+        result.z = w0*q1.z + w1*q2.z;
+        result.w = w0*q1.w + w1*q2.w;
+    }
+    
+    return normalize(result);
 }

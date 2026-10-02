@@ -82,6 +82,8 @@ EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform &transform, Vector
 
 EXPORTED void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
+EXPORTED void Renderer_Draw_Skeletal_Model(int model_id, const Transform &transform, Vector3D color, Material material, double delta_time_ms);
+
 EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
 
 EXPORTED void Renderer_ResolutionChanged(int new_screen_width, int new_screen_height);
@@ -91,5 +93,9 @@ EXPORTED void Renderer_CameraUpdate();
 EXPORTED void Renderer_Change_Emission(int mesh_id, int emission_texture_id);
 
 EXPORTED void Mess_With_The_Bones();
+
+EXPORTED void Renderer_Draw_Gizmo(const Vector3D &world_position);
+
+EXPORTED void Renderer_SetGizmoPosition(Vector3D);
 
 #endif //RENDERER_H

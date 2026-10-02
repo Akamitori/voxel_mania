@@ -125,7 +125,7 @@ void Queue_##T##_Free(Queue_##T *pq) {                                     \
     free(pq->data);                                                      \
     free(pq);                                                              \
 }                                                                                                                                                \
-
+    
 #define QUEUE_IMPLEMENTATION_STATIC(T)                                             \
 typedef struct Queue_##T {                          \
 int capacity;                                       \

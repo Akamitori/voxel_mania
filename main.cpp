@@ -184,6 +184,7 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
     // }
 }
 
+
 int main() {
     try {
         //parse_scene("data/models/boblampclean.md5mesh");
@@ -218,9 +219,9 @@ int main() {
         //     whiteTextureId, whiteTextureId
         // );
         //
-        // const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId, woodTextureId);
+        const int wood_cube_id = RegisterCubeMesh1Part(woodTextureId, woodTextureId);
         //
-        // const int crate_cube_id = RegisterCubeMesh1Part(crate_Texture_diffuse_id, crate_Texture_specular_id);
+        const int crate_cube_id = RegisterCubeMesh1Part(crate_Texture_diffuse_id, crate_Texture_specular_id);
         //
         // const int glass_cube_id = RegisterQuadMesh2Part(tranrsparent_window_texture, tranrsparent_window_texture);
         //
@@ -241,8 +242,8 @@ int main() {
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
         // loads a model . skip for now because this is slow as fuck
-        //const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
-        const int bob = Renderer_Register_Model("data/models/boblampclean.md5mesh");
+        const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
+        //const int bob = Renderer_Register_Model("data/models/boblampclean.md5mesh");
 
 
         // Setup Dear ImGui context
@@ -278,7 +279,7 @@ int main() {
         Vector_mesh_instance *opaque_meshes = Vector_mesh_instance_Create(30);
         Vector_mesh_instance *transparent_models = Vector_mesh_instance_Create(30);
 
-        //Create_Scene(wood_cube_id, crate_cube_id, opaque_meshes);
+        Create_Scene(wood_cube_id, crate_cube_id, opaque_meshes);
 
         // Target cube πιο μακριά
         // Vector_mesh_instance_Add(opaque_models, {crate_cube_id, {0, 2, 0}});
@@ -394,10 +395,12 @@ int main() {
 
         };
 
+        const double max_delta = 1000.0 / 30.0;
 
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
+            const double delta = ms > max_delta ? max_delta : ms;
             lastTime = now;
             ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
             objects = Vector_mesh_instance_Length(opaque_meshes);
@@ -432,7 +435,8 @@ int main() {
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
 
-            Renderer_Draw_Model(bob, trans, {}, {});
+            Renderer_Draw_Model(back_pack_model, trans, {}, {});
+            Renderer_SetGizmoPosition(trans.Position);
 
             Renderer_ResolveDrawCalls();
 
@@ -451,10 +455,10 @@ int main() {
             ImGui::Begin("CSM Debug");
             ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text),
                                       ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
-            
-           
+
+
             ImGui::End();
-            
+
             if (ImGui::Button("Test your might")) {
                 Mess_With_The_Bones();
             }

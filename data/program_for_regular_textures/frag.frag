@@ -99,7 +99,6 @@ void main() {
     output_color+=emisionTexMap;                             
 
     FragColor= vec4(output_color, texture_color.a);
-    FragColor= vec4(0,1,0,1);
 }
 
 float saturate(float value){
