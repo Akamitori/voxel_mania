@@ -18,12 +18,12 @@ bool math_ops::is_equal(const double a, const double b, const double EPSILON) {
     return fabs(a - b) <= EPSILON;
 }
 
-float math_ops::lerp(const float value, const float start, const float end) {
-    return start + value * (end - start);
+float math_ops::lerp(const float start, const float end, const float factor) {
+    return start + factor * (end - start);
 }
 
-double math_ops::lerp(const double value, const double start, const double end) {
-    return start + value * (end - start);
+double math_ops::lerp(const double factor, const double start, const double end) {
+    return start + factor * (end - start);
 }
 
 double math_ops::clamp(const double value, const double lower, const double upper) {
