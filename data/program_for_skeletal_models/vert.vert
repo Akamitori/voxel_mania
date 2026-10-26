@@ -30,11 +30,16 @@ out VS_OUT{
 } vs_out;
 
 void main() {
-    mat4 BoneTransform = gBones[BoneIDs[0]] * Weights[0];
+
+    mat4 BoneTransform=mat4(0.0f);
+    
+    
+    
+    BoneTransform += gBones[BoneIDs[0]] * Weights[0];
     BoneTransform += gBones[BoneIDs[1]] * Weights[1];
     BoneTransform += gBones[BoneIDs[2]] * Weights[2];
     BoneTransform += gBones[BoneIDs[3]] * Weights[3];
-
+    
     vec4 PosL = BoneTransform * vec4(aPos, 1.0);
     
     gl_Position = perspective_projection_matrix*look_at_matrix*model_matrix * PosL;

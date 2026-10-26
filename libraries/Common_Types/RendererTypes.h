@@ -8,14 +8,53 @@
 #include <cstdint>
 
 #include "Vector3D.h"
-#include "export.h"
-#include "GL/glew.h"
 
-struct EXPORTED Material {
+#include "GL/glew.h"
+#include "Quaternion.h"
+// THE IDE is wrong!
+#include "hashmap_common.h"
+
+
+
+
+struct Vector_Key {
+    Vector3D Value;
+    double time;
+};
+
+struct Quaternion_Key {
+    Quaternion Value;
+    double time;
+};
+
+struct Animation_Channel {
+    const char *node_name;
+
+    Vector_Key *    position_keys;
+    size_t count_position_keys;
+
+    Quaternion_Key *rotation_keys;
+    size_t count_rotation_keys;
+
+    Vector_Key *scaling_keys;
+    size_t count_scaling_keys;
+    
+    size_t node_index;
+};
+
+struct Animation {
+    const char *Name{};
+    double Duration{};
+    double Ticks_Per_Second{};
+    Animation_Channel *Channels{};
+    size_t Channel_count{};
+};
+
+struct Material {
     float shininess;
 };
 
-struct EXPORTED PointLight {
+struct PointLight {
     alignas(16)Vector3D position;
     alignas(16)Vector3D ambient;
     alignas(16)Vector3D diffuse;
@@ -24,14 +63,14 @@ struct EXPORTED PointLight {
     float quadric_factor;
 };
 
-struct EXPORTED DirectionalLight {
+struct DirectionalLight {
     alignas(16)Vector3D direction;
     alignas(16)Vector3D ambient;
     alignas(16)Vector3D diffuse;
     alignas(16)Vector3D specular;
 };
 
-struct EXPORTED SpotLight {
+struct SpotLight {
     alignas(16)Vector3D position;
     alignas(16)Vector3D direction;
     alignas(16)Vector3D ambient;
@@ -48,19 +87,19 @@ enum class TextureWrapMode : uint32_t {
     CLAMP_TO_EDGE = GL_CLAMP_TO_EDGE
 };
 
-struct EXPORTED Texture_Parameters {
+struct Texture_Parameters {
     TextureWrapMode wrap_mode_s = TextureWrapMode::REPEAT;
     TextureWrapMode wrap_mode_t = TextureWrapMode::REPEAT;
     bool convert_from_srgb_to_linear_space = false;
 };
 
-struct EXPORTED Transform {
+struct Transform {
     Vector3D Position{0, 0, 0};
     Vector3D Rotation{0, 0, 0};
     Vector3D Scale{1, 1, 1};
 };
 
-struct EXPORTED Vertex {
+struct Vertex {
     Vector3D Position;
     Vector3D Normal;
     float UV_x;
@@ -69,10 +108,13 @@ struct EXPORTED Vertex {
 
 constexpr int MAX_NUM_BONES_PER_VERTEX = 4;
 
-struct EXPORTED VertexBoneData {
+struct VertexBoneData {
     uint32_t BoneIds[MAX_NUM_BONES_PER_VERTEX] = {};
     float Weights[MAX_NUM_BONES_PER_VERTEX] = {0.0f};
 };
+
+
+// common type includes. KEEP IT!
 
 
 #endif //VOXEL_MANIA_RENDERERTYPES_H

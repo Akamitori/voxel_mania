@@ -242,8 +242,8 @@ int main() {
         //const int cube_id_5=RegisterCubeMesh3Part(cubeId_1);
 
         // loads a model . skip for now because this is slow as fuck
-        const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
-        //const int bob = Renderer_Register_Model("data/models/boblampclean.md5mesh");
+        //const int back_pack_model = Renderer_Register_Model("data/models/backpack/backpack.obj");
+        const int bob = Renderer_Register_Model("data/models/boblampclean.md5mesh");
 
 
         // Setup Dear ImGui context
@@ -400,7 +400,7 @@ int main() {
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
-            const double delta = ms > max_delta ? max_delta : ms;
+            const double delta = (ms > max_delta ? max_delta : ms);
             lastTime = now;
             ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
             objects = Vector_mesh_instance_Length(opaque_meshes);
@@ -435,10 +435,10 @@ int main() {
                 Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
             }
 
-            Renderer_Draw_Model(back_pack_model, trans, {}, {});
-            Renderer_SetGizmoPosition(trans.Position);
+            Renderer_Draw_Skeletal_Model(bob, trans, {}, {});
+            //Renderer_SetGizmoPosition(trans.Position);
 
-            Renderer_ResolveDrawCalls();
+            Renderer_ResolveDrawCalls(delta);
 
             // // Start the Dear ImGui frame
             ImGui_ImplOpenGL3_NewFrame();

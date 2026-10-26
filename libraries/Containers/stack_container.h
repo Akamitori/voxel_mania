@@ -19,41 +19,41 @@ extern "C" {
 // ==========================================================================
 
 #define STACK_DECLARATION_LIBRARY(T)                                       \
-typedef struct STACK_##T {                                                 \
+typedef struct Stack_##T {                                                 \
     T* data;                                                               \
     T* end;                                                                 \
     T* cap_end;                                                             \
-} STACK_##T;                                                               \
+} Stack_##T;                                                               \
                                                                             \
-EXPORTED bool STACK_##T##_Push(STACK_##T*, T);                             \
-EXPORTED bool STACK_##T##_Pop(STACK_##T*, T*);                             \
-EXPORTED bool STACK_##T##_Peek(const STACK_##T*, T*);                        \
-EXPORTED STACK_##T* STACK_##T##_Create(int);                              \
-EXPORTED void STACK_##T##_Clear(STACK_##T*);                              \
-EXPORTED void STACK_##T##_Free(STACK_##T*);                               \
-EXPORTED int STACK_##T##_Length(const STACK_##T*);                              \
-EXPORTED int STACK_##T##_Capacity(const STACK_##T*);                            \
-EXPORTED T* STACK_##T##_Data(STACK_##T*);
+EXPORTED bool Stack_##T##_Push(Stack_##T*, T);                             \
+EXPORTED bool Stack_##T##_Pop(Stack_##T*, T*);                             \
+EXPORTED bool Stack_##T##_Peek(const Stack_##T*, T*);                        \
+EXPORTED Stack_##T* Stack_##T##_Create(int);                              \
+EXPORTED void Stack_##T##_Clear(Stack_##T*);                              \
+EXPORTED void Stack_##T##_Free(Stack_##T*);                               \
+EXPORTED int Stack_##T##_Length(const Stack_##T*);                              \
+EXPORTED int Stack_##T##_Capacity(const Stack_##T*);                            \
+EXPORTED T* Stack_##T##_Data(Stack_##T*);
 
 #define STACK_DECLARATION_LIBRARY_STATIC(T)                                       \
-typedef struct STACK_##T {                                                 \
+typedef struct Stack_##T {                                                 \
 T* data;                                                               \
 T* end;                                                                 \
 T* cap_end;                                                             \
-} STACK_##T;                                                               \
+} Stack_##T;                                                               \
 \
-bool STACK_##T##_Push(STACK_##T*, T);                             \
-bool STACK_##T##_Pop(STACK_##T*, T*);                             \
-bool STACK_##T##_Peek(const STACK_##T*, T*);                        \
-STACK_##T* STACK_##T##_Create(int);                              \
-void STACK_##T##_Clear(STACK_##T*);                              \
-void STACK_##T##_Free(STACK_##T*);                               \
-int STACK_##T##_Length(const STACK_##T*);                              \
-int STACK_##T##_Capacity(const STACK_##T*);                            \
-T* STACK_##T##_Data(STACK_##T*);
+bool Stack_##T##_Push(Stack_##T*, T);                             \
+bool Stack_##T##_Pop(Stack_##T*, T*);                             \
+bool Stack_##T##_Peek(const Stack_##T*, T*);                        \
+Stack_##T* Stack_##T##_Create(int);                              \
+void Stack_##T##_Clear(Stack_##T*);                              \
+void Stack_##T##_Free(Stack_##T*);                               \
+int Stack_##T##_Length(const Stack_##T*);                              \
+int Stack_##T##_Capacity(const Stack_##T*);                            \
+T* Stack_##T##_Data(Stack_##T*);
 
 #define STACK_IMPLEMENTATION(T)                                            \
-static bool STACK_##T##_Resize(STACK_##T *v) {                            \
+static bool Stack_##T##_Resize(Stack_##T *v) {                            \
     size_t old_size = v->end - v->data;                                    \
     size_t old_cap = v->cap_end - v->data;                                 \
     size_t new_cap = old_cap * 2;                                           \
@@ -66,31 +66,31 @@ static bool STACK_##T##_Resize(STACK_##T *v) {                            \
     return true;                                                            \
 }                                                                           \
                                                                             \
-bool STACK_##T##_Push(STACK_##T *v, T value) {                             \
-    if (v->end == v->cap_end && !STACK_##T##_Resize(v)) {                  \
+bool Stack_##T##_Push(Stack_##T *v, T value) {                             \
+    if (v->end == v->cap_end && !Stack_##T##_Resize(v)) {                  \
         return false;                                                          \
     }                                                                        \
     *v->end++ = value;                                                      \
     return true;                                                            \
 }                                                                           \
                                                                             \
-bool STACK_##T##_Pop(STACK_##T *v, T* value) {                             \
-    if ( STACK_##T##_Length(v) ==0){                                           \
+bool Stack_##T##_Pop(Stack_##T *v, T* value) {                             \
+    if ( Stack_##T##_Length(v) ==0){                                           \
     return false;                                                              \
     }                                                                       \
     *value=*(--v->end);                                                         \
     return true;                                                            \
 }                                                                           \
                                                                              \
-bool STACK_##T##_Peek(const STACK_##T *v, T* value) {                             \
-    if ( STACK_##T##_Length(v) ==0) return false;                         \
+bool Stack_##T##_Peek(const Stack_##T *v, T* value) {                             \
+    if ( Stack_##T##_Length(v) ==0) return false;                         \
     *value=*(v->end-1);                                                         \
     return true;                                                                \
 }                                                                           \
                                                                             \
-STACK_##T* STACK_##T##_Create(int min_capacity) {                         \
+Stack_##T* Stack_##T##_Create(int min_capacity) {                         \
     if (min_capacity <= 0) {min_capacity = 8;}                                \
-    STACK_##T *v = (STACK_##T *)malloc(sizeof(STACK_##T));               \
+    Stack_##T *v = (Stack_##T *)malloc(sizeof(Stack_##T));               \
     if (!v) {return NULL;}                                                    \
     v->data = (T *)calloc(min_capacity , sizeof(T));                       \
     if (!v->data) { free(v); return NULL; }                                \
@@ -99,23 +99,23 @@ STACK_##T* STACK_##T##_Create(int min_capacity) {                         \
     return v;                                                               \
 }                                                                           \
                                                                             \
-int STACK_##T##_Length(const STACK_##T *v) {                                    \
+int Stack_##T##_Length(const Stack_##T *v) {                                    \
     return (int)(v->end - v->data);                                        \
 }                                                                           \
                                                                             \
-int STACK_##T##_Capacity(const STACK_##T *v) {                                  \
+int Stack_##T##_Capacity(const Stack_##T *v) {                                  \
     return (int)(v->cap_end - v->data);                                    \
 }                                                                           \
                                                                             \
-T* STACK_##T##_Data(STACK_##T *v) {                                       \
+T* Stack_##T##_Data(Stack_##T *v) {                                       \
     return v->data;                                                        \
 }                                                                           \
                                                                             \
-void STACK_##T##_Clear(STACK_##T *v) {                                    \
+void Stack_##T##_Clear(Stack_##T *v) {                                    \
     v->end = v->data;                                                      \
 }                                                                           \
                                                                             \
-void STACK_##T##_Free(STACK_##T *v) {                                     \
+void Stack_##T##_Free(Stack_##T *v) {                                     \
     if (!v) return;                                                         \
     free(v->data);                                                         \
     free(v);                                                                \
@@ -130,13 +130,15 @@ void STACK_##T##_Free(STACK_##T *v) {                                     \
 // ==========================================================================
 
 #define STACK_IMPLEMENTATION_STATIC(T)                                     \
-typedef struct STACK_##T {                                                 \
+typedef struct Stack_##T {                                                 \
     T* data;                                                               \
     T* end;                                                                 \
     T* cap_end;                                                             \
-} STACK_##T;                                                               \
+} Stack_##T;                                                               \
                                                                             \
-static inline bool STACK_##T##_Resize(STACK_##T *v) {                     \
+static inline int Stack_##T##_Length(const Stack_##T *v);\
+                                                          \
+static inline bool Stack_##T##_Resize(Stack_##T *v) {                     \
     size_t old_size = v->end - v->data;                                    \
     size_t old_cap = v->cap_end - v->data;                                 \
     size_t new_cap = old_cap * 2;                                           \
@@ -149,15 +151,15 @@ static inline bool STACK_##T##_Resize(STACK_##T *v) {                     \
     return true;                                                            \
 }                                                                           \
                                                                             \
-static inline bool STACK_##T##_Push(STACK_##T *v, T value) {               \
-    if (v->end == v->cap_end && !STACK_##T##_Resize(v)) return false;      \
+static inline bool Stack_##T##_Push(Stack_##T *v, const T value) {               \
+    if (v->end == v->cap_end && !Stack_##T##_Resize(v)) return false;      \
     *v->end++ = value;                                                      \
     return true;                                                            \
 }                                                                           \
                                                                             \
-static inline STACK_##T* STACK_##T##_Create(int min_capacity) {           \
+static inline Stack_##T* Stack_##T##_Create(int min_capacity) {           \
     if (min_capacity <= 0) min_capacity = 8;                                \
-    STACK_##T *v = (STACK_##T *)malloc(sizeof(STACK_##T));               \
+    Stack_##T *v = (Stack_##T *)malloc(sizeof(Stack_##T));               \
     if (!v) return NULL;                                                    \
     v->data = (T *)calloc(min_capacity , sizeof(T));                       \
     if (!v->data) { free(v); return NULL; }                                \
@@ -166,31 +168,31 @@ static inline STACK_##T* STACK_##T##_Create(int min_capacity) {           \
     return v;                                                               \
 }                                                                           \
                                                                             \
-static inline bool STACK_##T##_Pop(STACK_##T *v, T* value) {                             \
-    if ( STACK_##T##_Length(v) ==0) return false;                              \
+static inline bool Stack_##T##_Pop(Stack_##T *v, T* value) {                             \
+    if ( Stack_##T##_Length(v) ==0) return false;                              \
     *value=*(--v->end);                                                         \
     return true;                                                            \
 }                                                                           \
                                                                                 \
-static inline  bool STACK_##T##_Peek(const STACK_##T *v, T* value) {              \
-    if ( STACK_##T##_Length(v) ==0) return false;                         \
+static inline  bool Stack_##T##_Peek(const Stack_##T *v, T* value) {              \
+    if ( Stack_##T##_Length(v) ==0) return false;                         \
     *value=*(v->end-1);                                                         \
     return true;                                                                \
 }                                                                           \
                                                                             \
-static inline int STACK_##T##_Length(const STACK_##T *v) {                      \
+static inline int Stack_##T##_Length(const Stack_##T *v) {                      \
     return (int)(v->end - v->data);                                        \
 }                                                                           \
                                                                             \
-static inline int STACK_##T##_Capacity(const STACK_##T *v) {                    \
+static inline int Stack_##T##_Capacity(const Stack_##T *v) {                    \
     return (int)(v->cap_end - v->data);                                    \
 }                                                                           \
                                                                             \
-static inline void STACK_##T##_Clear(STACK_##T *v) {                      \
+static inline void Stack_##T##_Clear(Stack_##T *v) {                      \
     v->end = v->data;                                                      \
 }                                                                           \
                                                                             \
-static inline void STACK_##T##_Free(STACK_##T *v) {                       \
+static inline void Stack_##T##_Free(Stack_##T *v) {                       \
     if (!v) return;                                                         \
     free(v->data);                                                         \
     free(v);                                                                \

@@ -98,7 +98,7 @@ void main() {
     output_color+=CalculateSpotLights(diffuseTexMap, specularTexMap, normal, fs_in.FragPosWorldSpace);
     output_color+=emisionTexMap;                             
 
-    FragColor= vec4(output_color, texture_color.a);
+    FragColor= vec4(texture_color.rgb, 1);
 }
 
 float saturate(float value){

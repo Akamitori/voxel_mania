@@ -43,5 +43,7 @@ EXPORTED Vector3D operator -(const Vector3D &a, const Vector3D &b);
 
 EXPORTED Vector4D Vector3D_To_Vector4D(Vector3D v,float w);
 
+EXPORTED Vector3D Lerp_Vector_A_to_Vector_B(const Vector3D &v_A, const Vector3D &v_B, float blend_factor);
+
 
 #endif //Vector3D_H

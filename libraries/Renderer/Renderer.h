@@ -74,7 +74,7 @@ EXPORTED void Renderer_Destroy();
 
 EXPORTED void Renderer_FrameStart();
 
-EXPORTED void Renderer_ResolveDrawCalls();
+EXPORTED void Renderer_ResolveDrawCalls(double delta_in_ms);
 
 EXPORTED void Renderer_FrameEnd();
 
@@ -82,7 +82,7 @@ EXPORTED void Renderer_Draw_Mesh(int mesh_id, const Transform &transform, Vector
 
 EXPORTED void Renderer_Draw_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
-EXPORTED void Renderer_Draw_Skeletal_Model(int model_id, const Transform &transform, Vector3D color, Material material, double delta_time_ms);
+EXPORTED void Renderer_Draw_Skeletal_Model(int model_id, const Transform &transform, Vector3D color, Material material);
 
 EXPORTED void Renderer_Draw_Mesh_Unshaded(int mesh_id, const Transform &transform, Vector3D color);
 

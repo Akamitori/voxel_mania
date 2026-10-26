@@ -11,15 +11,16 @@
 #include "RendererTypes.h"
 
 
+
 struct TextureData {
     int width{};
     int height{};
     int nrChannels{};
     unsigned char *bytes{};
-    char* path{};
+    const char* texture_name{};
 };
 
-constexpr TextureData nil_texture{-1,-1,-1,nullptr, nullptr};
+constexpr TextureData nil_texture{-1, -1, -1, nullptr, "nil_texture"};
 
 struct uv {
     float x;
@@ -31,9 +32,6 @@ struct Vertice {
     Vector3D Normal;
     uv UVs;
 };
-// A FAT STRUCT
-// USE WHATEVER YOU NEED
-
 
 enum Mesh_Type {
     Regular,
@@ -42,7 +40,6 @@ enum Mesh_Type {
 
 struct BoneInfo {
     Matrix4D OffsetMatrix{};
-    Matrix4D FInalTransformMatrix{};
 };
 
 struct ModelMesh {
@@ -56,19 +53,26 @@ struct ModelMesh {
     uint32_t* indices{};
     size_t index_count{};
     
-    size_t bone_count{};
-    
     Mesh_Type Type{};
-    
-    
 };
+
+
+
+
+constexpr size_t NO_BONE_NODE = UINT64_MAX;
 
 
 struct ModelNode {
-    char* Name{};
+    const char* Name{};
     Matrix4D NodeTransformationMatrix{};
-    int parentID{-1};
+    size_t parentID{0};
+    size_t bone_index{NO_BONE_NODE};
+    Quaternion Rotation{};
+    Vector3D Scaling{};
+    Vector3D Position{};
 };
+
+const ModelNode NilNode{"nil_node", IdentityMatrix, 0};
 
 
 
@@ -76,7 +80,7 @@ VECTOR_DECLARATION_LIBRARY(ModelMesh)
 VECTOR_DECLARATION_LIBRARY(TextureData)
 VECTOR_DECLARATION_LIBRARY(VertexBoneData)
 VECTOR_DECLARATION_LIBRARY(BoneInfo)
-VECTOR_DECLARATION_LIBRARY(ModelNode)
+VECTOR_DECLARATION_LIBRARY(ModelNode)   
 VECTOR_DECLARATION_LIBRARY(int)
 
 
@@ -87,11 +91,14 @@ struct ModelData {
     
     // this contains all the offsets for each of those mesh starts
     // the idea of mesh_base_vertex is that we use it to tightly pack each mesh and its data into
+    // the data structure this is packed into is the BoneDataPerMeshPerVertice
     Vector_int* mesh_base_vertex{};
+    
     // while initially this was about storing bones
     // the hierarchy exists anyways
-    // it hasn't bitten us in the us because we rendered static models but this is 
+    // it hasn't bitten us in the ass because we rendered static models but this is 
     // a much needed step to prevent that
+    // TODO this is to be filled after i rewatch the videos
     Vector_ModelNode* NodeHierarchy{};
     
     // a flat storage of BoneData
@@ -99,13 +106,17 @@ struct ModelData {
     // this contains all the bones for every mesh
     // for each vertice
     Vector_VertexBoneData *BoneDataPerMeshPerVertice{};
+    
+    // this is the same size as the bones yeah
     Vector_BoneInfo *BoneMatrices{};
+    // this map provides indices for the bone matrices   . we can use this during animations to see if the nodes make sense(probably???)
+    cstr_uint32_t_hashmap* Bone_name_to_index_map{};
     
+    Matrix4D GlobalInverseTransform{};
     
-    // for each mesh we have a hierarhcy
-    // we have 10 meshes(example)
-    
-    
+    Animation* Animations{};
+    cstr_uint32_t_hashmap* animation_name_to_index_map{};
+    size_t count_animations{};
 };
 
 // assuming the engine supports 3 textures types diffuse, 
@@ -115,6 +126,6 @@ struct ModelData {
 
 EXPORTED TextureData LoadTexture(const char *path);
 EXPORTED ModelData LoadModel(const char *path);
-EXPORTED void parse_scene(const char * path);
 
 #endif //VOXEL_MANIA_ASSETLOADER_H
+

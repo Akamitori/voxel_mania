@@ -38,3 +38,6 @@ set_target_properties(hashmap_benchmarks PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE
 )
 
+add_and_export_library(Common_Hashmaps TYPE SHARED FILES hashmap_common.cpp)
+target_link_libraries(Common_Hashmaps PUBLIC Custom_Containers)
+

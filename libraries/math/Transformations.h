@@ -40,7 +40,7 @@ EXPORTED Matrix4D PerspectiveProjectionMatrix(float FOV, float z_near, float z_f
 
 EXPORTED Vector3D Lerp(const Vector3D& v1, const Vector3D& v2,float t);
 EXPORTED Vector4D Lerp(const Vector4D& v1, const Vector4D& v2,float t);
-EXPORTED Quaternion Slerp(Quaternion& q1,Quaternion& q2,float t);
+EXPORTED Quaternion Slerp(const Quaternion& q1, const Quaternion& q2,float t);
 
 
 #endif //TRANSFORMATIONS_H

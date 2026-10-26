@@ -29,7 +29,7 @@ EXPORTED Quaternion operator*(const Quaternion& q1,const Quaternion& q2);
 EXPORTED Quaternion operator-(const Quaternion& q1);
 EXPORTED float dot(const Quaternion& q1,const Quaternion& q2);
 EXPORTED Quaternion normalize(const Quaternion& q1);
-EXPORTED Vector3D Transform(const Vector3D&v, const Quaternion& q);
+EXPORTED Vector3D Transform_Vector_With_Quaternion(const Vector3D&v, const Quaternion& q);
 
 
 

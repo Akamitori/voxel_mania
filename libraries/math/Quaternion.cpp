@@ -136,7 +136,7 @@ Quaternion normalize(const Quaternion &q1) {
     };
 }
 
-Vector3D Transform(const Vector3D &v, const Quaternion &q) {
+Vector3D Transform_Vector_With_Quaternion(const Vector3D &v, const Quaternion &q) {
     const Vector3D &b = q.GetVectorPart();
     const float b2 = b.x * b.x + b.y * b.y + b.z * b.z;
 
