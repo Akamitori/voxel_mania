@@ -6,6 +6,7 @@ add_and_export_library(LinearAlgebra TYPE SHARED FILES
         Vector4D.cpp
         Matrix3D.cpp
         Matrix4D.cpp
+        Quaternion.cpp
         Transformations.cpp
         Plane.cpp
         Clipping.cpp
