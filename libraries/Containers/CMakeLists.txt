@@ -30,3 +30,14 @@ set_target_properties(vector_tests_inline vector_tests_linked PROPERTIES
         INTERPROCEDURAL_OPTIMIZATION TRUE
 )
 
+# Hashmap benchmarks (header-only, static variant)
+add_executable(hashmap_benchmarks benchmarks/hashmap_benchmarks.cpp)
+target_link_libraries(hashmap_benchmarks PRIVATE Custom_Containers)
+
+set_target_properties(hashmap_benchmarks PROPERTIES
+        INTERPROCEDURAL_OPTIMIZATION TRUE
+)
+
+add_and_export_library(Common_Hashmaps TYPE SHARED FILES hashmap_common.cpp)
+target_link_libraries(Common_Hashmaps PUBLIC Custom_Containers)
+
