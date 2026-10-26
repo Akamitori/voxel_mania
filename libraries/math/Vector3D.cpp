@@ -2,6 +2,7 @@
 
 #include <cmath>
 
+#include "math_ops.h"
 #include "Vector4D.h"
 
 float dot(const Vector3D &a, const Vector3D &b) {
@@ -84,7 +85,14 @@ Vector3D operator -(const Vector3D &a, const Vector3D &b) {
     return Vector3D(a.x - b.x, a.y - b.y, a.z - b.z);
 }
 
-Vector4D Vector3D_To_Vector4D(const Vector3D v, const float w) {
-    return {v.x,v.y,v.z,w};
+Vector4D Vector3D_To_Vector4D(const Vector3D &v, const float w) {
+    return {v.x, v.y, v.z, w};
 }
 
+Vector3D Lerp_Vector_A_to_Vector_B(const Vector3D &v_A, const Vector3D &v_B, const float blend_factor) {
+    return {
+        math_ops::lerp(blend_factor, v_A.x, v_B.x),
+        math_ops::lerp(blend_factor, v_A.y, v_B.y),
+        math_ops::lerp(blend_factor, v_A.z, v_B.z)
+    };
+}
