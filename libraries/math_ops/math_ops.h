@@ -9,8 +9,8 @@ namespace math_ops {
 
     EXPORTED bool is_equal(double a, double b, double EPSILON = 0.000001f);
 
-    EXPORTED float lerp(float value, float start, float end);
-    EXPORTED double lerp(double value, double start, double end);
+    EXPORTED float lerp(float start, float end, float factor);
+    EXPORTED double lerp(double factor, double start, double end);
     EXPORTED double clamp(double value, double lower,double upper);
     
     EXPORTED uint8_t max(uint8_t a, uint8_t b);
