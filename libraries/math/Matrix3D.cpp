@@ -18,7 +18,7 @@ Matrix3D::Matrix3D(
 } {
 }
 
-Matrix3D::Matrix3D(): Matrix3D(0) {
+Matrix3D::Matrix3D() : Matrix3D(0) {
 }
 
 const Vector3D &Matrix3D::operator[](const int index) const {
@@ -29,28 +29,36 @@ Vector3D &Matrix3D::operator[](const int index) {
     return column_vectors[index];
 }
 
-Matrix3D operator *(const Matrix3D& A, const Matrix3D& B) {
-    
+Matrix3D operator *(const Matrix3D &A, const Matrix3D &B) {
     return {
         A[0].x * B[0].x + A[1].x * B[0].y + A[2].x * B[0].z,
         A[0].x * B[1].x + A[1].x * B[1].y + A[2].x * B[1].z,
         A[0].x * B[2].x + A[1].x * B[2].y + A[2].x * B[2].z,
-        
+
         A[0].y * B[0].x + A[1].y * B[0].y + A[2].y * B[0].z,
         A[0].y * B[1].x + A[1].y * B[1].y + A[2].y * B[1].z,
         A[0].y * B[2].x + A[1].y * B[2].y + A[2].y * B[2].z,
-        
+
         A[0].z * B[0].x + A[1].z * B[0].y + A[2].z * B[0].z,
         A[0].z * B[1].x + A[1].z * B[1].y + A[2].z * B[1].z,
         A[0].z * B[2].x + A[1].z * B[2].y + A[2].z * B[2].z
     };
 }
 
-Matrix3D& Matrix3D::operator=(const Matrix3D &b) {
-    if (&b!=this) {
-        this->column_vectors[0]=b.column_vectors[0];
-        this->column_vectors[1]=b.column_vectors[1];
-        this->column_vectors[2]=b.column_vectors[2]; 
+Matrix3D Matrix3D_from_scale_vector(const Vector3D &v) {
+    Matrix3D m{1};
+    m.column_vectors[0].x = v.x;
+    m.column_vectors[1].y = v.y;
+    m.column_vectors[2].z = v.z;
+
+    return m;
+}
+
+Matrix3D &Matrix3D::operator=(const Matrix3D &b) {
+    if (&b != this) {
+        this->column_vectors[0] = b.column_vectors[0];
+        this->column_vectors[1] = b.column_vectors[1];
+        this->column_vectors[2] = b.column_vectors[2];
     }
     return *this;
 }
@@ -81,6 +89,6 @@ Matrix3D transpose(const Matrix3D &M) {
     const Vector3D &a_t = {a.x, b.x, c.x};
     const Vector3D &b_t = {a.y, b.y, c.y};
     const Vector3D &c_t = {a.z, b.z, c.z};
-    
-    return Matrix3D{a_t,b_t,c_t};
+
+    return Matrix3D{a_t, b_t, c_t};
 }
