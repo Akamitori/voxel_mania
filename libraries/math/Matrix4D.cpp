@@ -139,3 +139,20 @@ Vector4D operator*(const Matrix4D &m, const Vector4D &v) {
         column_vector_0.w * v.x + column_vector_1.w * v.y + column_vector_2.w * v.z + column_vector_3.w * v.w,
     };
 }
+
+Matrix4D from_scale_vector(const Vector3D &v) {
+    Matrix4D m{1};
+    m.column_vectors[0].x=v.x;
+    m.column_vectors[1].y=v.y;
+    m.column_vectors[2].z=v.z;
+    
+    return m;
+}
+
+Matrix4D from_translation_vector(const Vector3D &v) {
+    Matrix4D m{1};
+    m.column_vectors[3].x=v.x;
+    m.column_vectors[3].y=v.y;
+    m.column_vectors[3].z=v.z;
+    return m;
+}
