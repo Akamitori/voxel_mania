@@ -1640,8 +1640,6 @@ void sample_local_pose(double delta_seconds,
         }
 
         Vector3D position = node_trans_data.Position[channel.node_index];
-        Vector3D scaling = node_trans_data.Scaling[channel.node_index];
-        Quaternion rotation = node_trans_data.Rotation[channel.node_index];
         if (key_results.PositionKeys != NO_KEY) {
             if (key_results.PositionKeys.start == key_results.PositionKeys.end) {
                 position = channel.position_keys[key_results.PositionKeys.start].Value;
@@ -1652,6 +1650,7 @@ void sample_local_pose(double delta_seconds,
             }
         }
 
+        Vector3D scaling = node_trans_data.Scaling[channel.node_index];
         if (key_results.ScaleKeys != NO_KEY) {
             if (key_results.ScaleKeys.start == key_results.ScaleKeys.end) {
                 scaling = channel.scaling_keys[key_results.ScaleKeys.start].Value;
@@ -1662,6 +1661,7 @@ void sample_local_pose(double delta_seconds,
             }
         }
 
+        Quaternion rotation = node_trans_data.Rotation[channel.node_index];
         if (key_results.RotationKeys != NO_KEY) {
             if (key_results.RotationKeys.start == key_results.RotationKeys.end) {
                 rotation = channel.rotation_keys[key_results.RotationKeys.start].Value;
@@ -1698,22 +1698,19 @@ void Skeletal_Pass(double delta_seconds) {
     for (size_t i = 0; i < Vector_size_t_Length(skeletal_model_indices); ++i) {
         const size_t index = skeletal_model_indices->data[i];
         Model &m = Models->data[index];
-        const ModelNode *const bindBoseNodes = m.NodeHierarchyBindPose->data;
+        const ModelNode *const hierarchy = m.NodeHierarchyBindPose->data;
         NodeTransfromationData &node_trans_data = m.node_transformation_data;
         
         // initialize all the node transformation matrices
         for (size_t n = 0; n < node_trans_data.count_nodes; ++n) {
-            node_trans_data.node_transformation_matrix[n] = bindBoseNodes[n].NodeTransformationMatrix;
+            node_trans_data.node_transformation_matrix[n] = hierarchy[n].NodeTransformationMatrix;
         }
 
 
         sample_local_pose(delta_seconds, anim_index, m,node_trans_data);
-
-
-        //evaulate hierarchy
-        const ModelNode *const hierarchy = m.NodeHierarchyBindPose->data;
-        Matrix4D *const node_transformations = m.node_transformation_data.node_transformation_matrix;
-        for (size_t j = 0; j < m.node_transformation_data.count_nodes; ++j) {
+        
+        Matrix4D *const node_transformations = node_trans_data.node_transformation_matrix;
+        for (size_t j = 0; j < node_trans_data.count_nodes; ++j) {
             const size_t parent_ID = hierarchy[j].parentID;
             Matrix4D parent_matrix = node_transformations[parent_ID];
             node_transformations[j] = parent_matrix * node_transformations[j];

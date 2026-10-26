@@ -340,8 +340,8 @@ ModelData LoadModel(const char *path) {
     }
 
     model.BoneDataPerMeshPerVertice->end = model.BoneDataPerMeshPerVertice->data + vertice_count;
-
-
+    
+    
     // we can use all those 3 to get what we need
     // we can probably go with a stack ;)
     const aiNode *assimpt_root_node = scene->mRootNode;
