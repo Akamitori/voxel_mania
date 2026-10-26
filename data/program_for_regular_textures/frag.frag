@@ -81,7 +81,7 @@ uniform vec4 shadow_offset[2];
 vec3 CalculateDirectionalLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculatePointLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
 vec3 CalculateSpotLights(vec3 diffuseTexMap, vec3 specularTexMap, vec3 normal, vec3 fragPos);
-float CalculateShadowFactor(vec3 frag_pos_world_space, vec3 normal, vec3 light_dir);
+
 float saturate(float value);
 
 void main() {
