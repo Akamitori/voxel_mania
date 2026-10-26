@@ -8,7 +8,10 @@
 #include "export.h"
 #include <string.h>
 #include <stdlib.h>
+
+#ifndef __cplusplus
 #include <stdbool.h>
+#endif
 
 #ifdef __cplusplus
 extern "C" {
@@ -55,6 +58,7 @@ static bool Vector_##T##_Resize(Vector_##T *v) {                            \
     size_t new_cap = old_cap * 2;                                           \
     T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
     if (!new_data) return false;                                            \
+    memset(new_data+old_cap,0, (new_cap-old_cap)*sizeof(T));               \
     v->data = new_data;                                                    \
     v->end = new_data + old_size;                                           \
     v->cap_end = new_data + new_cap;                                        \
@@ -71,7 +75,7 @@ Vector_##T* Vector_##T##_Create(int min_capacity) {                         \
     if (min_capacity <= 0) min_capacity = 8;                                \
     Vector_##T *v = (Vector_##T *)malloc(sizeof(Vector_##T));               \
     if (!v) return NULL;                                                    \
-    v->data = (T *)malloc(min_capacity * sizeof(T));                       \
+    v->data = (T *)calloc(min_capacity , sizeof(T));                       \
     if (!v->data) { free(v); return NULL; }                                \
     v->end = v->data;                                                      \
     v->cap_end = v->data + min_capacity;                                   \
@@ -121,6 +125,7 @@ static inline bool Vector_##T##_Resize(Vector_##T *v) {                     \
     size_t new_cap = old_cap * 2;                                           \
     T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
     if (!new_data) return false;                                            \
+    memset(new_data+old_cap,0, (new_cap-old_cap)*sizeof(T));               \
     v->data = new_data;                                                    \
     v->end = new_data + old_size;                                           \
     v->cap_end = new_data + new_cap;                                        \
@@ -137,7 +142,7 @@ static inline Vector_##T* Vector_##T##_Create(int min_capacity) {           \
     if (min_capacity <= 0) min_capacity = 8;                                \
     Vector_##T *v = (Vector_##T *)malloc(sizeof(Vector_##T));               \
     if (!v) return NULL;                                                    \
-    v->data = (T *)malloc(min_capacity * sizeof(T));                       \
+    v->data = (T *)calloc(min_capacity , sizeof(T));                       \
     if (!v->data) { free(v); return NULL; }                                \
     v->end = v->data;                                                      \
     v->cap_end = v->data + min_capacity;                                   \
