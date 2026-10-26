@@ -57,3 +57,19 @@ float math_ops::floor(const float a) {
 int math_ops::floor_to_int(const float a) {
     return static_cast<int>(a);
 }
+
+float math_ops::round(const float a) {
+    const float a_c=ceil(a);
+    const float a_f=floor(a);
+    const float dif= a-a_f;
+    const float mod= dif>=0.5;
+    return mod*a_c+(1-mod)*a_f;
+}
+
+int math_ops::round_to_int(const float a) {
+    const float a_c=ceil(a);
+    const float a_f=floor(a);
+    const float dif= a-a_f;
+    const float mod= dif>=0.5;
+    return (int)(mod*a_c+(1-mod)*a_f);
+}
