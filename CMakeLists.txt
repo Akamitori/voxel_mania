@@ -41,6 +41,7 @@ target_link_libraries(voxel_mania
         Renderer
         Trigonometry
         Custom_Containers
+        AssetLoader
 )
 
 # Copy shaders

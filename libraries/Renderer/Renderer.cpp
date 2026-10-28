@@ -13,23 +13,22 @@
 #define STB_IMAGE_IMPLEMENTATION
 
 
-#include "stb_image.h"
+#include <assert.h>
+
 #include "Transformations.h"
 #include "Trigonometry.h"
-#include <assimp/Importer.hpp>
-#include <assimp/scene.h>
-#include <assimp/postprocess.h>
+
 
 #include "math_ops.h"
 #include "Plane.h"
 #include "queue_container.h"
 #include "vector_container.h"
 
+#include <assimp/Importer.hpp>
+#include <assimp/scene.h>
 
-typedef aiNode *aiNodePtr;
-QUEUE_DECLARATION_STATIC(aiNodePtr)
+#include "AssetLoader.h"
 
-QUEUE_IMPLEMENTATION(aiNodePtr)
 
 static Camera *SceneCamera = nullptr;
 SDL_Window *window{};
@@ -38,6 +37,7 @@ SDL_GLContext open_gl_context{};
 static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
+static unsigned int world_geometry_program_skeletal_models;
 static unsigned int cursor_program;
 
 
@@ -93,7 +93,8 @@ static unsigned int defaultEmissionTexture;
 enum class DrawCommandType {
     None = 0,
     Mesh,
-    Model,
+    Static_Model,
+    Skeletal_Model,
     Mesh_Unshaded
 };
 
@@ -118,8 +119,8 @@ struct Texture {
     int height{};
     TextureType loaded_texture_type{};
     TextureType stored_texture_storage{};
-    unsigned char *data{};
-    char *path{};
+    const unsigned char *bytes{};
+    const char *path{};
     TextureWrapMode WrapMode_S{};
     TextureWrapMode WrapMode_T{};
 
@@ -136,20 +137,70 @@ struct Mesh {
 
     uint32_t *indices{nullptr};
     size_t index_count{0};
+    
+    VertexBoneData *BoneDataPerVertice{nullptr};
+    size_t bone_data_per_vertice_count{0};
 
     GLuint VAO{0};
     GLuint VBO{0};
+    
+    // buffer where we upload BoneDataPerVertice data 
+    GLuint VBO_Skeletal{0};
     GLuint VBE{0};
-    int diffuse_texture_id{-1};
-    int specular_texture_id{-1};
-    int emission_texture_id{-1};
+    uint32_t diffuse_texture_id{static_cast<uint32_t>(-1)};
+    uint32_t specular_texture_id{static_cast<uint32_t>(-1)};
+    uint32_t emission_texture_id{static_cast<uint32_t>(-1)};
+    
     unsigned int program_id{0};
+};
+
+// use to store the hierarchy transformation data per frame
+// so we can do our cpu side skinning 
+struct Hierarchy_Transform {
+    Matrix4D *node_transformation_matrices;
+    Vector3D *Positions;
+    Vector3D *Scalings;
+    Quaternion *Rotations;
+    size_t count_nodes;
 };
 
 struct Model {
     int *mesh_ids;
     size_t mesh_count;
+
+    BoneInfo *BoneMatrices{};
+    size_t bone_matrices_count{};
+    
+    hierarchy_model_node *node_hierarchy{};
+    size_t node_hierarchy_count{};
+    
+    Hierarchy_Transform node_transformation_data;
+
+    cstr_uint32_t_hashmap *Bone_name_to_index_map{};
+    Matrix4D GlobalInverseTransform{};
+    
+    // finalized bone transformations per bone
+    // this is what we upload on the GPU
+    Matrix4D *BoneTransformations{nullptr};
+    size_t BoneTransformationsCount{};
+
+    // animation data (if any)
+    Animation *Animations{nullptr};
+    size_t animation_count;
+    
+    //use to specify an animation name to an index to animations
+    cstr_uint32_t_hashmap *animation_name_to_index_map{};
+    
+    //each mesh has gets its own slice
+    // the owning model points to the first slice so we can free it
+    VertexBoneData *BoneDataPerVerticeOwningSlice{nullptr};
+    
+    
+    // animation ticks
+    // TODO this will def move out soon once we get to many entities having their own similar model
+    double anim_time_ticks{0};
 };
+
 
 struct {
     float FOV;
@@ -222,11 +273,18 @@ static Spot_Lights Spot_Lights{};
 VECTOR_IMPLEMENTATION_STATIC(Mesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
 VECTOR_IMPLEMENTATION_STATIC(Texture);
+
+// TODO we can probably move those to a common container header 
 VECTOR_IMPLEMENTATION_STATIC(uint32_t);
+VECTOR_IMPLEMENTATION_STATIC(size_t);
 VECTOR_IMPLEMENTATION_STATIC(float);
+
+
 VECTOR_IMPLEMENTATION_STATIC(DrawCommand);
 
 static Vector_Model *Models = Vector_Model_Create(100);
+// sub batch that carries all the indices of models that are skeletal
+static Vector_size_t *skeletal_model_indices = Vector_size_t_Create(100);
 static Vector_Mesh *Meshes = Vector_Mesh_Create(100);
 static Vector_Mesh *UnshadedMeshes = Vector_Mesh_Create(100);
 static Vector_Texture *Textures = Vector_Texture_Create(100);
@@ -236,7 +294,7 @@ static void SendLightUBOsToTheGPU();
 
 static void SendGeometryDataToTheGPU();
 
-static void SendLightGeometryDataToTheGPU();
+static void SendUnshadedGeometryDataToTheGPU();
 
 static void SendTextureDataToTheGPU();
 
@@ -258,8 +316,6 @@ static Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians);
 static Matrix4D calculate_model_matrix_from_transform(const Transform &transform);
 
 static Matrix3D calculate_matrix3d_for_normals_from_model_matrix(const Matrix4D &model_matrix);
-
-static int LoadTexture(aiTextureType type, const char *directory, const aiMaterial *material);
 
 static void OpenGLGlobalSetup();
 
@@ -291,6 +347,8 @@ static void Calculate_Directional_Light_MVP_Matrix(int light_index);
 
 static void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix);
 
+static int RegisterTextureFromData(const TextureData &texture_data, Texture_Parameters parameters = {});
+
 static void Initialize_frustum_partitions(float z_near, float z_far) {
     // we can also try 0.5
 
@@ -302,11 +360,11 @@ static void Initialize_frustum_partitions(float z_near, float z_far) {
         float split_far = lambda * log_split + (1.0f - lambda) * uniform_split;
 
         // First cascade starts at 0
-        float split_near = (i == 0) ? 0.0f : frustum_splits[i - 1].far;
+        float split_near = i == 0 ? 0.0f : frustum_splits[i - 1].far;
 
         // Optional overlap (skip for first cascade)
         constexpr float overlap = 0.1f;
-        float overlap_amount = (i == 0) ? 0.0f : overlap * (frustum_splits[i - 1].far - frustum_splits[i - 1].near);
+        float overlap_amount = i == 0 ? 0.0f : overlap * (frustum_splits[i - 1].far - frustum_splits[i - 1].near);
 
         frustum_splits[i] = {split_near - overlap_amount, split_far};
 
@@ -325,7 +383,8 @@ void OpenGLGlobalSetup() {
     world_geometry_program = InitializeProgram("program_for_regular_textures");
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
-
+    world_geometry_program_skeletal_models = InitializeProgram("program_for_skeletal_models");
+    
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
 
@@ -492,16 +551,19 @@ void Renderer_Init(const int screen_width,
     unsigned int programs_to_initialize[]{
         world_geometry_program,
         world_geometry_program_cross_textures,
+        world_geometry_program_skeletal_models,
         world_unshaded_geometry_program,
-        Screen_Texture.shadow_map_program,
+        Screen_Texture.shadow_map_program
     };
+
+
     // UBO setup part 2 : bind the buffers we made at to their specific binding point. do this PER SHADER.
     for (const auto &program_to_initialize: programs_to_initialize) {
         const unsigned int ViewMatrices_Index = glGetUniformBlockIndex(program_to_initialize, "ViewMatrices");
         const unsigned int Point_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Point_Lights");
         const unsigned int Directional_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Directional_Lights");
         const unsigned int Spot_Lights_Index = glGetUniformBlockIndex(program_to_initialize, "Spot_Lights");
-        
+
         //bind it to the buffer we made at a specific binding point
         // in the geometry program, our uniform that map to a UBO  can be found at global binding pointViewMatrices_binding_point
         // in practice this mean the first call of this actually creates that association at the index
@@ -696,6 +758,7 @@ int Renderer_RegisterPrimitiveMeshData(
         m.vertices[v * float_per_vertex + 1] = vertices[v * 3 + 1];
         m.vertices[v * float_per_vertex + 2] = vertices[v * 3 + 2];
 
+        // no normals for the wicked
         m.vertices[v * float_per_vertex + 3] = 0;
         m.vertices[v * float_per_vertex + 4] = 0;
         m.vertices[v * float_per_vertex + 5] = 0;
@@ -811,44 +874,9 @@ int Renderer_RegisterUnshadedTexture(
 }
 
 
-int Renderer_RegisterTexture(const char *path, const Texture_Parameters parameters) {
-    int width;
-    int height;
-    int nrChannels;
-
-    // let's assume for now that we are using rgb
-    stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load(path, &width, &height, &nrChannels, 0);
-
-    assert(("Texture path", data));
-    assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
-
-    const int id = Vector_Texture_Length(Textures);
-
-    char *texture_path = (char *) malloc(strlen(path) + 1 * sizeof(char));
-    strcpy(texture_path, path);
-
-    TextureType loaded_format = nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
-    TextureType internal_format = loaded_format;
-    if (parameters.convert_from_srgb_to_linear_space) {
-        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
-    }
-
-    const Texture t{
-        id,
-        width,
-        height,
-        loaded_format,
-        internal_format,
-        data,
-        texture_path,
-        parameters.wrap_mode_s,
-        parameters.wrap_mode_t
-    };
-
-    Vector_Texture_Add(Textures, t);
-
-    return id;
+int Renderer_RegisterTextureFromPath(const char *path, const Texture_Parameters parameters) {
+    TextureData texture_data = LoadTexture(path);
+    return RegisterTextureFromData(texture_data, parameters);
 }
 
 
@@ -887,6 +915,50 @@ int Renderer_RegisterTexturedMesh(
 
     return mesh_id;
 }
+
+static int Renderer_RegisterTexturedMesh_WithOwnership(
+    const int diffuse_texture_id,
+    const int specular_texture_id,
+    const int emission_texture_id,
+    float *vertices,
+    const size_t vertice_count,
+    uint32_t *indices,
+    const size_t index_count,
+    VertexBoneData *vertex_bone_data,
+    size_t vertex_bone_data_count
+) {
+    assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Vector_Texture_Length(Textures)));
+
+    const int mesh_id = Vector_Mesh_Length(Meshes);
+    Mesh m{};
+
+    m.vertice_count = vertice_count;
+    m.index_count = index_count;
+    m.bone_data_per_vertice_count = vertex_bone_data_count;
+
+    m.vertices = vertices;
+    m.indices = indices;
+
+    m.id = mesh_id;
+    m.diffuse_texture_id = diffuse_texture_id;
+    m.specular_texture_id = specular_texture_id;
+    m.emission_texture_id = emission_texture_id;
+
+    m.BoneDataPerVertice = vertex_bone_data;
+
+    if (m.bone_data_per_vertice_count > 0) {
+        m.program_id = world_geometry_program_skeletal_models;
+    } else {
+        m.program_id = world_geometry_program;
+    }
+
+    Vector_Mesh_Add(Meshes, m);
+
+    return mesh_id;
+}
+
 
 int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale) {
     assert(("Support only downsizing", scale<=1));
@@ -986,116 +1058,141 @@ int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale
 }
 
 
+static cstr_uint32_t_hashmap *registered_textures = cstr_uint32_t_Hashmap_Create(1024, 0.9);
+
 int Renderer_Register_Model(const char *path) {
-    Assimp::Importer importer;
-    const aiScene *scene = importer.ReadFile(
-        path,
-        aiProcess_Triangulate |
-        aiProcess_FlipUVs |
-        aiProcess_MakeLeftHanded
-    );
+    const ModelData model = LoadModel(path);
 
-    if (!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) {
-        fprintf(stderr, "ERROR::ASSIMP:: %s", importer.GetErrorString());
-        return -1;
+    const size_t regular_meshes_to_register = model.mesh_data_count;
+
+    
+
+
+    const size_t node_len =model.node_hierarchy_count;
+    Matrix4D *node_matrices = (Matrix4D *) calloc(node_len, sizeof(Matrix4D));
+    Vector3D *node_positions = (Vector3D *) calloc(node_len, sizeof(Vector3D));
+    Vector3D *node_scaling = (Vector3D *) calloc(node_len, sizeof(Vector3D));
+    Quaternion *node_quats = (Quaternion *) calloc(node_len, sizeof(Quaternion));
+
+    for (size_t i = 0; i < model.node_hierarchy_count; ++i) {
+        const hierarchy_model_node &node = model.node_hierarchy[i];
+
+        node_matrices[i] = node.NodeTransformationMatrix;
+        node_positions[i] = node.Position;
+        node_scaling[i] = node.Scaling;
+        node_quats[i] = node.Rotation;
     }
 
+    Hierarchy_Transform trans_data = {node_matrices, node_positions, node_scaling, node_quats, node_len};
 
-    // if we are here path is probably valid;
-    const char *last_slash = strrchr(path, '/');
-    const size_t chars_to_copy = last_slash ? last_slash - path : strlen(path);
-    char *directory = (char *) malloc((chars_to_copy + 1) * sizeof(char));
-    memcpy(directory, path, chars_to_copy * sizeof(char));
-    directory[chars_to_copy] = '\0';
+    Model model_to_register{
+        (int *) malloc(regular_meshes_to_register * sizeof(int)),
+        regular_meshes_to_register,
 
-    // keep this bastard queue for now
-    // remove later because I hate STL
-    Queue_aiNodePtr *nodes_to_process = Queue_aiNodePtr_Create(100);
-    Queue_aiNodePtr_Enqueue(nodes_to_process, scene->mRootNode);
-
-
-    const Model &model_to_register = {(int *) malloc(scene->mNumMeshes * sizeof(int)), scene->mNumMeshes};
-    int count = 0;
-    aiNodePtr node;
-
-    Vector_uint32_t *index_data = Vector_uint32_t_Create(1024);
-    Vector_float *vertex_data = Vector_float_Create(1024);
-
-    while (Queue_aiNodePtr_Deque(nodes_to_process, &node)) {
-        for (unsigned int i = 0; i < node->mNumMeshes; ++i) {
-            const aiMesh *mesh = scene->mMeshes[node->mMeshes[i]];
-
-            // get the vertex data
-            for (unsigned int j = 0; j < mesh->mNumVertices; ++j) {
-                const Vector3D position{
-                    mesh->mVertices[j].x,
-                    mesh->mVertices[j].y,
-                    mesh->mVertices[j].z,
-                };
-
-                const Vector3D normal{
-                    mesh->mNormals[j].x,
-                    mesh->mNormals[j].y,
-                    mesh->mNormals[j].z,
-                };
-
-                float uv_x = 0;
-                float uv_y = 0;
-
-                if (mesh->mTextureCoords[0]) {
-                    uv_x = mesh->mTextureCoords[0][j].x;
-                    uv_y = mesh->mTextureCoords[0][j].y;
-                }
-
-                Vector_float_Add(vertex_data, position.x);
-                Vector_float_Add(vertex_data, position.z);
-                Vector_float_Add(vertex_data, position.y);
-                Vector_float_Add(vertex_data, normal.x);
-                Vector_float_Add(vertex_data, normal.z);
-                Vector_float_Add(vertex_data, normal.y);
-                Vector_float_Add(vertex_data, uv_x);
-                Vector_float_Add(vertex_data, uv_y);
-            }
-
-
-            for (size_t j = 0, indice_index = 0; j < mesh->mNumFaces; ++j) {
-                const aiFace face = mesh->mFaces[j];
-                for (unsigned int k = 0; k < face.mNumIndices; ++k, ++indice_index) {
-                    Vector_uint32_t_Add(index_data, face.mIndices[k]);
-                }
-            }
-
-            const aiMaterial *material = scene->mMaterials[mesh->mMaterialIndex];
-            const int diffuse_texture_id = LoadTexture(aiTextureType_DIFFUSE, directory, material);
-            const int specular_texture_id = LoadTexture(aiTextureType_SPECULAR, directory, material);
-
-            model_to_register.mesh_ids[count++] = Renderer_RegisterTexturedMesh(
-                diffuse_texture_id,
-                specular_texture_id,
-                -1,
-                vertex_data->data,
-                Vector_float_Length(vertex_data),
-                index_data->data,
-                Vector_uint32_t_Length(index_data)
-            );
-
-            Vector_uint32_t_Clear(index_data);
-            Vector_float_Clear(vertex_data);
-        }
-
-        for (unsigned int i = 0; i < node->mNumChildren; ++i) {
-            Queue_aiNodePtr_Enqueue(nodes_to_process, node->mChildren[i]);
-        }
-    }
-
-    Vector_uint32_t_Free(index_data);
-    Vector_float_Free(vertex_data);
-
-    Queue_aiNodePtr_Free(nodes_to_process);
+        model.BoneMatrices,
+        model.bone_matrices_count,
+        model.node_hierarchy,
+        model.node_hierarchy_count,
+        trans_data,
+        model.Bone_name_to_index_map,
+        model.GlobalInverseTransform,
+        nullptr,
+        0,
+        model.Animations,
+        model.count_animations,
+        model.animation_name_to_index_map
+    };
 
     const int model_id = Vector_Model_Length(Models);
 
+    model_to_register.BoneDataPerVerticeOwningSlice = nullptr;
+    bool is_skeletal_model = false;
+    for (size_t registration_count = 0; registration_count < regular_meshes_to_register; ++registration_count) {
+        const ModelMesh m = model.mesh_data[registration_count];
+
+        const TextureData diffuse_texture = model.diffuse_textures[m.diffuse_index];
+        const TextureData specular_texture = model.specular_textures[m.specular_index];
+
+        uint32_t diffuse_texture_id = -1;
+        uint32_t specular_texture_id = -1;
+
+        if (diffuse_texture.nrChannels != nil_texture.nrChannels) {
+            uint32_t *diffuse_id = cstr_uint32_t_Hashmap_Find(registered_textures, diffuse_texture.texture_name);
+            if (diffuse_id) {
+                diffuse_texture_id = *diffuse_id;
+            } else {
+                diffuse_texture_id = RegisterTextureFromData(diffuse_texture);
+                cstr_uint32_t_Hashmap_Insert(registered_textures, {diffuse_texture.texture_name, diffuse_texture_id});
+            }
+        }
+
+        if (specular_texture.nrChannels != nil_texture.nrChannels) {
+            uint32_t *specular_id = cstr_uint32_t_Hashmap_Find(registered_textures, specular_texture.texture_name);
+            if (specular_id) {
+                specular_texture_id = *specular_id;
+            } else {
+                specular_texture_id = RegisterTextureFromData(specular_texture);
+                cstr_uint32_t_Hashmap_Insert(registered_textures, {specular_texture.texture_name, specular_texture_id});
+            }
+        }
+
+        VertexBoneData *bone_data = nullptr;
+        size_t bone_data_count = 0;
+
+
+        if (m.Type == Skinned) {
+            is_skeletal_model = true;
+            assert(model.BoneMatrices && " we should have model matrices for the bones!");
+            model_to_register.BoneTransformationsCount = model.bone_matrices_count;
+            model_to_register.BoneTransformations = (Matrix4D *) calloc(model.bone_matrices_count, sizeof(Matrix4D));
+            assert(model_to_register.BoneTransformations && "We got the bone memory thanks");
+
+            int offset_index = model.mesh_base_vertex[registration_count];
+
+            // printf("offset_index: %d", offset_index);
+            // printf("\nvertex_count: %llu", m.vertex_count);
+            // printf("\nregistration count : %llu", registration_count);
+
+            assert(offset_index + m.vertex_count <=model.BoneDataPerMeshPerVertice_count && "We somehow went past");
+
+            // this is a hack to because i am lazy okay
+            // TODO we do 2 copies here ONE in here and one in REGISTERTEXTUREMESH
+            // TODO we should fix after the PoC is DONE
+
+            // just start at this address
+
+            // in practice this means we are working with a memory slice
+            // this means that the first mesh pointer contains the entirety of the memory we wanna free
+            bone_data = &model.BoneDataPerMeshPerVertice[offset_index];
+            bone_data_count = m.vertex_count;
+
+            if (!model_to_register.BoneDataPerVerticeOwningSlice) {
+                model_to_register.BoneDataPerVerticeOwningSlice = bone_data;
+            }
+        }
+
+
+        model_to_register.mesh_ids[registration_count] = Renderer_RegisterTexturedMesh_WithOwnership(
+            diffuse_texture_id,
+            specular_texture_id,
+            -1,
+            // TODO THIS IS A HACK that will work because everything is a float. FIX LATER!
+            (float *) m.vertices,
+            m.vertex_count * 8,
+            m.indices,
+            m.index_count,
+            bone_data,
+            bone_data_count
+        );
+    }
+
+
     Vector_Model_Add(Models, model_to_register);
+
+    // add this in the preprocessing stack
+    if (is_skeletal_model) {
+        Vector_size_t_Add(skeletal_model_indices, model_id);
+    }
 
     return model_id;
 }
@@ -1171,7 +1268,7 @@ int Renderer_Register_Spot_Light(const SpotLight &light) {
 // we can probably do some post-processing here if we want for the index sorting
 void Renderer_FinalizeMeshLoading() {
     SendGeometryDataToTheGPU();
-    SendLightGeometryDataToTheGPU();
+    SendUnshadedGeometryDataToTheGPU();
     SendTextureDataToTheGPU();
     SendLightUBOsToTheGPU();
     SendScreenTextureDataToTheGPU();
@@ -1182,7 +1279,11 @@ void Renderer_Draw_Mesh(const int mesh_id, const Transform &transform, const Vec
 }
 
 void Renderer_Draw_Model(const int model_id, const Transform &transform, const Vector3D color, const Material material) {
-    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Model, model_id, transform, material, color});
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Static_Model, model_id, transform, material, color});
+}
+
+void Renderer_Draw_Skeletal_Model(int model_id, const Transform &transform, Vector3D color, Material material) {
+    Vector_DrawCommand_Add(DrawCommands, {DrawCommandType::Skeletal_Model, model_id, transform, material, color});
 }
 
 void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, const Vector3D color) {
@@ -1194,15 +1295,15 @@ void Shadow_Pass() {
     // use the buffer shadow map with the proper viewport 
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
     glViewport(0, 0, Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height);
-    
+
     // use the default depth clear value and default depth comparison
     glClearDepth(1.0);
     glDepthFunc(GL_LEQUAL);
-    
+
     // enable polygon offset to deal with shadow acne
     glEnable(GL_POLYGON_OFFSET_FILL);
     glPolygonOffset(2.0f, 4.0f);
-    
+
     // clamp depth so we won't lose any objects that fall beyond the view frustum
     glEnable(GL_DEPTH_CLAMP);
     for (int shadow_cascade_layer = 0; shadow_cascade_layer < SHADOW_CASCADE_COUNT; ++shadow_cascade_layer) {
@@ -1210,7 +1311,7 @@ void Shadow_Pass() {
         glClear(GL_DEPTH_BUFFER_BIT);
         Render_Draw_Commands_To_Shadow_Depth_Buffer(shadow_cascade_layer);
     }
-    
+
     // restore everything back to the values that rendering assumes we use
     glDisable(GL_DEPTH_CLAMP);
     glDisable(GL_POLYGON_OFFSET_FILL);
@@ -1296,10 +1397,22 @@ void ExecuteDrawCommands() {
                 Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
                 break;
             }
-            case DrawCommandType::Model: {
+            case DrawCommandType::Static_Model: {
                 const Model model = Models->data[draw_command.Draw_Entity_Id];
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
+                }
+                break;
+            }
+            case DrawCommandType::Skeletal_Model: {
+                // just drawing will probably not cut it but we are close bro!
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    glUseProgram(mesh.program_id);
+                    const GLint skeletal_matrix_id = glGetUniformLocation(mesh.program_id, "gBones");
+                    glUniformMatrix4fv(skeletal_matrix_id, model.BoneTransformationsCount, GL_FALSE, &model.BoneTransformations[0].column_vectors[0].x);
                     Draw(mesh.program_id, mesh, draw_command.Transform, draw_command.Color, draw_command.Material);
                 }
                 break;
@@ -1312,7 +1425,267 @@ void ExecuteDrawCommands() {
     }
 }
 
-void Renderer_ResolveDrawCalls() {
+// hierarchy pass;
+
+struct key_fram_indices {
+    size_t start;
+    size_t end;
+
+    bool operator==(const key_fram_indices &other) const {
+        return this->start == other.start && this->end == other.end;
+    }
+};
+
+
+const key_fram_indices NO_KEY = {(size_t) -1, (size_t) -1};
+
+struct key_search_results {
+    key_fram_indices PositionKeys;
+    key_fram_indices ScaleKeys;
+    key_fram_indices RotationKeys;
+};
+
+
+key_search_results Find_Keys_For_Channel(
+    const Animation_Channel &channel, double anim_time_ticks) {
+    key_search_results result{};
+    const key_fram_indices NO_INTERPOLATION_FIRST_KEY{0, 0};
+    const size_t last_key_pos = channel.count_position_keys - 1;
+    const key_fram_indices NO_INTERPOLATION_POS_LAST_KEY{last_key_pos, last_key_pos};
+
+    if (channel.count_position_keys == 0) {
+        result.PositionKeys = NO_KEY;
+    } else if (channel.count_position_keys == 1) {
+        result.PositionKeys = NO_INTERPOLATION_FIRST_KEY;
+    } else if (channel.count_position_keys != 0) {
+        if (channel.position_keys[0].time >= anim_time_ticks) {
+            result.PositionKeys = NO_INTERPOLATION_FIRST_KEY;
+        } else if (channel.position_keys[last_key_pos].time <= anim_time_ticks) {
+            result.PositionKeys = NO_INTERPOLATION_POS_LAST_KEY;
+        } else {
+            size_t current_pos_key = -1;
+            for (size_t i_pos = 0; i_pos < channel.count_position_keys; ++i_pos) {
+                if (channel.position_keys[i_pos].time >= anim_time_ticks) {
+                    current_pos_key = i_pos;
+                    break;
+                }
+            }
+            if (current_pos_key == -1) {
+                fprintf(stderr, " Failed to get a key for an animation that should have one");
+                exit(1);
+            }
+            size_t prev_pos_key = current_pos_key - 1;
+            result.PositionKeys = {prev_pos_key, current_pos_key};
+        }
+    }
+
+
+    const size_t scale_last_key = channel.count_scaling_keys - 1;
+    const key_fram_indices NO_INTERPOLATION_SCALE_LAST_KEY{scale_last_key, scale_last_key};
+
+    if (channel.count_scaling_keys == 0) {
+        result.ScaleKeys = NO_KEY;
+    } else if (channel.count_scaling_keys == 1) {
+        result.ScaleKeys = NO_INTERPOLATION_FIRST_KEY;
+    } else if (channel.count_scaling_keys != 0) {
+        if (channel.scaling_keys[0].time >= anim_time_ticks) {
+            result.ScaleKeys = NO_INTERPOLATION_FIRST_KEY;
+        } else if (channel.scaling_keys[scale_last_key].time <= anim_time_ticks) {
+            result.ScaleKeys = NO_INTERPOLATION_SCALE_LAST_KEY;
+        } else {
+            size_t current_scaling_key = -1;
+            for (size_t i_scale = 0; i_scale < channel.count_scaling_keys; ++i_scale) {
+                if (channel.scaling_keys[i_scale].time >= anim_time_ticks) {
+                    current_scaling_key = i_scale;
+                    break;
+                }
+            }
+            if (current_scaling_key == -1) {
+                fprintf(stderr, " Failed to get a key for an animation that should have one");
+                exit(1);
+            }
+            size_t prev_scaling_key = current_scaling_key - 1;
+            result.ScaleKeys = {prev_scaling_key, current_scaling_key};
+        }
+    }
+
+    const size_t rotation_last_key = channel.count_rotation_keys - 1;
+    const key_fram_indices NO_INTERPOLATION_ROTATION_LAST_KEY{rotation_last_key, rotation_last_key};
+
+
+    if (channel.count_rotation_keys == 0) {
+        result.RotationKeys = NO_KEY;
+    } else if (channel.count_rotation_keys == 1) {
+        result.RotationKeys = NO_INTERPOLATION_FIRST_KEY;
+    } else if (channel.count_rotation_keys != 0) {
+        if (channel.rotation_keys[0].time >= anim_time_ticks) {
+            result.RotationKeys = NO_INTERPOLATION_FIRST_KEY;
+        } else if (channel.rotation_keys[rotation_last_key].time <= anim_time_ticks) {
+            result.RotationKeys = NO_INTERPOLATION_ROTATION_LAST_KEY;
+        } else {
+            size_t current_rotation_key = -1;
+            for (size_t i_rotation = 0; i_rotation < channel.count_rotation_keys; ++i_rotation) {
+                if (channel.rotation_keys[i_rotation].time >= anim_time_ticks) {
+                    current_rotation_key = i_rotation;
+                    break;
+                }
+            }
+            if (current_rotation_key == -1) {
+                fprintf(stderr, " Failed to get a key for an animation that should have one");
+                exit(1);
+            }
+            size_t prev_rotation_key = current_rotation_key - 1;
+            result.RotationKeys = {prev_rotation_key, current_rotation_key};
+        }
+    }
+    return result;
+}
+
+Vector3D lerp_vector_keys(double anim_time_ticks, const Vector_Key &start_key, const Vector_Key &end_key) {
+    const double time_start = start_key.time;
+    const double time_end = end_key.time;
+    const double total_time_to_cross = time_end - time_start;
+    const double blend_factor = (anim_time_ticks - time_start) / total_time_to_cross;
+
+    return Lerp(start_key.Value, end_key.Value, (float) blend_factor);
+}
+
+Quaternion slerp_quat_keys(double anim_time_ticks, const Quaternion_Key &start_key, const Quaternion_Key &end_key) {
+    const double time_start = start_key.time;
+    const double time_end = end_key.time;
+    const double total_time_to_cross = time_end - time_start;
+    const double blend_factor = (anim_time_ticks - time_start) / total_time_to_cross;
+
+    return Slerp(start_key.Value, end_key.Value, blend_factor);
+}
+
+void sample_local_pose_for_animation(
+    const Animation &anim_data,
+    const double &anim_time_ticks,
+    const Hierarchy_Transform
+    &node_trans_data) {
+    for (size_t i_c = 0; i_c < anim_data.Channel_count; ++i_c) {
+        const Animation_Channel &channel = anim_data.Channels[i_c];
+
+        const key_search_results key_results = Find_Keys_For_Channel(channel, anim_time_ticks);
+
+        const bool noKey = key_results.PositionKeys == NO_KEY &&
+                           key_results.ScaleKeys == NO_KEY &&
+                           key_results.RotationKeys == NO_KEY;
+
+        if (noKey) {
+            continue;
+        }
+
+        Vector3D position = node_trans_data.Positions[channel.node_index];
+        if (key_results.PositionKeys != NO_KEY) {
+            if (key_results.PositionKeys.start == key_results.PositionKeys.end) {
+                position = channel.position_keys[key_results.PositionKeys.start].Value;
+            } else {
+                const Vector_Key &start_key = channel.position_keys[key_results.PositionKeys.start];
+                const Vector_Key &end_key = channel.position_keys[key_results.PositionKeys.end];
+                position = lerp_vector_keys(anim_time_ticks, start_key, end_key);
+            }
+        }
+
+        Vector3D scaling = node_trans_data.Scalings[channel.node_index];
+        if (key_results.ScaleKeys != NO_KEY) {
+            if (key_results.ScaleKeys.start == key_results.ScaleKeys.end) {
+                scaling = channel.scaling_keys[key_results.ScaleKeys.start].Value;
+            } else {
+                const Vector_Key &start_key = channel.scaling_keys[key_results.ScaleKeys.start];
+                const Vector_Key &end_key = channel.scaling_keys[key_results.ScaleKeys.end];
+                scaling = lerp_vector_keys(anim_time_ticks, start_key, end_key);
+            }
+        }
+
+        Quaternion rotation = node_trans_data.Rotations[channel.node_index];
+        if (key_results.RotationKeys != NO_KEY) {
+            if (key_results.RotationKeys.start == key_results.RotationKeys.end) {
+                rotation = channel.rotation_keys[key_results.RotationKeys.start].Value;
+            } else {
+                const Quaternion_Key &start_key = channel.rotation_keys[key_results.RotationKeys.start];
+                const Quaternion_Key &end_key = channel.rotation_keys[key_results.RotationKeys.end];
+                rotation = slerp_quat_keys(anim_time_ticks, start_key, end_key);
+            }
+        }
+
+        Matrix3D scale_matrix = Matrix3D_from_scale_vector(scaling);
+        Matrix3D rotation_matrix = rotation.GetRotationMatrix();
+        Matrix3D intermediate_result = rotation_matrix * scale_matrix;
+
+        Matrix4D &final_trans = node_trans_data.node_transformation_matrices[channel.node_index];
+
+        final_trans.column_vectors[0] = Vector3D_To_Vector4D(intermediate_result[0], 0);
+        final_trans.column_vectors[1] = Vector3D_To_Vector4D(intermediate_result[1], 0);
+        final_trans.column_vectors[2] = Vector3D_To_Vector4D(intermediate_result[2], 0);
+        final_trans.column_vectors[3] = Vector3D_To_Vector4D(position, 1);
+    }
+}
+
+void printMatrix4d(Matrix4D &m) {
+}
+
+void Skeletal_Pass(double delta_seconds) {
+    // if we want to be more precise
+    // a single model can be used by many diff instances
+    // this is a POC to first make this work for a single model
+
+    size_t anim_index = 0;
+
+    for (size_t i = 0; i < Vector_size_t_Length(skeletal_model_indices); ++i) {
+        const size_t index = skeletal_model_indices->data[i];
+        Model &m = Models->data[index];
+        const hierarchy_model_node *const hierarchy = m.node_hierarchy;
+        Hierarchy_Transform &node_trans_data = m.node_transformation_data;
+
+        // initialize all the node transformation matrices
+        for (size_t n = 0; n < node_trans_data.count_nodes; ++n) {
+            node_trans_data.node_transformation_matrices[n] = hierarchy[n].NodeTransformationMatrix;
+        }
+
+
+        // we picked our animation
+        const Animation &anim_data = m.Animations[anim_index];
+        
+        // add ticks to animations and mod them
+        m.anim_time_ticks += anim_data.Ticks_Per_Second * delta_seconds;
+        m.anim_time_ticks = fmod(m.anim_time_ticks , anim_data.Duration);
+        
+        // sampple for those ticks
+        sample_local_pose_for_animation(anim_data, m.anim_time_ticks, node_trans_data);
+
+        Matrix4D *const node_transformations = node_trans_data.node_transformation_matrices;
+        for (size_t j = 0; j < node_trans_data.count_nodes; ++j) {
+            const size_t parent_ID = hierarchy[j].parentID;
+            Matrix4D parent_matrix = node_transformations[parent_ID];
+            node_transformations[j] = parent_matrix * node_transformations[j];
+
+            // this is a bone
+            size_t bone_index = hierarchy[j].bone_index;
+            if (bone_index != NO_BONE_NODE) {
+                m.BoneTransformations[bone_index] = m.GlobalInverseTransform * node_transformations[j] * m.BoneMatrices[bone_index].OffsetMatrix;
+            }
+        }
+
+        // for (size_t k = 0; k < m.BoneTransformationsCount; ++k) {
+        //     Matrix4D mat = m.BoneTransformations[k];
+        //     printf("Bone  %d", k);
+        //     printf("Mat={\n");
+        //     for (int i = 0; i < 4; i++) {
+        //         Vector4D v = mat[i];
+        //         fprintf(stdout, "%f %f %f %f\n", v.x, v.y, v.z, v.w);
+        //     }
+        //     printf("}\n");
+        // }
+    }
+
+    //exit(1);
+}
+
+void Renderer_ResolveDrawCalls(double delta_in_ms) {
+    const double delta_in_seconds = delta_in_ms / 1000;
+    Skeletal_Pass(delta_in_seconds);
     Shadow_Pass();
     if (Screen_Texture.Samples > 0) {
         Draw_With_Anti_Aliasing();
@@ -1328,11 +1701,29 @@ void Renderer_FrameEnd() {
 
 
 void Renderer_Destroy() {
+    
+    for (size_t i = 0; i < Vector_Model_Length(Models); ++i) {
+        const Model m = Models->data[i];
+        for (size_t j=0;j<m.mesh_count;++j) {
+            Mesh& m = Meshes->data[j];
+            asset_loader_free(m.indices);
+            asset_loader_free(m.vertices);
+            m.indices=nullptr;
+            m.vertices=nullptr;
+            m.BoneDataPerVertice=nullptr;
+        }
+        free(m.mesh_ids);
+        asset_loader_free(m.BoneDataPerVerticeOwningSlice);
+    }
+    
     for (size_t i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         const Mesh m = Meshes->data[i];
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
+        glDeleteBuffers(1, &m.VBO_Skeletal);
+        free(m.indices);
+        free(m.vertices);
     }
 
     for (size_t i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
@@ -1340,13 +1731,10 @@ void Renderer_Destroy() {
         glDeleteVertexArrays(1, &m.VAO);
         glDeleteBuffers(1, &m.VBO);
         glDeleteBuffers(1, &m.VBE);
+        free(m.indices);
+        free(m.vertices);
     }
-
-    for (size_t i = 0; i < Vector_Model_Length(Models); ++i) {
-        const Model m = Models->data[i];
-        free(m.mesh_ids);
-    }
-
+    
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 
@@ -1361,6 +1749,7 @@ void Renderer_Destroy() {
     Vector_Model_Free(Models);
     Vector_Texture_Free(Textures);
     Vector_DrawCommand_Free(DrawCommands);
+    Vector_size_t_Free(skeletal_model_indices);
 }
 
 
@@ -1380,7 +1769,6 @@ void Renderer_CameraUpdate() {
 void Renderer_Change_Emission(const int mesh_id, const int emission_texture_id) {
     Meshes->data[mesh_id].emission_texture_id = emission_texture_id;
 }
-
 
 void Draw_Cursor() {
     glDisable(GL_STENCIL_TEST);
@@ -1403,7 +1791,7 @@ void Upload_Directional_Light_Data_To_GPU() {
 void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, Point_Lights_Block);
     glBufferSubData(GL_UNIFORM_BUFFER, 0, sizeof(Point_Lights), &Point_Lights);
-    
+
     Upload_Directional_Light_Data_To_GPU();
 
     glBindBuffer(GL_UNIFORM_BUFFER, Spot_Lights_Block);
@@ -1411,8 +1799,12 @@ void SendLightUBOsToTheGPU() {
     glBindBuffer(GL_UNIFORM_BUFFER, 0);
 }
 
-// this is for untextured meshes ;)
 void SendGeometryDataToTheGPU() {
+    const int pos_location_attr = 0;
+    const int normal_location_attr = 1;
+    const int uv_location_attr = 2;
+    const int BoneIDs_location_attr = 3;
+    const int Weights_location_attr = 4;
     for (int i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         auto &m = Meshes->data[i];
 
@@ -1424,32 +1816,57 @@ void SendGeometryDataToTheGPU() {
         glBufferData(GL_ARRAY_BUFFER, sizeof(float) * m.vertice_count, m.vertices, GL_STATIC_DRAW);
 
         constexpr int float_per_vertex = 8;
-        glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
 
-        glEnableVertexAttribArray(1);
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+        glEnableVertexAttribArray(pos_location_attr);
+        glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float), nullptr);
+
+        glEnableVertexAttribArray(normal_location_attr);
+        glVertexAttribPointer(normal_location_attr, 3, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
                               reinterpret_cast<void *>(3 * sizeof(float)));
 
 
-        glEnableVertexAttribArray(2);
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
+        glEnableVertexAttribArray(uv_location_attr);
+        glVertexAttribPointer(uv_location_attr, 2, GL_FLOAT, GL_FALSE, float_per_vertex * sizeof(float),
                               reinterpret_cast<void *>(6 * sizeof(float)));
 
         glGenBuffers(1, &m.VBE);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m.VBE);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(uint32_t) * m.index_count, m.indices, GL_STATIC_DRAW);
 
+        if (m.bone_data_per_vertice_count > 0) {
+            glGenBuffers(1, &m.VBO_Skeletal);
+            glBindBuffer(GL_ARRAY_BUFFER, m.VBO_Skeletal);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(VertexBoneData) * m.bone_data_per_vertice_count, m.BoneDataPerVertice, GL_STATIC_DRAW);
+
+            glEnableVertexAttribArray(BoneIDs_location_attr);
+            glVertexAttribIPointer(BoneIDs_location_attr, MAX_NUM_BONES_PER_VERTEX,GL_UNSIGNED_INT, sizeof(VertexBoneData), nullptr);
+
+            glEnableVertexAttribArray(Weights_location_attr);
+            glVertexAttribPointer(Weights_location_attr, MAX_NUM_BONES_PER_VERTEX,GL_FLOAT, GL_FALSE, sizeof(VertexBoneData),
+                                  reinterpret_cast<void *>(MAX_NUM_BONES_PER_VERTEX * sizeof(uint32_t)));
+        }
+
+        // generate the buffer here for the other data please
+        // our vertex bone data is nicely packed per vertice per mesh
+        // so we can literally sent it over
+        // as long as we tranlate our data wisely ;)
+
+        // we have up to n vertices
+
         free(m.vertices);
         m.vertices = nullptr;
 
         free(m.indices);
         m.indices = nullptr;
+
+        // WE DONT FREE THIS. THE MODEL FREES THIS
+        // free(m.BoneDataPerVertice);
+        // m.BoneDataPerVertice = nullptr;
     }
 }
 
 // this is for untextured meshes ;)
-void SendLightGeometryDataToTheGPU() {
+void SendUnshadedGeometryDataToTheGPU() {
     for (int i = 0; i < Vector_Mesh_Length(UnshadedMeshes); ++i) {
         auto &light = UnshadedMeshes->data[i];
         glUseProgram(light.program_id);
@@ -1516,44 +1933,15 @@ void SendTextureDataToTheGPU() {
 
         assert(internal_format!=0);
 
-        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, t.width, t.height, 0, format, GL_UNSIGNED_BYTE, t.data);
+        glTexImage2D(GL_TEXTURE_2D, 0, internal_format, t.width, t.height, 0, format, GL_UNSIGNED_BYTE, t.bytes);
         glGenerateMipmap(GL_TEXTURE_2D);
-        stbi_image_free(t.data);
-        t.data = nullptr;
+        asset_loader_free((void*)t.bytes);
+        asset_loader_free((void*)t.path);
+        t.bytes = nullptr;
+        t.path = nullptr;
     }
 }
 
-
-int LoadTexture(const aiTextureType type, const char *directory, const aiMaterial *material) {
-    aiString str;
-    const unsigned int texture_count_for_type = material->GetTextureCount(type);
-    assert(("Currently we only support one texture per type", texture_count_for_type<=1));
-
-    if (texture_count_for_type == 0) {
-        return -1;
-    }
-
-
-    material->GetTexture(type, 0, &str);
-
-    const char *file_name = str.C_Str();
-    const size_t dir_name_len = strlen(directory);
-    const size_t file_name_len = strlen(file_name);
-
-    char *relative_path = (char *) malloc((dir_name_len + file_name_len + 2) * sizeof(char));
-    if (dir_name_len == 0) {
-        strcpy(relative_path, file_name);
-    } else {
-        strcpy(relative_path, directory);
-        strcat(relative_path, "/");
-        strcat(relative_path, file_name);
-    }
-
-    const int texture_id = Renderer_RegisterTexture(relative_path);
-    free(relative_path);
-
-    return texture_id;
-}
 
 Matrix4D rotation_by_vector_matrix4D(const Vector3D &v_comps_in_radians) {
     const Matrix4D m_z = rotation_z_matrix4D(v_comps_in_radians.z);
@@ -1710,7 +2098,20 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
                 glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
                 break;
             }
-            case DrawCommandType::Model: {
+            case DrawCommandType::Static_Model: {
+                const Model model = Models->data[draw_command.Draw_Entity_Id];
+                for (size_t j = 0; j < model.mesh_count; ++j) {
+                    const Mesh mesh = Meshes->data[model.mesh_ids[j]];
+                    glBindVertexArray(mesh.VAO);
+                    assert(mesh.index_count <= INT_MAX); // this should never happen 
+                    glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
+                }
+                break;
+            }
+            // do some BS HERE
+            case DrawCommandType::Skeletal_Model: {
+                // TODO fix the shadow pass later!
+                continue;
                 const Model model = Models->data[draw_command.Draw_Entity_Id];
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];
@@ -1723,7 +2124,6 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
             case DrawCommandType::Mesh_Unshaded: {
                 // we don't care to provide shadow for things that are unshaded
                 // TODO we can probably expand expand this type a bit in the sense that we could have things not receiving light but casting shadows
-                continue;
             }
         }
     }
@@ -1989,7 +2389,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
 
         frustum_split.bounding_box_z_min = bb_min.z;
         frustum_split.bounding_box_z_max = bb_max.z;
-        
+
         //get the camera space position for this particular light (in light space)
         const float texel_size = frustum_split.physica_texel_size_t;
         const float x_camera_light_space = math_ops::floor_to_int((bb_max.x + bb_min.x) / (2 * texel_size)) * texel_size;
@@ -2070,7 +2470,7 @@ void Calculate_Directional_Light_MVP_Matrix(int light_index) {
 
         const float offset_x = (s_0_x - s_k_x) / d_cascade_k - d_cascade_0 / (2 * d_cascade_k) + 0.5f;
         const float offset_y = (s_0_y - s_k_y) / d_cascade_k - d_cascade_0 / (2 * d_cascade_k) + 0.5f;
-        const float offset_z = (s_0_z - s_k_z) / (z_diff_cascade_k);
+        const float offset_z = (s_0_z - s_k_z) / z_diff_cascade_k;
 
         cascade_mapping.offsets[i - 1] = {offset_x, offset_y, offset_z};
     }
@@ -2092,4 +2492,32 @@ void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix) {
 
         cascade_mapping.frustum_front_plane_world_space[i - 1] = p;
     }
+}
+
+int RegisterTextureFromData(const TextureData &texture_data, Texture_Parameters parameters) {
+    assert(texture_data.nrChannels != nil_texture.nrChannels);
+    
+    TextureType loaded_format = texture_data.nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
+    TextureType internal_format = loaded_format;
+
+    if (parameters.convert_from_srgb_to_linear_space) {
+        internal_format = loaded_format == TextureType::RGB ? TextureType::SRGB : TextureType::SRGB_ALPHA;
+    }
+
+    const int id = Vector_Texture_Length(Textures);
+    const Texture t{
+        id,
+        texture_data.width,
+        texture_data.height,
+        loaded_format,
+        internal_format,
+        texture_data.bytes,
+        const_cast<char*>(texture_data.texture_name),
+        parameters.wrap_mode_s,
+        parameters.wrap_mode_t
+    };
+
+    Vector_Texture_Add(Textures, t);
+
+    return id;
 }
