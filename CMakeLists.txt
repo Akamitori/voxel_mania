@@ -3,16 +3,31 @@ project(voxel_mania)
 
 set(CMAKE_CXX_STANDARD 23)
 
-if ((CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo") AND MSVC)
-    if (EXISTS "C:/rad_linker/radlink.exe")
-        set(CMAKE_LINKER "C:/rad_linker/radlink.exe")
-        set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MANIFEST:NO")
-        set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO")
-        set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /MANIFEST:NO")
-        add_link_options(/INCREMENTAL:NO)
-        message(STATUS "Using RAD Linker for ${CMAKE_BUILD_TYPE} builds")
+option(ENABLE_ASAN "Build with AddressSanitizer" OFF)
+if (ENABLE_ASAN)
+    if (MSVC)
+        string(REPLACE "/RTC1" "" CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG}")
+        string(REPLACE "/RTC1" "" CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG}")
+        add_compile_options(/fsanitize=address /Zi)
+        add_link_options(/INCREMENTAL:NO /DEBUG)
     else ()
-        message(WARNING "RAD Linker not found at C:/rad_linker/radlink.exe, using default MSVC linker")
+        add_compile_options(-fsanitize=address -fno-omit-frame-pointer -g)
+        add_link_options(-fsanitize=address)
+    endif ()
+endif ()
+
+if (NOT ENABLE_ASAN)
+    if ((CMAKE_BUILD_TYPE STREQUAL "Debug" OR CMAKE_BUILD_TYPE STREQUAL "RelWithDebInfo") AND MSVC)
+        if (EXISTS "C:/rad_linker/radlink.exe")
+            set(CMAKE_LINKER "C:/rad_linker/radlink.exe")
+            set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} /MANIFEST:NO")
+            set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} /MANIFEST:NO")
+            set(CMAKE_MODULE_LINKER_FLAGS "${CMAKE_MODULE_LINKER_FLAGS} /MANIFEST:NO")
+            add_link_options(/INCREMENTAL:NO)
+            message(STATUS "Using RAD Linker for ${CMAKE_BUILD_TYPE} builds")
+        else ()
+            message(WARNING "RAD Linker not found at C:/rad_linker/radlink.exe, using default MSVC linker")
+        endif ()
     endif ()
 endif ()
 
@@ -28,6 +43,7 @@ add_executable(voxel_mania
         RandomNumberGeneration.cpp
         Perlin.cpp
 )
+
 
 target_link_libraries(voxel_mania
         PUBLIC
