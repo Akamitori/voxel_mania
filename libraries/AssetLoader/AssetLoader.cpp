@@ -136,8 +136,8 @@ ModelData LoadModel(const char *path) {
     model.mesh_data = (ModelMesh *) calloc(scene->mNumMeshes, sizeof(ModelMesh));
     model.mesh_data_count = scene->mNumMeshes;
 
-    model.diffuse_textures = (TextureData *) calloc(scene->mNumMaterials, sizeof(TextureData));
-    model.specular_textures = (TextureData *) calloc(scene->mNumMaterials, sizeof(TextureData));
+    model.diffuse_textures = (TextureData *) calloc(scene->mNumMaterials + 1, sizeof(TextureData));
+    model.specular_textures = (TextureData *) calloc(scene->mNumMaterials + 1, sizeof(TextureData));
     model.mesh_base_vertex = (int *) calloc(scene->mNumMeshes, sizeof(int));
     model.mesh_base_vertex_count = scene->mNumMeshes;
 
@@ -268,6 +268,7 @@ ModelData LoadModel(const char *path) {
                 } else {
                     TextureData diffuse = LoadTextureFromMaterial(scene, aiTextureType_DIFFUSE, material, result_texture_name);
                     if (diffuse.nrChannels != nil_texture.nrChannels) {
+                        assert(current_diffuse_index<= scene->mNumMaterials && "we append more materials somehow");
                         model.diffuse_textures[current_diffuse_index] = diffuse;
                         // we can fix this api a bit by changing it
                         cstr_uint32_t_Hashmap_Insert(diffuse_keys, {diffuse.texture_name, current_diffuse_index});
@@ -285,6 +286,7 @@ ModelData LoadModel(const char *path) {
                 } else {
                     TextureData specular = LoadTextureFromMaterial(scene, aiTextureType_SPECULAR, material, result_texture_name);
                     if (specular.nrChannels != nil_texture.nrChannels) {
+                        assert(current_specular_index<= scene->mNumMaterials && "we append more materials somehow");
                         model.diffuse_textures[current_specular_index] = specular;
                         // we can fix this api a bit by changing it
                         cstr_uint32_t_Hashmap_Insert(specular_keys, {specular.texture_name, current_specular_index});
