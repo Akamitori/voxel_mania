@@ -1,6 +1,22 @@
-﻿function(add_and_export_library libraryName)
+﻿include_guard(GLOBAL)
+include(GenerateExportHeader)
+
+# Warning level for OUR targets only (not 3rd party code). Warnings, not errors.
+option(VOXEL_WARNINGS "Enable -Wall -Wextra (/W4 on MSVC) for the project's own targets" ON)
+function(voxel_enable_warnings target)
+    if (NOT VOXEL_WARNINGS)
+        return()
+    endif ()
+    if (MSVC)
+        target_compile_options(${target} PRIVATE /W4)
+    else ()
+        target_compile_options(${target} PRIVATE -Wall -Wextra)
+    endif ()
+endfunction()
+
+function(add_and_export_library libraryName)
     cmake_parse_arguments(LIB
-            ""
+            "NO_INSTALL"
             "TYPE;C_STANDARD;CXX_STANDARD"
             "FILES;PROPERTIES"
             ${ARGN}
@@ -10,10 +26,8 @@
         # INTERFACE libraries don't take files
         add_library(${libraryName} INTERFACE)
         target_include_directories(${libraryName} INTERFACE
-                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-                $<INSTALL_INTERFACE:include>
+                ${CMAKE_CURRENT_SOURCE_DIR}
         )
-        target_link_libraries(${libraryName} INTERFACE ExportHeader)
     else()
         # Validate inputs for non-INTERFACE libraries
         if (NOT LIB_FILES)
@@ -36,24 +50,35 @@
 
         # Create the library
         add_library(${libraryName} ${LIB_TYPE} ${LIB_FILES})
+        voxel_enable_warnings(${libraryName})
 
-        # Set up include directories and export header
+        # Per-library export header: generates <lowercase name>_export.h in the binary dir,
+        # defining <UPPERCASE NAME>_EXPORT / _NO_EXPORT / _DEPRECATED.
+        # For SHARED libs CMake defines <name>_EXPORTS only while compiling this library,
+        # so the macro is dllexport here and dllimport for every consumer.
+        generate_export_header(${libraryName})
+        string(TOUPPER "${libraryName}" LIB_UPPER_NAME)
+
         target_include_directories(${libraryName} PUBLIC
-                $<BUILD_INTERFACE:${CMAKE_CURRENT_SOURCE_DIR}>
-                $<INSTALL_INTERFACE:include>
+                ${CMAKE_CURRENT_SOURCE_DIR}
+                ${CMAKE_CURRENT_BINARY_DIR}
         )
-        target_link_libraries(${libraryName} PUBLIC ExportHeader)
 
-        # Handle DLL exports for shared libraries on Windows
-        if (LIB_TYPE STREQUAL "SHARED" AND WIN32)
-            target_compile_definitions(${libraryName} PRIVATE WIN_EXPORT)
-        elseif(LIB_TYPE STREQUAL "STATIC" AND WIN32)
-            target_compile_definitions(${libraryName} PUBLIC WIN_STATIC)
+        # Shared libs are shipped next to the executable on install (see the top-level CMakeLists).
+        # NO_INSTALL: test/benchmark-only libraries.
+        if (LIB_TYPE STREQUAL "SHARED" AND NOT LIB_NO_INSTALL)
+            set_property(GLOBAL APPEND PROPERTY VOXEL_SHARED_LIBS ${libraryName})
+        endif()
+
+        # Static libs (and their consumers) must see the export macro as empty
+        if (LIB_TYPE STREQUAL "STATIC")
+            target_compile_definitions(${libraryName} PUBLIC ${LIB_UPPER_NAME}_STATIC_DEFINE)
         endif()
 
         # Set default target properties
         set_target_properties(${libraryName} PROPERTIES
                 CXX_VISIBILITY_PRESET hidden
+                C_VISIBILITY_PRESET hidden
                 VISIBILITY_INLINES_HIDDEN YES
                 POSITION_INDEPENDENT_CODE ON
                 LINKER_LANGUAGE ${LINKER_LANG}

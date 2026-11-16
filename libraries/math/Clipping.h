@@ -3,7 +3,7 @@
 
 #include <stdint.h>
 
-#include "export.h"
+#include "linearalgebra_export.h"
 #include "Plane.h"
 
 
@@ -17,17 +17,17 @@ constexpr int32_t k_max_polyhedron_edge_count = (k_max_polyhedron_face_count - 2
 constexpr int32_t k_max_polyhedron_face_edge_count = k_max_polyhedron_face_count - 1;
 
 
-struct EXPORTED Edge {
+struct LINEARALGEBRA_EXPORT Edge {
     uint8_t vertex_index[2];
     uint8_t face_index[2];
 };
 
-struct EXPORTED Face {
+struct LINEARALGEBRA_EXPORT Face {
     uint8_t edge_count;
     uint8_t edge_index[k_max_polyhedron_face_edge_count];
 };
 
-struct EXPORTED Polyhedron {
+struct LINEARALGEBRA_EXPORT Polyhedron {
     uint8_t vertex_count;
     uint8_t edge_count;
     uint8_t face_count;
@@ -38,16 +38,16 @@ struct EXPORTED Polyhedron {
     Plane plane[k_max_polyhedron_face_count];
 };
 
-EXPORTED int clip_polygon(int vertex_count, const Vector3D *vertices, const Plane &plane, float *location,Vector3D *result);
+LINEARALGEBRA_EXPORT int clip_polygon(int vertex_count, const Vector3D *vertices, const Plane &plane, float *location,Vector3D *result);
 
-EXPORTED bool clip_polyhedron(const Polyhedron *polyhedron, const Plane *plane, Polyhedron *result);
+LINEARALGEBRA_EXPORT bool clip_polyhedron(const Polyhedron *polyhedron, const Plane *plane, Polyhedron *result);
 
-EXPORTED void build_frustum_polyhedron(const Matrix4D &m_cam, float g, float s, float near, float far, Polyhedron *polyhedron);
+LINEARALGEBRA_EXPORT void build_frustum_polyhedron(const Matrix4D &m_cam, float g, float s, float near, float far, Polyhedron *polyhedron);
 
-EXPORTED bool sphere_visible(int32_t plane_count, const Plane *planeArray, const Vector3D &center_point, float radius);
+LINEARALGEBRA_EXPORT bool sphere_visible(int32_t plane_count, const Plane *planeArray, const Vector3D &center_point, float radius);
 
-EXPORTED bool oriented_box_visible(int32_t plane_count, const Plane *plane_array, const OBB &box);
+LINEARALGEBRA_EXPORT bool oriented_box_visible(int32_t plane_count, const Plane *plane_array, const OBB &box);
 
-EXPORTED bool AxisAlignedBoxVisible(int32_t plane_count, const Plane *plane_array, const AABB &box);
+LINEARALGEBRA_EXPORT bool AxisAlignedBoxVisible(int32_t plane_count, const Plane *plane_array, const AABB &box);
 
 #endif //CLIPPING_H

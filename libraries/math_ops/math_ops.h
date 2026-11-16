@@ -2,29 +2,29 @@
 #define MATH_OPS_H
 
 #include <stdint.h>
-#include "export.h"
+#include "math_ops_export.h"
 
 namespace math_ops {
-    EXPORTED bool is_equal(float a, float b, float EPSILON = 0.000001f);
+    MATH_OPS_EXPORT bool is_equal(float a, float b, float EPSILON = 0.000001f);
 
-    EXPORTED bool is_equal(double a, double b, double EPSILON = 0.000001f);
+    MATH_OPS_EXPORT bool is_equal(double a, double b, double EPSILON = 0.000001f);
 
-    EXPORTED float lerp(float start, float end, float factor);
-    EXPORTED double lerp(double factor, double start, double end);
-    EXPORTED double clamp(double value, double lower,double upper);
+    MATH_OPS_EXPORT float lerp(float start, float end, float factor);
+    MATH_OPS_EXPORT double lerp(double factor, double start, double end);
+    MATH_OPS_EXPORT double clamp(double value, double lower,double upper);
     
-    EXPORTED uint8_t max(uint8_t a, uint8_t b);
-    EXPORTED float max(float a, float b);
-    EXPORTED float min(float a, float b);
+    MATH_OPS_EXPORT uint8_t max(uint8_t a, uint8_t b);
+    MATH_OPS_EXPORT float max(float a, float b);
+    MATH_OPS_EXPORT float min(float a, float b);
     
-    EXPORTED float ceil(float a); 
-    EXPORTED int ceil_to_int(float a);
+    MATH_OPS_EXPORT float ceil(float a); 
+    MATH_OPS_EXPORT int ceil_to_int(float a);
     
-    EXPORTED float floor(float a);
-    EXPORTED int floor_to_int(float a);
+    MATH_OPS_EXPORT float floor(float a);
+    MATH_OPS_EXPORT int floor_to_int(float a);
     
-    EXPORTED float round(float a);
-    EXPORTED int round_to_int(float a);
+    MATH_OPS_EXPORT float round(float a);
+    MATH_OPS_EXPORT int round_to_int(float a);
 }
 
 

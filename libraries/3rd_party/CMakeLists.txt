@@ -1,16 +1,12 @@
-﻿# Initialize git submodules
+﻿# Git submodules follow the superproject automatically (fresh clone, pull, branch switch), but
+# a submodule you checked out at another commit by hand is left alone. See submodule_sync.cmake.
+# -DVOXEL_SYNC_SUBMODULES=ON forces `git submodule update --init --recursive` on each configure.
 find_package(Git REQUIRED)
-execute_process(
-        COMMAND ${GIT_EXECUTABLE} submodule update --init --recursive
-        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        RESULT_VARIABLE git_result
-)
-if (NOT git_result EQUAL 0)
-    message(FATAL_ERROR "Failed to initialize git submodules")
-endif ()
+option(VOXEL_SYNC_SUBMODULES "Force git submodule update --init --recursive on every configure" OFF)
+include(${CMAKE_SOURCE_DIR}/cmake_scripts/submodule_sync.cmake)
+voxel_sync_submodules(REPO_DIR "${CMAKE_SOURCE_DIR}" STATE_FILE "${CMAKE_SOURCE_DIR}/.prebuild_libs/.submodule_sync")
 
-# Absolute path to the assimp submodule. Uses CMAKE_CURRENT_LIST_DIR because
-# CMAKE_CURRENT_SOURCE_DIR is overwritten below by the GLEW workaround.
+# Absolute path to the assimp submodule.
 set(ASSIMP_SOURCE_DIR "${CMAKE_CURRENT_LIST_DIR}/assimp")
 if (NOT EXISTS "${ASSIMP_SOURCE_DIR}/include/assimp/scene.h")
     message(FATAL_ERROR "assimp not found at: ${ASSIMP_SOURCE_DIR}")
@@ -23,6 +19,10 @@ include(${CMAKE_SOURCE_DIR}/cmake_scripts/external_lib_import.cmake)
 import_external_library(SDL3
         SHARED
         CMAKE_ARGS -DSDL_SHARED=ON -DSDL_STATIC=OFF
+        # SDL_LIBC is SDL's default (ON), but SDL3's CMakeLists checks it (to strip /RTC1 on MSVC)
+        # before defining it. Unset on the first configure, so only the first configure differs
+        # and the first re-configure recompiles all of SDL3. Setting it up front avoids that.
+        -DSDL_LIBC=ON
 )
 
 
@@ -31,18 +31,16 @@ set(glew-cmake_BUILD_SHARED ON CACHE BOOL "Build shared GLEW")
 set(glew-cmake_BUILD_STATIC OFF CACHE BOOL "Don't build static GLEW")
 set(ONLY_LIBS ON CACHE BOOL "GLEW libs only")
 
-set(CMAKE_CURRENT_SOURCE_DIR "not_main" CACHE INTERNAL "" FORCE)
-add_subdirectory(glew)
+# EXCLUDE_FROM_ALL drops all of glew-cmake's install rules (libs, headers, glewConfig.cmake).
+# libglew_shared is still built because our targets link against it.
+add_subdirectory(glew EXCLUDE_FROM_ALL)
 
-# detect the proper name for assimp lib file
-if (MSVC)
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(ASSIMP_LIB_NAME "assimp-vc143-mtd")
-    else ()
-        set(ASSIMP_LIB_NAME "assimp-vc143-mt")
-    endif ()
-else ()
-    set(ASSIMP_LIB_NAME "assimp")
+# assimp's file name is pinned to assimp / assimpd on every platform: LIBRARY_SUFFIX= below
+# disables its "-vc<toolset>-mt" (MSVC) and "-<soversion>" (MinGW) suffixes. Debug keeps
+# assimp's "d" postfix (ASSIMP_INJECT_DEBUG_POSTFIX, on by default).
+set(ASSIMP_LIB_NAME "assimp")
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    string(APPEND ASSIMP_LIB_NAME "d")
 endif ()
 
 # assimp with incremental building
@@ -56,6 +54,8 @@ import_external_library(${ASSIMP_LIB_NAME}
         -DASSIMP_INSTALL=ON                                     # retain install step because we need to actually install for incremental builds to work
         -DBUILD_SHARED_LIBS=ON                                  # build as a shared lib
         -DASSIMP_NO_EXPORT=ON                                   # disable for now the export tools
+        -DLIBRARY_SUFFIX=                                       # same file name on every compiler (see above)
+        -DASSIMP_WARNINGS_AS_ERRORS=OFF                         # assimp has warnings under gcc that -Werror turns into build failures
 )
 # Other libraries
 include(imgui_build.cmake)

@@ -7,7 +7,7 @@
 #include <Matrix4D.h>
 #include <math.h>
 
-#include "math_ops/math_ops.h"
+#include "math_ops.h"
 
 
 constexpr float k_polygon_epsilon = 0.001F;

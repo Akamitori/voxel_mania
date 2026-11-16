@@ -1050,3 +1050,5 @@ dkms.conf
 .prebuild_libs/
 
 !data/models/**/*.obj
+# local cmake --install prefixes (e.g. install-wintest)
+install-*/

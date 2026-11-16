@@ -1,27 +1,27 @@
 ﻿#ifndef VECTOR4D_H
 #define VECTOR4D_H
 
-#include "export.h"
+#include "linearalgebra_export.h"
 
-struct EXPORTED Vector4D {
+struct LINEARALGEBRA_EXPORT Vector4D {
     float x, y, z, w;
 };
 
-EXPORTED float dot(const Vector4D &v1, const Vector4D &v2);
+LINEARALGEBRA_EXPORT float dot(const Vector4D &v1, const Vector4D &v2);
 
-EXPORTED Vector4D &operator *=(Vector4D &v, float s);
+LINEARALGEBRA_EXPORT Vector4D &operator *=(Vector4D &v, float s);
 
-EXPORTED Vector4D &operator /=(Vector4D &v, float s);
+LINEARALGEBRA_EXPORT Vector4D &operator /=(Vector4D &v, float s);
 
-EXPORTED Vector4D &operator +=(Vector4D &v1, const Vector4D &v2);
+LINEARALGEBRA_EXPORT Vector4D &operator +=(Vector4D &v1, const Vector4D &v2);
 
-EXPORTED Vector4D &operator -=(Vector4D &v1, const Vector4D &v2);
+LINEARALGEBRA_EXPORT Vector4D &operator -=(Vector4D &v1, const Vector4D &v2);
 
-EXPORTED Vector4D operator *(const Vector4D &v, float s);
+LINEARALGEBRA_EXPORT Vector4D operator *(const Vector4D &v, float s);
 
-EXPORTED Vector4D operator +(const Vector4D &a, const Vector4D &b);
+LINEARALGEBRA_EXPORT Vector4D operator +(const Vector4D &a, const Vector4D &b);
 
-EXPORTED Vector4D operator /(const Vector4D &v, float s);
+LINEARALGEBRA_EXPORT Vector4D operator /(const Vector4D &v, float s);
 
 
 #endif //VECTOR4D_H

@@ -3,9 +3,9 @@
 
 
 #include "Vector3D.h"
-#include "export.h"
+#include "linearalgebra_export.h"
 
-struct EXPORTED Matrix3D {
+struct LINEARALGEBRA_EXPORT Matrix3D {
     Vector3D column_vectors[3];
 
     Matrix3D();
@@ -28,11 +28,11 @@ struct EXPORTED Matrix3D {
     const Vector3D &operator[](int index) const;
 };
 
-EXPORTED Matrix3D inverse(const Matrix3D &M);
+LINEARALGEBRA_EXPORT Matrix3D inverse(const Matrix3D &M);
 
-EXPORTED Matrix3D transpose(const Matrix3D &M);
+LINEARALGEBRA_EXPORT Matrix3D transpose(const Matrix3D &M);
 
-EXPORTED Matrix3D operator *(const Matrix3D &A, const Matrix3D &B);
+LINEARALGEBRA_EXPORT Matrix3D operator *(const Matrix3D &A, const Matrix3D &B);
 
-EXPORTED Matrix3D Matrix3D_from_scale_vector(const Vector3D &v);
+LINEARALGEBRA_EXPORT Matrix3D Matrix3D_from_scale_vector(const Vector3D &v);
 #endif //MATRIX3D_H

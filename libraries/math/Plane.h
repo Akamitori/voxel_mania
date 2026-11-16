@@ -3,10 +3,10 @@
 
 
 #include "Vector3D.h"
-#include "export.h"
+#include "linearalgebra_export.h"
 
 
-struct EXPORTED Plane {
+struct LINEARALGEBRA_EXPORT Plane {
     Vector3D normal;
     float w;
 
@@ -17,9 +17,9 @@ struct EXPORTED Plane {
     Plane(const Vector3D &n, float d);
 };
 
-EXPORTED float dot_vector(const Plane &plane, const Vector3D &v);
+LINEARALGEBRA_EXPORT float dot_vector(const Plane &plane, const Vector3D &v);
 
-EXPORTED float dot_point(const Plane &plane, const Vector3D &p);
+LINEARALGEBRA_EXPORT float dot_point(const Plane &plane, const Vector3D &p);
 
 
 #endif //PLANE_H

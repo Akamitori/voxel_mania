@@ -33,9 +33,9 @@ void PrintPosition(const Camera &camera) {
 
 
 void RotateCamera(Camera &camera, const short azimuth_modifier, const short elevation_modifier) {
-    assert(("Rotation invoked without any rotation taking place", azimuth_modifier != 0 || elevation_modifier != 0));
+    assert(("Rotation invoked without any rotation taking place" && (azimuth_modifier != 0 || elevation_modifier != 0)));
     assert(
-        ("Elevation is 90 degrees which is not covered", !math_ops::is_equal(camera.max_elevation_rotation,
+        ("Elevation is 90 degrees which is not covered" && !math_ops::is_equal(camera.max_elevation_rotation,
             DegreeToRadians
             (90.f))));
 

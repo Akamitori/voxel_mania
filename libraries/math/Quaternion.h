@@ -1,13 +1,13 @@
 #ifndef VOXEL_MANIA_QUATERNION_H
 #define VOXEL_MANIA_QUATERNION_H
 
-#include "export.h"
+#include "linearalgebra_export.h"
 
 struct Vector3D;
 struct Matrix3D;
 
 
-struct EXPORTED Quaternion {
+struct LINEARALGEBRA_EXPORT Quaternion {
     float x{};
     float y{};
     float z{};
@@ -26,15 +26,15 @@ struct EXPORTED Quaternion {
     void SetRotationMatrix(const Matrix3D &m);
 };
 
-EXPORTED Quaternion operator*(const Quaternion &q1, const Quaternion &q2);
+LINEARALGEBRA_EXPORT Quaternion operator*(const Quaternion &q1, const Quaternion &q2);
 
-EXPORTED Quaternion operator-(const Quaternion &q1);
+LINEARALGEBRA_EXPORT Quaternion operator-(const Quaternion &q1);
 
-EXPORTED float dot(const Quaternion &q1, const Quaternion &q2);
+LINEARALGEBRA_EXPORT float dot(const Quaternion &q1, const Quaternion &q2);
 
-EXPORTED Quaternion normalize(const Quaternion &q1);
+LINEARALGEBRA_EXPORT Quaternion normalize(const Quaternion &q1);
 
-EXPORTED Vector3D Transform_Vector_With_Quaternion(const Vector3D &v, const Quaternion &q);
+LINEARALGEBRA_EXPORT Vector3D Transform_Vector_With_Quaternion(const Vector3D &v, const Quaternion &q);
 
 
 #endif //VOXEL_MANIA_QUATERNION_H

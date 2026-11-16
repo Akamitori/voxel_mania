@@ -9,7 +9,6 @@
 #include <stdbool.h>
 #endif
 
-#include "export.h"
 #include <string.h> 
 #include <stdlib.h>
 
@@ -21,17 +20,17 @@
     extern "C" {
 #endif
 
-#define QUEUE_DECLARATION_LIBRARY(T)                        \
+#define QUEUE_DECLARATION_LIBRARY(T, API)                        \
 typedef struct Queue_##T {                          \
 int capacity;                                       \
 T *data;                                            \
 int head, tail, size, mask;                         \
 } Queue_##T;                                        \
                                                     \
-EXPORTED bool Queue_##T##_Enqueue(Queue_##T*, T);   \
-EXPORTED bool Queue_##T##_Deque(Queue_##T*, T*);    \
-EXPORTED Queue_##T *Queue_##T##_Create(int);        \
-EXPORTED void Queue_##T##_Free(Queue_##T*);
+API bool Queue_##T##_Enqueue(Queue_##T*, T);   \
+API bool Queue_##T##_Deque(Queue_##T*, T*);    \
+API Queue_##T *Queue_##T##_Create(int);        \
+API void Queue_##T##_Free(Queue_##T*);
 
 #ifdef __cplusplus
     }
