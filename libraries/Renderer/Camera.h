@@ -11,7 +11,7 @@
 
 struct Matrix4D;
 
-struct RENDERER_EXPORT Camera {
+struct Camera {
     const Vector3D basis_right{1, 0, 0.f};
     const Vector3D basis_forward{0, 1, 0};
     const Vector3D basis_up{0.0f, 0, -1.0f};

@@ -10,6 +10,20 @@
 #include "Vector3D.h"
 #include "math_ops.h"
 
+// Internal helpers of the bounding-volume algorithms (not part of the public API)
+static float calculate_diameter(int32_t vertex_count, const Vector3D *vertices, int32_t *v_a_index, int32_t *v_b_index);
+static Vector3D min_per_component(const Vector3D &v1, const Vector3D &v2);
+static Vector3D max_per_component(const Vector3D &v1, const Vector3D &v2);
+static Vector3D make_perpendicular_vector(const Vector3D &v);
+static void calculate_secondary_diameter(int32_t vertex_count, const Vector3D *vertices, const Vector3D &axis,
+                                         int32_t *v_a_index, int32_t *v_b_index);
+static void find_extremal_vertices(int32_t vertex_count, const Vector3D *vertices, const Plane &plane, int32_t *v_e_index,
+                                   int32_t *v_f_index);
+static void get_primary_box_directions(int32_t vertex_count, const Vector3D *vertices, int32_t v_a_index, int32_t v_b_index,
+                                       Vector3D *directions);
+static void get_secondary_box_directions(int32_t vertex_count, const Vector3D *vertices, const Vector3D &axis,
+                                         int32_t v_a_index, int32_t v_b_index, Vector3D *directions);
+
 
 Sphere calculate_bounding_sphere(const int32_t vertex_count, const Vector3D *vertices) {
     int32_t a, b;
@@ -31,7 +45,7 @@ Sphere calculate_bounding_sphere(const int32_t vertex_count, const Vector3D *ver
     return Sphere{.center = center_p, .radius = radius};
 }
 
-float calculate_diameter(const int32_t vertex_count, const Vector3D *vertices, int32_t *v_a_index, int32_t *v_b_index) {
+static float calculate_diameter(const int32_t vertex_count, const Vector3D *vertices, int32_t *v_a_index, int32_t *v_b_index) {
     constexpr int32_t k_direction_count = 13;
     constexpr Vector3D direction[k_direction_count] = {
         {1, 0, 0}, {0, 1, 0}, {0, 0, 1},
@@ -90,15 +104,15 @@ AABB calculate_axis_aligned_bounding_box(int32_t vertex_count, const Vector3D *v
     return {.center = (v_min + v_max) * 0.5f, .size = (v_max - v_min) * 0.5f};
 }
 
-Vector3D min_per_component(const Vector3D &v1, const Vector3D &v2) {
+static Vector3D min_per_component(const Vector3D &v1, const Vector3D &v2) {
     return {(float) fmin(v1.x, v2.x), (float) fmin(v1.y, v2.y), (float) fmin(v1.z, v2.z)};
 }
 
-Vector3D max_per_component(const Vector3D &v1, const Vector3D &v2) {
+static Vector3D max_per_component(const Vector3D &v1, const Vector3D &v2) {
     return {(float) fmax(v1.x, v2.x), (float) fmax(v1.y, v2.y), (float) fmax(v1.z, v2.z)};
 }
 
-Vector3D make_perpendicular_vector(const Vector3D &v) {
+static Vector3D make_perpendicular_vector(const Vector3D &v) {
     const float x = fabs(v.x);
     const float y = fabs(v.y);
     const float z = fabs(v.z);
@@ -170,7 +184,7 @@ OBB calculate_oriented_bounding_box(int32_t vertex_count, const Vector3D *vertic
     return result;
 }
 
-void calculate_secondary_diameter(const int32_t vertex_count, const Vector3D *vertices, const Vector3D &axis,
+static void calculate_secondary_diameter(const int32_t vertex_count, const Vector3D *vertices, const Vector3D &axis,
                                   int32_t *v_a_index, int32_t *v_b_index) {
     constexpr int32_t k_direction_count = 4;
     constexpr Vector2D direction[k_direction_count]{
@@ -221,7 +235,7 @@ void calculate_secondary_diameter(const int32_t vertex_count, const Vector3D *ve
     *v_b_index = i_max[k];
 }
 
-void find_extremal_vertices(const int32_t vertex_count, const Vector3D *vertices, const Plane &plane,
+static void find_extremal_vertices(const int32_t vertex_count, const Vector3D *vertices, const Plane &plane,
                             int32_t *v_e_index,
                             int32_t *v_f_index) {
     *v_e_index = 0;
@@ -242,7 +256,7 @@ void find_extremal_vertices(const int32_t vertex_count, const Vector3D *vertices
     }
 }
 
-void get_primary_box_directions(
+static void get_primary_box_directions(
     int32_t vertex_count,
     const Vector3D *vertices,
     const int32_t v_a_index,
@@ -278,7 +292,7 @@ void get_primary_box_directions(
     directions[8] = vertices[f] - vertices[c];
 }
 
-void get_secondary_box_directions(
+static void get_secondary_box_directions(
     const int32_t vertex_count,
     const Vector3D *vertices,
     const Vector3D &axis,

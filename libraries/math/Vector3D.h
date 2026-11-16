@@ -3,7 +3,7 @@
 
 #include "linearalgebra_export.h"
 
-struct LINEARALGEBRA_EXPORT Vector3D {
+struct Vector3D {
     float x;
     float y;
     float z;
