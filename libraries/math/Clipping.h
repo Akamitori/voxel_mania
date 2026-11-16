@@ -17,17 +17,17 @@ constexpr int32_t k_max_polyhedron_edge_count = (k_max_polyhedron_face_count - 2
 constexpr int32_t k_max_polyhedron_face_edge_count = k_max_polyhedron_face_count - 1;
 
 
-struct LINEARALGEBRA_EXPORT Edge {
+struct Edge {
     uint8_t vertex_index[2];
     uint8_t face_index[2];
 };
 
-struct LINEARALGEBRA_EXPORT Face {
+struct Face {
     uint8_t edge_count;
     uint8_t edge_index[k_max_polyhedron_face_edge_count];
 };
 
-struct LINEARALGEBRA_EXPORT Polyhedron {
+struct Polyhedron {
     uint8_t vertex_count;
     uint8_t edge_count;
     uint8_t face_count;
@@ -40,7 +40,7 @@ struct LINEARALGEBRA_EXPORT Polyhedron {
 
 LINEARALGEBRA_EXPORT int clip_polygon(int vertex_count, const Vector3D *vertices, const Plane &plane, float *location,Vector3D *result);
 
-LINEARALGEBRA_EXPORT bool clip_polyhedron(const Polyhedron *polyhedron, const Plane *plane, Polyhedron *result);
+LINEARALGEBRA_EXPORT bool clip_polyhedron(const Polyhedron *polyhedron, const Plane &plane, Polyhedron *result);
 
 LINEARALGEBRA_EXPORT void build_frustum_polyhedron(const Matrix4D &m_cam, float g, float s, float near, float far, Polyhedron *polyhedron);
 
