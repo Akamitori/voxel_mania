@@ -11,7 +11,7 @@
 #include <imgui_impl_opengl3.h>
 
 #include "Trigonometry.h"
-#include "Renderer/Renderer.h"
+#include "Renderer.h"
 #include "SDL3/SDL_timer.h"
 
 #include "quad.h"
@@ -19,7 +19,7 @@
 
 #include "Main_Containers.h"
 #include "Perlin.h"
-#include "AssetLoader/AssetLoader.h"
+#include "AssetLoader.h"
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,

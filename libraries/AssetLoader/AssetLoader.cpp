@@ -66,7 +66,7 @@ TextureData LoadTexture(const char *path) {
         exit(1);
     }
 
-    assert(("Support only for RGBA", nrChannels == 3 || nrChannels == 4));
+    assert("Support only for RGBA" && (nrChannels == 3 || nrChannels == 4));
 
     char *path_to_load = (char *) malloc((strlen(path) + 1) * sizeof(char));
     strcpy(path_to_load, path);
@@ -498,7 +498,6 @@ void asset_loader_free(void *ptr) {
 }
 
 
-std::vector<VertexBoneData> vertex_to_bones;
 
 // this contains all the offsets for each of those mesh starts
 // the idea of mesh_base_vertex is that we use it to tightly pack each mesh and its data into
@@ -605,7 +604,7 @@ static TextureData LoadTextureFromMaterial(
     const aiTextureType type,
     const aiMaterial *material,
     const char *texture_name) {
-    assert(("Currently we only support one texture per type", material->GetTextureCount(type) <= 1));
+    assert("Currently we only support one texture per type" && material->GetTextureCount(type) <= 1);
 
 
     stbi_set_flip_vertically_on_load(true);
@@ -624,7 +623,7 @@ static TextureData LoadTextureFromMaterial(
         return LoadTexture(texture_name);
     }
 
-    assert(("Unsupported: raw ARGB8888 embedded texture", tex->mHeight == 0));
+    assert("Unsupported: raw ARGB8888 embedded texture" && tex->mHeight == 0);
 
     int width, height, nrChannels;
     unsigned char *data = stbi_load_from_memory(
@@ -637,7 +636,7 @@ static TextureData LoadTextureFromMaterial(
         fprintf(stderr, "Warning : failed to decode embedded texture %s\n", texture_name);
         return nil_texture;
     }
-    assert(("Support only for RGB/RGBA", nrChannels == 3 || nrChannels == 4));
+    assert("Support only for RGB/RGBA" && (nrChannels == 3 || nrChannels == 4));
 
     return TextureData{width, height, nrChannels, data, copy_string(texture_name)};
 }

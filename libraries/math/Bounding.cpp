@@ -8,7 +8,7 @@
 #include <float.h>
 
 #include "Vector3D.h"
-#include "math_ops/math_ops.h"
+#include "math_ops.h"
 
 
 Sphere calculate_bounding_sphere(const int32_t vertex_count, const Vector3D *vertices) {

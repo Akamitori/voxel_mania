@@ -21,13 +21,16 @@ Building a renderer from scratch to understand the graphics pipeline without bla
 
 ## Build
 
-Requires: OpenGL 3.3+, SDL3, GLEW, GLM, Dear ImGui
+All dependencies (SDL3, assimp, GLEW, Dear ImGui) are git submodules built with the project; you
+need CMake 3.30+, Ninja and a C++23 compiler (clang/gcc on Linux, MSVC 2022 on Windows).
+
 ```bash
-mkdir build && cd build
-cmake ..
-make
-./voxel_mania
+cmake -S . -B build-debug -G Ninja -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug
+cd build-debug && ./voxel_mania
 ```
+
+See [docs/BUILDING.md](docs/BUILDING.md) for options, installing, the library cache and submodules.
 
 ## What's Next
 

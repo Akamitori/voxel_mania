@@ -3,17 +3,12 @@ include(../../cmake_scripts/link_and_export_utilities.cmake)
 add_and_export_library(Custom_Containers TYPE INTERFACE)
 
 
-add_and_export_library(Custom_Containers_Test TYPE SHARED FILES benchmarks/vector_int.cpp)
+add_and_export_library(Custom_Containers_Test TYPE SHARED NO_INSTALL FILES benchmarks/vector_int.cpp)
 target_link_libraries(Custom_Containers_Test PRIVATE Custom_Containers)
 
 
 add_executable(queue_tests benchmarks/queue_benchmarks.cpp)
 target_link_libraries(queue_tests PRIVATE Custom_Containers)
-
-# For a specific target
-set_target_properties(queue_tests PROPERTIES
-        INTERPROCEDURAL_OPTIMIZATION TRUE
-)
 
 
 # Static inline version (header-only)
@@ -26,18 +21,13 @@ target_link_libraries(vector_tests_linked PRIVATE Custom_Containers_Test)
 
 target_compile_definitions(vector_tests_linked PRIVATE VECTOR_USE_LIBRARY)
 
-set_target_properties(vector_tests_inline vector_tests_linked PROPERTIES
-        INTERPROCEDURAL_OPTIMIZATION TRUE
-)
-
 # Hashmap benchmarks (header-only, static variant)
 add_executable(hashmap_benchmarks benchmarks/hashmap_benchmarks.cpp)
 target_link_libraries(hashmap_benchmarks PRIVATE Custom_Containers)
 
-set_target_properties(hashmap_benchmarks PROPERTIES
-        INTERPROCEDURAL_OPTIMIZATION TRUE
-)
-
 add_and_export_library(Common_Hashmaps TYPE SHARED FILES hashmap_common.cpp)
 target_link_libraries(Common_Hashmaps PUBLIC Custom_Containers)
 
+foreach (benchmark queue_tests vector_tests_inline vector_tests_linked hashmap_benchmarks)
+    voxel_enable_warnings(${benchmark})
+endforeach ()

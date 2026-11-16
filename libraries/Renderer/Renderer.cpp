@@ -14,6 +14,7 @@
 
 
 #include <assert.h>
+#include <cfloat>
 
 #include "Transformations.h"
 #include "Trigonometry.h"
@@ -30,7 +31,7 @@
 #include "AssetLoader.h"
 
 
-static Camera *SceneCamera = nullptr;
+Camera *SceneCamera = nullptr;
 SDL_Window *window{};
 SDL_GLContext open_gl_context{};
 
@@ -101,8 +102,8 @@ enum class DrawCommandType {
 struct DrawCommand {
     DrawCommandType Type{};
     int Draw_Entity_Id;
-    Transform Transform{};
-    Material Material{};
+    ::Transform Transform{};
+    ::Material Material{};
     Vector3D Color{};
 };
 
@@ -889,9 +890,9 @@ int Renderer_RegisterTexturedMesh(
     const uint32_t *indices,
     const size_t index_count
 ) {
-    assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
-    assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
-    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && diffuse_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && specular_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && (emission_texture_id < 0 || emission_texture_id <Vector_Texture_Length(Textures))));
 
     const int mesh_id = Vector_Mesh_Length(Meshes);
     Mesh m{};
@@ -927,9 +928,9 @@ static int Renderer_RegisterTexturedMesh_WithOwnership(
     VertexBoneData *vertex_bone_data,
     size_t vertex_bone_data_count
 ) {
-    assert(("Texture should be indexable", diffuse_texture_id < Vector_Texture_Length(Textures)));
-    assert(("Texture should be indexable", specular_texture_id < Vector_Texture_Length(Textures)));
-    assert(("Texture should be indexable", emission_texture_id < 0 || specular_texture_id <Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && diffuse_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && specular_texture_id < Vector_Texture_Length(Textures)));
+    assert(("Texture should be indexable" && (emission_texture_id < 0 || emission_texture_id <Vector_Texture_Length(Textures))));
 
     const int mesh_id = Vector_Mesh_Length(Meshes);
     Mesh m{};
@@ -961,7 +962,7 @@ static int Renderer_RegisterTexturedMesh_WithOwnership(
 
 
 int Renderer_RegisterTextured_Cross_Mesh(const int texture_id, const float scale) {
-    assert(("Support only downsizing", scale<=1));
+    assert(("Support only downsizing" && scale<=1));
 
     constexpr int total_quads = 2;
 
@@ -1198,7 +1199,7 @@ int Renderer_Register_Model(const char *path) {
 }
 
 int Renderer_Register_Directional_Light(const DirectionalLight &light) {
-    assert(("Registered more lights than possible", Directional_Lights.num_of_light<MAX_DIRECTIONAL_LIGHTS));
+    assert("Registered more lights than possible" && Directional_Lights.num_of_light<MAX_DIRECTIONAL_LIGHTS);
     const int currentId = Directional_Lights.num_of_light;
     Directional_Lights.Lights[currentId] = light;
     ++Directional_Lights.num_of_light;
@@ -1249,7 +1250,7 @@ int Renderer_Register_Directional_Light(const DirectionalLight &light) {
 }
 
 int Renderer_Register_Point_Light(const PointLight &light) {
-    assert(("Registered more lights than possible", Point_Lights.num_of_light<MAX_POINT_LIGHTS));
+    assert("Registered more lights than possible" && Point_Lights.num_of_light<MAX_POINT_LIGHTS);
     const int currentId = Point_Lights.num_of_light;
     Point_Lights.Lights[currentId] = light;
     ++Point_Lights.num_of_light;
@@ -1257,7 +1258,7 @@ int Renderer_Register_Point_Light(const PointLight &light) {
 }
 
 int Renderer_Register_Spot_Light(const SpotLight &light) {
-    assert(("Registered more lights than possible", Spot_Lights.num_of_light<MAX_SPOT_LIGHTS));
+    assert("Registered more lights than possible" && Spot_Lights.num_of_light<MAX_SPOT_LIGHTS);
     const int currentId = Spot_Lights.num_of_light;
     Spot_Lights.Lights[currentId] = light;
     ++Spot_Lights.num_of_light;
@@ -2068,7 +2069,7 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
 //TODO this probably should be generalized in on a per light basis
 // skipped for now till we get cascaded shadow maps in
 void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
-    assert(("There should be directional lights" , Directional_Lights.num_of_light >0));
+    assert("There should be directional lights" && Directional_Lights.num_of_light >0);
     constexpr int directional_light_index = 0;
     glUseProgram(Screen_Texture.shadow_map_program);
 

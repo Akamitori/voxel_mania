@@ -1,12 +1,12 @@
-﻿# Fixed version - more robust file handling
-
-file(GLOB im_gui_cpp_files_full_path
-        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/*.cpp"
-        "${CMAKE_CURRENT_SOURCE_DIR}/imgui/*.h"
-)
-
+﻿# Dear ImGui core + the SDL3 / OpenGL3 backends, listed explicitly (imgui's documented file set).
+# A glob would only be re-evaluated at configure time, so after an imgui submodule update a
+# removed or added file would break the build until the next reconfigure.
 add_library(DearImGui STATIC
-        ${im_gui_cpp_files_full_path}
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_demo.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_draw.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_tables.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/imgui/imgui_widgets.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends/imgui_impl_sdl3.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/imgui/backends/imgui_impl_opengl3.cpp
 )

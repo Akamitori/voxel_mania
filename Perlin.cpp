@@ -1,5 +1,6 @@
 ﻿#include "Perlin.h"
 #include <cassert>
+#include <cstring>
 
 
 #include "math_ops.h"
@@ -66,7 +67,7 @@ double FBMNoise2D(const Perlin &p, const float x, const float y) {
     auto &p_mut = const_cast<Perlin &>(p);
     const float original_frequency = p_mut.frequency;
 
-    assert(("Octaves should be higher than 0",p_mut.octaves>0));
+    assert(("Octaves should be higher than 0" && p_mut.octaves>0));
 
     for (int octaves = 0; octaves < p_mut.octaves; octaves++) {
         const double n = amplitude * Noise2D(p_mut, x, y);

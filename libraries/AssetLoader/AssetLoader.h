@@ -5,7 +5,7 @@
 #include <cstdint>
 
 #include "Vector3D.h"
-#include "export.h"
+#include "assetloader_export.h"
 #include "Matrix4D.h"
 #include "RendererTypes.h"
 
@@ -122,9 +122,9 @@ struct ModelData {
 // emission
 
 
-EXPORTED TextureData LoadTexture(const char *path);
-EXPORTED ModelData LoadModel(const char *path);
-EXPORTED void asset_loader_free(void* ptr);
+ASSETLOADER_EXPORT TextureData LoadTexture(const char *path);
+ASSETLOADER_EXPORT ModelData LoadModel(const char *path);
+ASSETLOADER_EXPORT void asset_loader_free(void* ptr);
 
 #endif //VOXEL_MANIA_ASSETLOADER_H
 

@@ -6,12 +6,12 @@
 #define CAMERA_H
 
 #include "Vector3D.h"
-#include "export.h"
+#include "renderer_export.h"
 #include "Matrix4D.h"
 
 struct Matrix4D;
 
-struct EXPORTED Camera {
+struct RENDERER_EXPORT Camera {
     const Vector3D basis_right{1, 0, 0.f};
     const Vector3D basis_forward{0, 1, 0};
     const Vector3D basis_up{0.0f, 0, -1.0f};
@@ -31,17 +31,17 @@ struct EXPORTED Camera {
     const float max_elevation_rotation{0.785398163f};
 };
 
-EXPORTED void MoveCameraZ(Camera &camera, float modifier);
+RENDERER_EXPORT void MoveCameraZ(Camera &camera, float modifier);
 
-EXPORTED void MoveCameraX(Camera &camera, float modifier);
+RENDERER_EXPORT void MoveCameraX(Camera &camera, float modifier);
 
-EXPORTED void MoveCameraY(Camera &camera, float modifier);
+RENDERER_EXPORT void MoveCameraY(Camera &camera, float modifier);
 
-EXPORTED Matrix4D CameraLookAtMatrix(const Camera &camera);
+RENDERER_EXPORT Matrix4D CameraLookAtMatrix(const Camera &camera);
 
-EXPORTED void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
+RENDERER_EXPORT void RotateCamera(Camera &camera, short azimuth_modifier, short elevation_modifier);
 
-EXPORTED void PrintPosition(const Camera &camera); 
+RENDERER_EXPORT void PrintPosition(const Camera &camera); 
 
 
 

@@ -5,7 +5,6 @@
 #ifndef VOXEL_MANIA_STACK_H
 #define VOXEL_MANIA_STACK_H
 
-#include "export.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -22,22 +21,22 @@ extern "C" {
 // Library version (exported, for use across translation units)
 // ==========================================================================
 
-#define STACK_DECLARATION_LIBRARY(T)                                       \
+#define STACK_DECLARATION_LIBRARY(T, API)                                       \
 typedef struct Stack_##T {                                                 \
     T* data;                                                               \
     T* end;                                                                 \
     T* cap_end;                                                             \
 } Stack_##T;                                                               \
                                                                             \
-EXPORTED bool Stack_##T##_Push(Stack_##T*, T);                             \
-EXPORTED bool Stack_##T##_Pop(Stack_##T*, T*);                             \
-EXPORTED bool Stack_##T##_Peek(const Stack_##T*, T*);                        \
-EXPORTED Stack_##T* Stack_##T##_Create(int);                              \
-EXPORTED void Stack_##T##_Clear(Stack_##T*);                              \
-EXPORTED void Stack_##T##_Free(Stack_##T*);                               \
-EXPORTED int Stack_##T##_Length(const Stack_##T*);                              \
-EXPORTED int Stack_##T##_Capacity(const Stack_##T*);                            \
-EXPORTED T* Stack_##T##_Data(Stack_##T*);
+API bool Stack_##T##_Push(Stack_##T*, T);                             \
+API bool Stack_##T##_Pop(Stack_##T*, T*);                             \
+API bool Stack_##T##_Peek(const Stack_##T*, T*);                        \
+API Stack_##T* Stack_##T##_Create(int);                              \
+API void Stack_##T##_Clear(Stack_##T*);                              \
+API void Stack_##T##_Free(Stack_##T*);                               \
+API int Stack_##T##_Length(const Stack_##T*);                              \
+API int Stack_##T##_Capacity(const Stack_##T*);                            \
+API T* Stack_##T##_Data(Stack_##T*);
 
 // ==========================================================================
 // Internal version (for declaring the function in the same c/cpp file for internal use . PS. this is probably an overkill sicne usually we define the static inline version on top anyways

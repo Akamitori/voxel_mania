@@ -6,7 +6,6 @@
 #ifndef VOXEL_MANIA_HASHMAP_CONTAINER_H
 #define VOXEL_MANIA_HASHMAP_CONTAINER_H
 
-#include "export.h"
 #include <string.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -64,20 +63,20 @@ int found;                                            \
 size_t index;                                           \
 } KEY##_##VALUE##_Hashmap_Index_Find_Result;
 
-#define HASHMAP_DECLARATION_LIBRARY(KEY,VALUE)                                          \
+#define HASHMAP_DECLARATION_LIBRARY(KEY,VALUE,API)                                          \
                                                                                 \
 HASHMAP_STRUCTS(KEY,VALUE) \
 C_LINKAGE int KEY##_##VALUE##_Hashmap_key_eq(KEY key_a, KEY key_b);       \
 C_LINKAGE uint64_t KEY##_##VALUE##_Hashmap_key_hash(KEY key_a);     \
                                                                                 \
    \
-C_LINKAGE EXPORTED KEY##_##VALUE##_hashmap *KEY##_##VALUE##_Hashmap_Create(int min_capacity, float max_load_factor); \
-C_LINKAGE EXPORTED void KEY##_##VALUE##_Hashmap_Free(KEY##_##VALUE##_hashmap *h); \
+C_LINKAGE API KEY##_##VALUE##_hashmap *KEY##_##VALUE##_Hashmap_Create(int min_capacity, float max_load_factor); \
+C_LINKAGE API void KEY##_##VALUE##_Hashmap_Free(KEY##_##VALUE##_hashmap *h); \
                                                                             \
                                                            \
-C_LINKAGE EXPORTED int KEY##_##VALUE##_Hashmap_Insert(KEY##_##VALUE##_hashmap *h, KEY##_##VALUE##_hashmap_pair pair_to_insert);         \
-C_LINKAGE EXPORTED VALUE *KEY##_##VALUE##_Hashmap_Find(const KEY##_##VALUE##_hashmap *h, const KEY key);        \
-C_LINKAGE EXPORTED void KEY##_##VALUE##_Hashmap_Remove(KEY##_##VALUE##_hashmap *h, KEY key);
+C_LINKAGE API int KEY##_##VALUE##_Hashmap_Insert(KEY##_##VALUE##_hashmap *h, KEY##_##VALUE##_hashmap_pair pair_to_insert);         \
+C_LINKAGE API VALUE *KEY##_##VALUE##_Hashmap_Find(const KEY##_##VALUE##_hashmap *h, const KEY key);        \
+C_LINKAGE API void KEY##_##VALUE##_Hashmap_Remove(KEY##_##VALUE##_hashmap *h, KEY key);
 
 
 #define HASHMAP_IMPLEMENTATION_STATIC(KEY,VALUE)                                                                                                \

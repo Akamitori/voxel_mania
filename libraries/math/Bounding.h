@@ -1,7 +1,7 @@
 ﻿#ifndef BOUNDING_H
 #define BOUNDING_H
 
-#include "export.h"
+#include "linearalgebra_export.h"
 
 #include <stdint.h>
 #include "Vector3D.h"
@@ -10,28 +10,28 @@ struct Vector3D;
 struct Sphere;
 struct Plane;
 
-struct EXPORTED AABB {
+struct LINEARALGEBRA_EXPORT AABB {
     Vector3D center;
     Vector3D size;
 };
 
-struct EXPORTED OBB {
+struct LINEARALGEBRA_EXPORT OBB {
     Vector3D center;
     Vector3D size;
     Vector3D axis[3];
 };
 
-struct EXPORTED Sphere {
+struct LINEARALGEBRA_EXPORT Sphere {
     Vector3D center;
     float radius;
 };
 
 
-EXPORTED Sphere calculate_bounding_sphere(int32_t vertex_count, const Vector3D *vertices);
+LINEARALGEBRA_EXPORT Sphere calculate_bounding_sphere(int32_t vertex_count, const Vector3D *vertices);
 
 float calculate_diameter(int32_t vertex_count, const Vector3D *vertices, int32_t *v_a_index, int32_t *v_b_index);
 
-EXPORTED AABB calculate_axis_aligned_bounding_box(int32_t vertex_count, const Vector3D *vertices);
+LINEARALGEBRA_EXPORT AABB calculate_axis_aligned_bounding_box(int32_t vertex_count, const Vector3D *vertices);
 
 Vector3D min_per_component(const Vector3D &v1, const Vector3D &v2);
 
@@ -39,7 +39,7 @@ Vector3D max_per_component(const Vector3D &v1, const Vector3D &v2);
 
 Vector3D make_perpendicular_vector(const Vector3D &v);
 
-EXPORTED OBB calculate_oriented_bounding_box(int32_t vertex_count, const Vector3D *vertices);
+LINEARALGEBRA_EXPORT OBB calculate_oriented_bounding_box(int32_t vertex_count, const Vector3D *vertices);
 
 void calculate_secondary_diameter(int32_t vertex_count, const Vector3D *vertices, const Vector3D &axis,
                                   int32_t *v_a_index, int32_t *v_b_index);

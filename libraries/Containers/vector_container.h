@@ -5,7 +5,6 @@
 #ifndef VOXEL_MANIA_VECTOR_H
 #define VOXEL_MANIA_VECTOR_H
 
-#include "export.h"
 #include <string.h>
 #include <stdlib.h>
 
@@ -21,20 +20,20 @@ extern "C" {
 // Library version (exported, for use across translation units)
 // ==========================================================================
 
-#define VECTOR_DECLARATION_LIBRARY(T)                                       \
+#define VECTOR_DECLARATION_LIBRARY(T, API)                                       \
 typedef struct Vector_##T {                                                 \
     T* data;                                                               \
     T* end;                                                                 \
     T* cap_end;                                                             \
 } Vector_##T;                                                               \
                                                                             \
-EXPORTED bool Vector_##T##_Add(Vector_##T*, T);                             \
-EXPORTED Vector_##T* Vector_##T##_Create(int);                              \
-EXPORTED void Vector_##T##_Clear(Vector_##T*);                              \
-EXPORTED void Vector_##T##_Free(Vector_##T*);                               \
-EXPORTED int Vector_##T##_Length(Vector_##T*);                              \
-EXPORTED int Vector_##T##_Capacity(Vector_##T*);                            \
-EXPORTED T* Vector_##T##_Data(Vector_##T*);
+API bool Vector_##T##_Add(Vector_##T*, T);                             \
+API Vector_##T* Vector_##T##_Create(int);                              \
+API void Vector_##T##_Clear(Vector_##T*);                              \
+API void Vector_##T##_Free(Vector_##T*);                               \
+API int Vector_##T##_Length(Vector_##T*);                              \
+API int Vector_##T##_Capacity(Vector_##T*);                            \
+API T* Vector_##T##_Data(Vector_##T*);
     
 #define VECTOR_DECLARATION_LIBRARY_STATIC(T)                                       \
 typedef struct Vector_##T {                                                 \
@@ -58,7 +57,7 @@ static bool Vector_##T##_Resize(Vector_##T *v) {                            \
     size_t new_cap = old_cap * 2;                                           \
     T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
     if (!new_data) return false;                                            \
-    memset(new_data+old_cap,0, (new_cap-old_cap)*sizeof(T));               \
+    memset((void*)(new_data+old_cap),0, (new_cap-old_cap)*sizeof(T));               \
     v->data = new_data;                                                    \
     v->end = new_data + old_size;                                           \
     v->cap_end = new_data + new_cap;                                        \
@@ -125,7 +124,7 @@ static inline bool Vector_##T##_Resize(Vector_##T *v) {                     \
     size_t new_cap = old_cap * 2;                                           \
     T *new_data = (T *)realloc(v->data, new_cap * sizeof(T));              \
     if (!new_data) return false;                                            \
-    memset(new_data+old_cap,0, (new_cap-old_cap)*sizeof(T));               \
+    memset((void*)(new_data+old_cap),0, (new_cap-old_cap)*sizeof(T));               \
     v->data = new_data;                                                    \
     v->end = new_data + old_size;                                           \
     v->cap_end = new_data + new_cap;                                        \

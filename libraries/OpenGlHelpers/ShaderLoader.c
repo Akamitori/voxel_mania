@@ -6,11 +6,12 @@
 #include <GL/glew.h>
 
 
-const char *LOCAL_FILE_DIR = "data/";
-const int LOCAL_FILE_DIR_LEN = sizeof(LOCAL_FILE_DIR) - 1;
+// Array (not a pointer) so sizeof gives the string size; internal to this file.
+static const char LOCAL_FILE_DIR[] = "data/";
+static const int LOCAL_FILE_DIR_LEN = sizeof(LOCAL_FILE_DIR) - 1;
 
 // Function to compile shaders
-unsigned int compileShader(const unsigned int type, const char *source, char *info_log, const int info_log_size) {
+static unsigned int compileShader(const unsigned int type, const char *source, char *info_log, const int info_log_size) {
     const unsigned int id = glCreateShader(type);
     glShaderSource(id, 1, &source, NULL);
     glCompileShader(id);
@@ -56,7 +57,7 @@ unsigned int compileShader(const unsigned int type, const char *source, char *in
     return id;
 }
 
-GLuint LoadShader(const GLenum eShaderType, const char *strShaderFilename, const char *programId, char *info_log,
+static GLuint LoadShader(const GLenum eShaderType, const char *strShaderFilename, const char *programId, char *info_log,
                   const int info_log_size) {
     const size_t file_name_buffer_size = strlen(strShaderFilename) + strlen(programId) + LOCAL_FILE_DIR_LEN + 2;
     char *full_file_path = (char *) malloc(sizeof(char) * file_name_buffer_size);

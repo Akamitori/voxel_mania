@@ -2,11 +2,11 @@
 #define MATRIX4D_H
 
 #include "Vector4D.h"
-#include "export.h"
+#include "linearalgebra_export.h"
 
 struct Vector3D;
 
-struct EXPORTED Matrix4D {
+struct LINEARALGEBRA_EXPORT Matrix4D {
     Vector4D column_vectors[4];
     
     Matrix4D();
@@ -30,15 +30,15 @@ struct EXPORTED Matrix4D {
     Matrix4D& operator=(const Matrix4D& b);
 };
 
-EXPORTED Matrix4D inverse(const Matrix4D &M);
-EXPORTED Matrix4D transpose(const Matrix4D &M);
+LINEARALGEBRA_EXPORT Matrix4D inverse(const Matrix4D &M);
+LINEARALGEBRA_EXPORT Matrix4D transpose(const Matrix4D &M);
 
-EXPORTED Matrix4D operator *(const Matrix4D& A, const Matrix4D& B);
-EXPORTED Vector4D operator*(const Matrix4D &m, const Vector4D &v);
+LINEARALGEBRA_EXPORT Matrix4D operator *(const Matrix4D& A, const Matrix4D& B);
+LINEARALGEBRA_EXPORT Vector4D operator*(const Matrix4D &m, const Vector4D &v);
 
-EXPORTED Matrix4D from_scale_vector(const Vector3D& v);
+LINEARALGEBRA_EXPORT Matrix4D from_scale_vector(const Vector3D& v);
 
-EXPORTED Matrix4D from_translation_vector(const Vector3D& v);
+LINEARALGEBRA_EXPORT Matrix4D from_translation_vector(const Vector3D& v);
 
 const Matrix4D IdentityMatrix{1};
 #endif //MATRIX4D_H
