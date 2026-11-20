@@ -7,7 +7,6 @@
 #include "quad.h"
 #include "Matrix3D.h"
 #include "Matrix4D.h"
-#include "vector"
 #include <cstddef>
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -39,7 +38,16 @@ static unsigned int world_geometry_program;
 static unsigned int world_unshaded_geometry_program;
 static unsigned int world_geometry_program_cross_textures;
 static unsigned int world_geometry_program_skeletal_models;
+
+
+
+
 static unsigned int cursor_program;
+static unsigned int DEBUG_points_program;
+GLuint DEBUG_point_vao;
+GLuint DEBUG_point_vbo;
+GLuint DEBUG_density_vbo;
+size_t point_count = 0;
 
 
 struct screen {
@@ -138,25 +146,25 @@ struct Mesh {
 
     uint32_t *indices{nullptr};
     size_t index_count{0};
-    
+
     VertexBoneData *BoneDataPerVertice{nullptr};
     size_t bone_data_per_vertice_count{0};
 
     GLuint VAO{0};
     GLuint VBO{0};
-    
-    // buffer where we upload BoneDataPerVertice data 
+
+    // buffer where we upload BoneDataPerVertice data
     GLuint VBO_Skeletal{0};
     GLuint VBE{0};
     uint32_t diffuse_texture_id{static_cast<uint32_t>(-1)};
     uint32_t specular_texture_id{static_cast<uint32_t>(-1)};
     uint32_t emission_texture_id{static_cast<uint32_t>(-1)};
-    
+
     unsigned int program_id{0};
 };
 
 // use to store the hierarchy transformation data per frame
-// so we can do our cpu side skinning 
+// so we can do our cpu side skinning
 struct Hierarchy_Transform {
     Matrix4D *node_transformation_matrices;
     Vector3D *Positions;
@@ -171,15 +179,15 @@ struct Model {
 
     BoneInfo *BoneMatrices{};
     size_t bone_matrices_count{};
-    
+
     hierarchy_model_node *node_hierarchy{};
     size_t node_hierarchy_count{};
-    
+
     Hierarchy_Transform node_transformation_data;
 
     cstr_uint32_t_hashmap *Bone_name_to_index_map{};
     Matrix4D GlobalInverseTransform{};
-    
+
     // finalized bone transformations per bone
     // this is what we upload on the GPU
     Matrix4D *BoneTransformations{nullptr};
@@ -188,15 +196,15 @@ struct Model {
     // animation data (if any)
     Animation *Animations{nullptr};
     size_t animation_count;
-    
+
     //use to specify an animation name to an index to animations
     cstr_uint32_t_hashmap *animation_name_to_index_map{};
-    
+
     //each mesh has gets its own slice
     // the owning model points to the first slice so we can free it
     VertexBoneData *BoneDataPerVerticeOwningSlice{nullptr};
-    
-    
+
+
     // animation ticks
     // TODO this will def move out soon once we get to many entities having their own similar model
     double anim_time_ticks{0};
@@ -275,7 +283,7 @@ VECTOR_IMPLEMENTATION_STATIC(Mesh);
 VECTOR_IMPLEMENTATION_STATIC(Model);
 VECTOR_IMPLEMENTATION_STATIC(Texture);
 
-// TODO we can probably move those to a common container header 
+// TODO we can probably move those to a common container header
 VECTOR_IMPLEMENTATION_STATIC(uint32_t);
 VECTOR_IMPLEMENTATION_STATIC(size_t);
 VECTOR_IMPLEMENTATION_STATIC(float);
@@ -385,7 +393,8 @@ void OpenGLGlobalSetup() {
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
     world_geometry_program_skeletal_models = InitializeProgram("program_for_skeletal_models");
-    
+    DEBUG_points_program= InitializeProgram("program_for_points");
+
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
 
@@ -433,7 +442,7 @@ void Renderer_Init(const int screen_width,
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 5);
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    
+
     // use this when you want to debug opengl
     //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
 
@@ -554,7 +563,8 @@ void Renderer_Init(const int screen_width,
         world_geometry_program_cross_textures,
         world_geometry_program_skeletal_models,
         world_unshaded_geometry_program,
-        Screen_Texture.shadow_map_program
+        Screen_Texture.shadow_map_program,
+        DEBUG_points_program
     };
 
 
@@ -595,7 +605,7 @@ void Renderer_Init(const int screen_width,
 
     if (Screen_Texture.Samples > 0) {
         // setup for the anti alias buffer
-        // it should be using both a 
+        // it should be using both a
 
         // generate the multisampling buffer
         glGenFramebuffers(1, &Screen_Texture.buffer_multisampling);
@@ -1066,7 +1076,7 @@ int Renderer_Register_Model(const char *path) {
 
     const size_t regular_meshes_to_register = model.mesh_data_count;
 
-    
+
 
 
     const size_t node_len =model.node_hierarchy_count;
@@ -1293,7 +1303,7 @@ void Renderer_Draw_Mesh_Unshaded(const int mesh_id, const Transform &transform, 
 
 
 void Shadow_Pass() {
-    // use the buffer shadow map with the proper viewport 
+    // use the buffer shadow map with the proper viewport
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_shadow_map);
     glViewport(0, 0, Screen_Texture.texture_shadow_map_depthMap_Width, Screen_Texture.texture_shadow_map_Height);
 
@@ -1330,6 +1340,7 @@ void Draw_Without_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
+    DEBUG_Draw_Points();
 
     // screen pass
     Draw_To_Screen_Texture();
@@ -1345,6 +1356,7 @@ void Draw_With_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
+    DEBUG_Draw_Points();
 
     // blit the anti alias buffer
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
@@ -1648,11 +1660,11 @@ void Skeletal_Pass(double delta_seconds) {
 
         // we picked our animation
         const Animation &anim_data = m.Animations[anim_index];
-        
+
         // add ticks to animations and mod them
         m.anim_time_ticks += anim_data.Ticks_Per_Second * delta_seconds;
         m.anim_time_ticks = fmod(m.anim_time_ticks , anim_data.Duration);
-        
+
         // sampple for those ticks
         sample_local_pose_for_animation(anim_data, m.anim_time_ticks, node_trans_data);
 
@@ -1702,7 +1714,7 @@ void Renderer_FrameEnd() {
 
 
 void Renderer_Destroy() {
-    
+
     for (size_t i = 0; i < Vector_Model_Length(Models); ++i) {
         const Model m = Models->data[i];
         for (size_t j=0;j<m.mesh_count;++j) {
@@ -1716,7 +1728,7 @@ void Renderer_Destroy() {
         free(m.mesh_ids);
         asset_loader_free(m.BoneDataPerVerticeOwningSlice);
     }
-    
+
     for (size_t i = 0; i < Vector_Mesh_Length(Meshes); ++i) {
         const Mesh m = Meshes->data[i];
         glDeleteVertexArrays(1, &m.VAO);
@@ -1735,7 +1747,7 @@ void Renderer_Destroy() {
         free(m.indices);
         free(m.vertices);
     }
-    
+
     glDeleteVertexArrays(1, &cursor_vao);
     glDeleteBuffers(1, &cursor_vbo);
 
@@ -1865,6 +1877,64 @@ void SendGeometryDataToTheGPU() {
         // m.BoneDataPerVertice = nullptr;
     }
 }
+
+
+
+void DEBUG_SendPointDataToTheGPU(const Vector3D *points, const float *densities, size_t count) {
+    const int pos_location_attr = 0;
+    const int normal_location_attr = 1;
+
+    point_count=count;
+
+
+    glGenVertexArrays(1, &DEBUG_point_vao);
+    glBindVertexArray(DEBUG_point_vao);
+
+    glGenBuffers(1, &DEBUG_point_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, DEBUG_point_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, points, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(pos_location_attr);
+    glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3D), nullptr);
+
+
+    glGenBuffers(1, &DEBUG_density_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, DEBUG_density_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(float) * count, densities, GL_DYNAMIC_DRAW);
+
+
+    glEnableVertexAttribArray(normal_location_attr);
+    glVertexAttribPointer(normal_location_attr, 1, GL_FLOAT, GL_FALSE, sizeof(float), nullptr);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+static float DEBUG_Slice_layer=0;
+
+void DEBUG_Modify_Slice_Layer(int value) {
+    const GLint slice_layer_id = glGetUniformLocation(DEBUG_points_program, "z_layer");
+
+    DEBUG_Slice_layer += value;
+    glUniform1fv(slice_layer_id, 1, &DEBUG_Slice_layer);
+}
+
+void DEBUG_Draw_Points() {
+    glUseProgram(DEBUG_points_program);
+    glBindVertexArray(DEBUG_point_vao);
+
+    const GLint voxel_color = glGetUniformLocation(DEBUG_points_program, "z_layer");
+    glUniform1fv(voxel_color, 1, &DEBUG_Slice_layer);
+
+    glDrawArrays(GL_POINTS, 0, point_count);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+
+
+}
+
+
 
 // this is for untextured meshes ;)
 void SendUnshadedGeometryDataToTheGPU() {
@@ -2062,7 +2132,7 @@ void Draw(const unsigned int program_to_use, const Mesh &mesh, const Transform &
     //glUniform1i(shadow_map_id, 3);
 
 
-    assert(mesh.index_count <= INT_MAX); // this should never happen 
+    assert(mesh.index_count <= INT_MAX); // this should never happen
     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
 }
 
@@ -2104,7 +2174,7 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];
                     glBindVertexArray(mesh.VAO);
-                    assert(mesh.index_count <= INT_MAX); // this should never happen 
+                    assert(mesh.index_count <= INT_MAX); // this should never happen
                     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
                 }
                 break;
@@ -2117,7 +2187,7 @@ void Render_Draw_Commands_To_Shadow_Depth_Buffer(int cascade_index) {
                 for (size_t j = 0; j < model.mesh_count; ++j) {
                     const Mesh mesh = Meshes->data[model.mesh_ids[j]];
                     glBindVertexArray(mesh.VAO);
-                    assert(mesh.index_count <= INT_MAX); // this should never happen 
+                    assert(mesh.index_count <= INT_MAX); // this should never happen
                     glDrawElements(GL_TRIANGLES, static_cast<int>(mesh.index_count),GL_UNSIGNED_INT, nullptr);
                 }
                 break;
@@ -2264,7 +2334,7 @@ void Set_Resolution_Params(const int new_screen_width, const int new_screen_heig
         const float a = frustum_split.near;
         const float b = frustum_split.far;
         // get near and far plane corners for the shadow cascade in camera space( main camera space ;)
-        frustum_split.camera_space_corners[0] = {a * s / g, a / g, a}; // + +  
+        frustum_split.camera_space_corners[0] = {a * s / g, a / g, a}; // + +
         frustum_split.camera_space_corners[1] = {a * s / g, -a / g, a}; // +-
         frustum_split.camera_space_corners[2] = {-a * s / g, -a / g, a}; // --
         frustum_split.camera_space_corners[3] = {-a * s / g, a / g, a}; // -+
@@ -2497,7 +2567,7 @@ void CalculateCascadeFrontPlanes(const Matrix4D &camera_matrix) {
 
 int RegisterTextureFromData(const TextureData &texture_data, Texture_Parameters parameters) {
     assert(texture_data.nrChannels != nil_texture.nrChannels);
-    
+
     TextureType loaded_format = texture_data.nrChannels == 3 ? TextureType::RGB : TextureType::RGB_ALPHA;
     TextureType internal_format = loaded_format;
 

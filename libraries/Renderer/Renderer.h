@@ -88,4 +88,10 @@ RENDERER_EXPORT void Renderer_CameraUpdate();
 
 RENDERER_EXPORT void Renderer_Change_Emission(int mesh_id, int emission_texture_id);
 
+RENDERER_EXPORT void DEBUG_SendPointDataToTheGPU(const Vector3D* points, const float * densities, size_t count);
+
+RENDERER_EXPORT void DEBUG_Draw_Points();
+
+RENDERER_EXPORT void DEBUG_Modify_Slice_Layer(int value);
+
 #endif //RENDERER_H

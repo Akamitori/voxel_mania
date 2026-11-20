@@ -20,6 +20,8 @@
 #include "Main_Containers.h"
 #include "Perlin.h"
 #include "AssetLoader.h"
+#include "math_ops.h"
+#include "Matrix3D.h"
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,
@@ -51,6 +53,15 @@
 
 // draw this model at this position
 //
+
+static float sample_sphere_density(Vector3D &p, float radius) {
+    return magnitude(p)-radius;
+}
+
+// assume no rotation or translation for now
+static float sample_plane_density(const Vector3D &p, const Vector3D &normal) {
+    return dot(p, normal);
+}
 
 
 int RegisterCubeMesh3Part(int diffuse_texture_id, int specular_texture_id, int emission_texture_id = -1) {
@@ -176,12 +187,45 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
     // }
 }
 
+constexpr size_t samples_per_axis=64;
+constexpr float step=0.5f;
+constexpr float sphere_radius=5;
+constexpr size_t cells_per_axis=samples_per_axis-1;
+const Vector3D grid_origin = Vector3D{.x = step,.y = step,.z = step} *(-static_cast<float>(cells_per_axis)/ 2.0f);
+constexpr size_t total_sampling_points=samples_per_axis*samples_per_axis*samples_per_axis;
+
 int main() {
+    float *samples=(float*)malloc(sizeof(float)*total_sampling_points);
+    Vector3D* points=(Vector3D*)malloc(sizeof(Vector3D)*total_sampling_points);
+    size_t inside_or_on_surface_count=0;
+
+    Vector3D plane_normal={0,0,1};
+
+    for (size_t z = 0; z < samples_per_axis; ++z) {
+        for (size_t y = 0; y < samples_per_axis; ++y) {
+            for (size_t x = 0; x < samples_per_axis; ++x) {
+                size_t index=z*samples_per_axis*samples_per_axis
+                    +y*samples_per_axis
+                +x;
+
+                Vector3D world_pos=grid_origin+Vector3D{x*step, y*step, z*step};
+                points[index]=world_pos;
+                const  float sphere_dfs=sample_sphere_density(world_pos,sphere_radius);
+                const float plane_dfs=sample_plane_density(world_pos,plane_normal);
+                const float union_dfs=math_ops::min(sphere_dfs,plane_dfs);
+                samples[index]=union_dfs;
+            }
+        }
+    }
+
+    printf("sample count is %zu\n",inside_or_on_surface_count);
+
     try {
         //parse_scene("data/models/boblampclean.md5mesh");
         //return 0;
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
+        DEBUG_SendPointDataToTheGPU(points,samples,total_sampling_points);
 
         const int whiteTextureId = Renderer_RegisterTextureFromPath("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
         const int woodTextureId = Renderer_RegisterTextureFromPath("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
@@ -421,12 +465,12 @@ int main() {
 
             Renderer_FrameStart();
 
-            for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
-                const mesh_instance m = opaque_meshes->data[i];
-                Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
-            }
+            // for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
+            //     const mesh_instance m = opaque_meshes->data[i];
+            //     Renderer_Draw_Mesh(m.mesh_id, m.transform, {1, 1, 1}, our_material);
+            // }
 
-            Renderer_Draw_Skeletal_Model(bob, trans, {}, {});
+            //Renderer_Draw_Skeletal_Model(bob, trans, {}, {});
 
             Renderer_ResolveDrawCalls(delta);
 
@@ -441,11 +485,14 @@ int main() {
             IMGUI_CHECKVERSION();
             
             snprintf(debug_text, sizeof(debug_text), "ms: %f\n objects:%d\n", ms_per_frame, objects);
-            ImGui::Begin("CSM Debug");
-            ImGui::InputTextMultiline("##csmdebug", debug_text, sizeof(debug_text),
-                                      ImVec2(-1, -1), ImGuiInputTextFlags_ReadOnly);
-            
-            ImGui::End();
+
+            if (ImGui::ArrowButton("Increase z",ImGuiDir_Up)) {
+                DEBUG_Modify_Slice_Layer(1);
+            }
+            else if (ImGui::ArrowButton("Decrease z",ImGuiDir_Down)) {
+                DEBUG_Modify_Slice_Layer(-1);
+            }
+
             
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
