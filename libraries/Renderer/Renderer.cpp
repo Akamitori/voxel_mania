@@ -43,12 +43,23 @@ static unsigned int world_geometry_program_skeletal_models;
 
 
 static unsigned int cursor_program;
-static unsigned int DEBUG_points_program;
-GLuint DEBUG_point_vao;
-GLuint DEBUG_point_vbo;
-GLuint DEBUG_density_vbo;
+static unsigned int DEBUG_contour_program;
+GLuint DEBUG_contour_vao=-1;
+GLuint DEBUG_contour_vbo=-1;
+size_t line_count = 0;
+
+static unsigned int DEBUG_point_program;
+GLuint DEBUG_point_vao=-1;
+GLuint DEBUG_point_vbo=-1;
+GLuint DEBUG_density_vbo=-1;
 size_t point_count = 0;
 
+GLuint DEBUG_grid_vao=-1;
+GLuint DEBUG_grid_vbo=-1;
+size_t grid_count = 0;
+
+
+static void DEBUG_Draw_All_The_Stuff();
 
 struct screen {
     unsigned int screen_texture_program{0};
@@ -393,7 +404,8 @@ void OpenGLGlobalSetup() {
     world_geometry_program_cross_textures = InitializeProgram("program_for_transparent_cross_textures");
     world_unshaded_geometry_program = InitializeProgram("program_for_unshaded_textures");
     world_geometry_program_skeletal_models = InitializeProgram("program_for_skeletal_models");
-    DEBUG_points_program= InitializeProgram("program_for_points");
+    DEBUG_contour_program= InitializeProgram("program_for_contours");
+    DEBUG_point_program= InitializeProgram("program_for_points");
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
@@ -564,7 +576,8 @@ void Renderer_Init(const int screen_width,
         world_geometry_program_skeletal_models,
         world_unshaded_geometry_program,
         Screen_Texture.shadow_map_program,
-        DEBUG_points_program
+        DEBUG_contour_program,
+        DEBUG_point_program
     };
 
 
@@ -1340,8 +1353,7 @@ void Draw_Without_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
-    DEBUG_Draw_Points();
-
+    DEBUG_Draw_All_The_Stuff();
     // screen pass
     Draw_To_Screen_Texture();
 }
@@ -1356,7 +1368,7 @@ void Draw_With_Anti_Aliasing() {
     ExecuteDrawCommands();
 
     Draw_Cursor();
-    DEBUG_Draw_Points();
+    DEBUG_Draw_All_The_Stuff();
 
     // blit the anti alias buffer
     glBindFramebuffer(GL_FRAMEBUFFER, Screen_Texture.buffer_screen);
@@ -1878,14 +1890,20 @@ void SendGeometryDataToTheGPU() {
     }
 }
 
-
-
 void DEBUG_SendPointDataToTheGPU(const Vector3D *points, const float *densities, size_t count) {
+    glEnable(GL_PROGRAM_POINT_SIZE);
+    glPointSize(3.5);
     const int pos_location_attr = 0;
-    const int normal_location_attr = 1;
+    const int density_location_attr = 1;
 
     point_count=count;
 
+    if (DEBUG_point_vao!=-1) {
+
+        glBindBuffer(GL_ARRAY_BUFFER, DEBUG_point_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, points, GL_STATIC_DRAW);
+        return;
+    }
 
     glGenVertexArrays(1, &DEBUG_point_vao);
     glBindVertexArray(DEBUG_point_vao);
@@ -1903,37 +1921,129 @@ void DEBUG_SendPointDataToTheGPU(const Vector3D *points, const float *densities,
     glBufferData(GL_ARRAY_BUFFER, sizeof(float) * count, densities, GL_DYNAMIC_DRAW);
 
 
-    glEnableVertexAttribArray(normal_location_attr);
-    glVertexAttribPointer(normal_location_attr, 1, GL_FLOAT, GL_FALSE, sizeof(float), nullptr);
+    glEnableVertexAttribArray(density_location_attr);
+    glVertexAttribPointer(density_location_attr, 1, GL_FLOAT, GL_FALSE, sizeof(float), nullptr);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+}
+
+void DEBUG_SendGridDataToTheGPU(const Vector3D *grid_vertices, size_t count) {
+    const int pos_location_attr = 0;
+
+    grid_count=count;
+
+    if (DEBUG_grid_vao!=-1) {
+
+        glBindBuffer(GL_ARRAY_BUFFER, DEBUG_grid_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, grid_vertices, GL_STATIC_DRAW);
+        return;
+    }
+
+    glGenVertexArrays(1, &DEBUG_grid_vao);
+    glBindVertexArray(DEBUG_grid_vao);
+
+    glGenBuffers(1, &DEBUG_grid_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, DEBUG_grid_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, grid_vertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(pos_location_attr);
+    glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3D), nullptr);
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
 
+void DEBUG_SendContourDataToTheGPU(const Line2D *lines, size_t count) {
+    const int pos_location_attr = 0;
+
+    line_count=count;
+
+    if (DEBUG_contour_vao!=-1) {
+
+        glBindBuffer(GL_ARRAY_BUFFER, DEBUG_contour_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(Line2D) * count, lines, GL_STATIC_DRAW);
+        return;
+    }
+
+    glGenVertexArrays(1, &DEBUG_contour_vao);
+    glBindVertexArray(DEBUG_contour_vao);
+
+    glGenBuffers(1, &DEBUG_contour_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, DEBUG_contour_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Line2D) * count, lines, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(pos_location_attr);
+    glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3D), nullptr);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+}
+
 static float DEBUG_Slice_layer=0;
 
 void DEBUG_Modify_Slice_Layer(int value) {
-    const GLint slice_layer_id = glGetUniformLocation(DEBUG_points_program, "z_layer");
+    const GLint slice_layer_id = glGetUniformLocation(DEBUG_contour_program, "z_layer");
 
     DEBUG_Slice_layer += value;
     glUniform1fv(slice_layer_id, 1, &DEBUG_Slice_layer);
 }
 
+void Debug_Draw_Grid() {
+    glUseProgram(DEBUG_contour_program);
+    glBindVertexArray(DEBUG_grid_vao);
+
+
+    glLineWidth(2.0f);
+
+    const GLint color_id =glGetUniformLocation(DEBUG_contour_program, "color");
+    Vector3D v{0.25f, 0.25f, 0.25f};
+    glUniform3fv(color_id, 1, &v.x);
+
+    glDrawArrays(GL_LINES, 0, grid_count);
+    glLineWidth(1.0f);
+
+
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
+
+void DEBUG_Draw_Contours() {
+    glUseProgram(DEBUG_contour_program);
+    glBindVertexArray(DEBUG_contour_vao);
+
+    const GLint color_id =glGetUniformLocation(DEBUG_contour_program, "color");
+    Vector3D v{1,1,0};
+    glUniform3fv(color_id, 1, &v.x);
+
+    glDrawArrays(GL_LINES, 0, line_count*2);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void DEBUG_Draw_Points() {
-    glUseProgram(DEBUG_points_program);
+    glUseProgram(DEBUG_point_program);
     glBindVertexArray(DEBUG_point_vao);
 
-    const GLint voxel_color = glGetUniformLocation(DEBUG_points_program, "z_layer");
+    const GLint voxel_color = glGetUniformLocation(DEBUG_point_program, "z_layer");
     glUniform1fv(voxel_color, 1, &DEBUG_Slice_layer);
 
     glDrawArrays(GL_POINTS, 0, point_count);
 
     glBindVertexArray(0);
     glUseProgram(0);
-
-
 }
 
+void DEBUG_Draw_All_The_Stuff() {
+    Debug_Draw_Grid();
+    DEBUG_Draw_Contours();
+    DEBUG_Draw_Points();
+}
 
 
 // this is for untextured meshes ;)

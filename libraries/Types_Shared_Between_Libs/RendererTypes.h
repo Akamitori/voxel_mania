@@ -30,6 +30,11 @@ struct Quaternion_Key {
     double time;
 };
 
+struct Line2D {
+    Vector3D point1;
+    Vector3D point2;
+};
+
 struct Animation_Channel {
     const char *node_name;
 

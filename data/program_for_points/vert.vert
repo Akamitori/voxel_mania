@@ -16,7 +16,7 @@ uniform float z_layer;
 
 void main() {
 
-    if (abs(aPos.z - z_layer) > 0.5 * 0.5){
+    if (z_layer!=0&& abs(aPos.z - z_layer) > 0.5 * 0.5){
         gl_Position=vec4(2.0,2.0,2.0,1.0);
         return;
     }

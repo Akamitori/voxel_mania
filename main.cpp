@@ -55,7 +55,13 @@
 //
 
 static float sample_sphere_density(Vector3D &p, float radius) {
-    return magnitude(p)-radius;
+    return magnitude(p) - radius;
+}
+
+static float sample_cirlce_density(const Vector2D &p, const Vector2D &offset, float radius) {
+    Vector2D res{p.x - offset.x, p.y - offset.y};
+    double magnitude = sqrt(res.x * res.x + res.y * res.y);
+    return magnitude - radius;
 }
 
 // assume no rotation or translation for now
@@ -187,54 +193,249 @@ void Create_Scene(const int wood_cube_id, const int crate_cube_id, Vector_mesh_i
     // }
 }
 
-constexpr size_t samples_per_axis=64;
-constexpr float step=0.5f;
-constexpr float sphere_radius=5;
-constexpr size_t cells_per_axis=samples_per_axis-1;
-const Vector3D grid_origin = Vector3D{.x = step,.y = step,.z = step} *(-static_cast<float>(cells_per_axis)/ 2.0f);
-constexpr size_t total_sampling_points=samples_per_axis*samples_per_axis*samples_per_axis;
+
+constexpr size_t samples_per_axis_3D = 64;
+constexpr float step = 0.5f;
+constexpr float sphere_radius = 5;
+constexpr size_t cells_per_axis_3D = samples_per_axis_3D - 1;
+const Vector3D grid_origin_3D = Vector3D{.x = step, .y = step, .z = step} * (
+                                    -static_cast<float>(cells_per_axis_3D) / 2.0f);
+constexpr size_t total_sampling_points = samples_per_axis_3D * samples_per_axis_3D * samples_per_axis_3D;
+
+constexpr size_t samples_per_axis_2D = 128;
+constexpr size_t max_line_no = 2 * (samples_per_axis_2D - 1) * (samples_per_axis_2D - 1);
+constexpr float step_2D = 0.25f;
+constexpr size_t cells_per_axis_2D = samples_per_axis_2D - 1;
+constexpr float circle_radius = 1;
+constexpr float offset_to_center_2D = -static_cast<float>(cells_per_axis_2D) / 2.0f;
+constexpr float far_plane_2d = 30;
+constexpr Vector3D grid_origin_2D = Vector3D{
+    .x = step_2D * offset_to_center_2D, .y = far_plane_2d, .z = step_2D * offset_to_center_2D
+};
+constexpr size_t total_sampling_points_2D = samples_per_axis_2D * samples_per_axis_2D;
+constexpr size_t cell_count_per_axis = samples_per_axis_2D - 1;
+
+
+const size_t no_edge = -1;
+
+bool get_line_point(size_t edge_corners[4][2],
+                    const size_t edge_index,
+                    const float cell_samples[4],
+                    const Vector3D cell_corners[4],
+                    Vector3D &result) {
+    if (edge_index == no_edge) {
+        return false;
+    }
+
+    const size_t e_0_corner_0_index = edge_corners[edge_index][0];
+    const size_t e_0_corner_1_index = edge_corners[edge_index][1];
+
+    const float edge_0_d0 = cell_samples[e_0_corner_0_index];
+    const float edge_0_d1 = cell_samples[e_0_corner_1_index];
+    const float interpol_factor_0 = edge_0_d0 / (edge_0_d0 - edge_0_d1);
+
+    const Vector3D edge_0_corner_0 = cell_corners[e_0_corner_0_index];
+    const Vector3D edge_0_corner_1 = cell_corners[e_0_corner_1_index];
+    const Vector3D vertice_0 = edge_0_corner_0 * (1 - interpol_factor_0)
+                               + edge_0_corner_1 * interpol_factor_0;
+    result = vertice_0;
+    return true;
+}
 
 int main() {
-    float *samples=(float*)malloc(sizeof(float)*total_sampling_points);
-    Vector3D* points=(Vector3D*)malloc(sizeof(Vector3D)*total_sampling_points);
-    size_t inside_or_on_surface_count=0;
+    float *samples = (float *) malloc(sizeof(float) * total_sampling_points_2D);
+    Vector3D *points = (Vector3D *) malloc(sizeof(Vector3D) * total_sampling_points_2D);
 
-    Vector3D plane_normal={0,0,1};
+    uint8_t case_index = 0;
 
-    for (size_t z = 0; z < samples_per_axis; ++z) {
-        for (size_t y = 0; y < samples_per_axis; ++y) {
-            for (size_t x = 0; x < samples_per_axis; ++x) {
-                size_t index=z*samples_per_axis*samples_per_axis
-                    +y*samples_per_axis
-                +x;
+    constexpr int circle_count = 7;
+    Vector2D circle_positions[circle_count] = {
+        {0, 0},
+        {0.5, 0.5},
+        {5.5, 5.5},
+        {6, 6.1},
+        {10, 10},
+        {-6, 0},
+        {-4.2, 0}
+    };
 
-                Vector3D world_pos=grid_origin+Vector3D{x*step, y*step, z*step};
-                points[index]=world_pos;
-                const  float sphere_dfs=sample_sphere_density(world_pos,sphere_radius);
-                const float plane_dfs=sample_plane_density(world_pos,plane_normal);
-                const float union_dfs=math_ops::min(sphere_dfs,plane_dfs);
-                samples[index]=union_dfs;
+    for (size_t z = 0; z < samples_per_axis_2D; ++z) {
+        for (size_t x = 0; x < samples_per_axis_2D; ++x) {
+            size_t index = z * samples_per_axis_2D
+                           + x;
+
+            Vector3D world_pos = grid_origin_2D + Vector3D{x * step_2D, 0.01, z * step_2D};
+            points[index] = world_pos;
+
+            float united_dfs = FLT_MAX;
+
+            for (size_t i = 0; i < circle_count; ++i) {
+                const Vector2D &pos = circle_positions[i];
+                const float iteration_dfs = sample_cirlce_density(
+                    {world_pos.x, world_pos.z}, pos,
+                    circle_radius
+                );
+                united_dfs = math_ops::min(united_dfs, iteration_dfs);
+            }
+            samples[index] = united_dfs;
+        }
+    }
+
+    Vector3D *grid_points = (Vector3D *) malloc(samples_per_axis_2D * 4 * sizeof(Vector3D));
+    size_t grid_point_count = 0;
+
+    const float x_start = grid_origin_2D.x;
+    const float x_end = x_start + step_2D * cells_per_axis_2D;
+
+    const float z_start = grid_origin_2D.z;
+    const float z_end = grid_origin_2D.z + step_2D * cells_per_axis_2D;
+
+    const float depth = far_plane_2d + 0.02;
+
+    for (size_t i = 0; i < samples_per_axis_2D; ++i) {
+        const float z_vertical = grid_origin_2D.z + step_2D * i;
+        Vector3D line_along_x_v1{x_start, depth, z_vertical};
+        Vector3D line_along_x_v2{x_end, depth, z_vertical};
+
+        grid_points[grid_point_count++] = line_along_x_v1;
+        grid_points[grid_point_count++] = line_along_x_v2;
+
+        //const float height
+        const float x_horizontal = grid_origin_2D.x + step_2D * i;
+        Vector3D line_along_z_v1 = {x_horizontal, depth, z_start};
+        Vector3D line_along_z_v2 = {x_horizontal, depth, z_end};
+
+        grid_points[grid_point_count++] = line_along_z_v1;
+        grid_points[grid_point_count++] = line_along_z_v2;
+    }
+
+
+    // which edges provide a point
+    size_t edge_cases[16][4]{
+        {no_edge, no_edge, no_edge, no_edge},
+        {0, 3, no_edge, no_edge},
+        {0, 1, no_edge, no_edge},
+        {1, 3, no_edge, no_edge},
+
+        {1, 2, no_edge, no_edge},
+        {0, 1, 2, 3},
+        {0, 2, no_edge, no_edge},
+        {2, 3, no_edge, no_edge},
+
+        {2, 3, no_edge, no_edge},
+        {0, 2, no_edge, no_edge},
+        {0, 3, 1, 2},
+        {1, 2, no_edge, no_edge},
+
+        {1, 3, no_edge, no_edge},
+        {0, 1, no_edge, no_edge},
+        {0, 3, no_edge, no_edge},
+        {no_edge, no_edge, no_edge, no_edge},
+    };
+
+    // what are the corners of those edges
+    size_t edge_corners[4][2] = {
+        // bottom edge
+        {0, 1},
+        // right edge
+        {1, 2},
+        // top edge
+        {3, 2},
+        // left edge
+        {0, 3}
+    };
+
+
+    float cell_samples[4];
+    Line2D *lines = (Line2D *) malloc(sizeof(Line2D) * max_line_no);
+    size_t line_count = 0;
+
+    for (size_t z = 0; z < cells_per_axis_2D; ++z) {
+        for (size_t x = 0; x < cells_per_axis_2D; ++x) {
+            const size_t lower_left = z * samples_per_axis_2D + x;
+            const size_t lower_right = lower_left + 1;
+            const size_t upper_left = lower_left + samples_per_axis_2D;
+            const size_t upper_right = upper_left + 1;
+
+            cell_samples[0] = samples[lower_left];
+            cell_samples[1] = samples[lower_right];
+            cell_samples[2] = samples[upper_right];
+            cell_samples[3] = samples[upper_left];
+
+            const bool sample_lower_left = cell_samples[0] > 0;
+            const bool sample_lower_right = cell_samples[1] > 0;
+
+            const bool sample_upper_right = cell_samples[2] > 0;
+            const bool sample_upper_left = cell_samples[3] > 0;
+
+            case_index = 0;
+
+            case_index |= sample_lower_left;
+            case_index |= sample_lower_right << 1;
+            case_index |= sample_upper_right << 2;
+            case_index |= sample_upper_left << 3;
+
+            if (case_index == 0 || case_index == 15) {
+                continue;
+            }
+
+            const Vector3D bottom_left_corner = grid_origin_2D + Vector3D{x * step_2D, 0, z * step_2D};
+
+            const Vector3D cell_corners[4] = {
+                bottom_left_corner,
+                bottom_left_corner + Vector3D{step_2D, 0, 0},
+                bottom_left_corner + Vector3D{step_2D, 0, step_2D},
+                bottom_left_corner + Vector3D{0, 0, step_2D}
+            };
+
+            // which edges are we using
+            size_t (*sampling_case)[4] = &edge_cases[case_index];
+
+            // our formulais d(t)= d0+t(d1-d0). solve for t you get the pick
+            for (size_t sample_edges = 0; sample_edges < 4; sample_edges += 2) {
+                Line2D result{};
+                Vector3D point{};
+                const size_t edge_index_0 = (*sampling_case)[sample_edges];
+                if (!get_line_point(edge_corners, edge_index_0, cell_samples, cell_corners, point)) {
+                    break;
+                }
+                result.point1 = point;
+
+                const size_t edge_index_1 = (*sampling_case)[sample_edges + 1];
+                if (!get_line_point(edge_corners, edge_index_1, cell_samples, cell_corners, point)) {
+                    break;
+                }
+                result.point2 = point;
+                lines[line_count++] = result;
             }
         }
     }
 
-    printf("sample count is %zu\n",inside_or_on_surface_count);
+    printf("sample count is %zu\n", line_count);
 
     try {
         //parse_scene("data/models/boblampclean.md5mesh");
         //return 0;
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
-        DEBUG_SendPointDataToTheGPU(points,samples,total_sampling_points);
+        DEBUG_SendPointDataToTheGPU(points, samples, total_sampling_points_2D);
+        DEBUG_SendContourDataToTheGPU(lines, line_count);
+        DEBUG_SendGridDataToTheGPU(grid_points,grid_point_count);
 
-        const int whiteTextureId = Renderer_RegisterTextureFromPath("data/textures/white_texture.png", {.convert_from_srgb_to_linear_space = true});
-        const int woodTextureId = Renderer_RegisterTextureFromPath("data/textures/wood.png", {.convert_from_srgb_to_linear_space = true});
-        const int grassTextureId = Renderer_RegisterTextureFromPath("data/textures/grass_block.png", {.convert_from_srgb_to_linear_space = true});
-        const int mushroomTextureId = Renderer_RegisterTextureFromPath("data/textures/mushroom_red.png", {.convert_from_srgb_to_linear_space = true});
+        const int whiteTextureId = Renderer_RegisterTextureFromPath("data/textures/white_texture.png",
+                                                                    {.convert_from_srgb_to_linear_space = true});
+        const int woodTextureId = Renderer_RegisterTextureFromPath("data/textures/wood.png",
+                                                                   {.convert_from_srgb_to_linear_space = true});
+        const int grassTextureId = Renderer_RegisterTextureFromPath("data/textures/grass_block.png",
+                                                                    {.convert_from_srgb_to_linear_space = true});
+        const int mushroomTextureId = Renderer_RegisterTextureFromPath("data/textures/mushroom_red.png",
+                                                                       {.convert_from_srgb_to_linear_space = true});
         const int crate_Texture_diffuse_id = Renderer_RegisterTextureFromPath("data/textures/box_container.png", {
-                                                                                  .convert_from_srgb_to_linear_space = true
+                                                                                  .convert_from_srgb_to_linear_space =
+                                                                                  true
                                                                               });
-        const int crate_Texture_specular_id = Renderer_RegisterTextureFromPath("data/textures/box_container_specular.png"); // specular stays as is
+        const int crate_Texture_specular_id = Renderer_RegisterTextureFromPath(
+            "data/textures/box_container_specular.png"); // specular stays as is
         const int tranrsparent_window_texture = Renderer_RegisterTextureFromPath(
             "data/textures/blending_transparent_window.png",
             {
@@ -330,7 +531,7 @@ int main() {
         // {0.8f, 0.8f, 0.8f},      // diffuse - δυνατό, τώρα θα φαίνεται σωστά
         // {1.0f, 1.0f, 1.0f},      // specular
         // 0.045f,                   // linear - χαμηλότερο, πιο soft falloff
-        // 0.0075f 
+        // 0.0075f
         //         };
 
 
@@ -483,17 +684,19 @@ int main() {
             // //
             // // // Verify ABI compatibility between caller code and compiled version of Dear ImGui. This helps detects some build issues.
             IMGUI_CHECKVERSION();
-            
+
             snprintf(debug_text, sizeof(debug_text), "ms: %f\n objects:%d\n", ms_per_frame, objects);
 
-            if (ImGui::ArrowButton("Increase z",ImGuiDir_Up)) {
+            bool up = ImGui::ArrowButton("Increase z", ImGuiDir_Up);
+            ImGui::SameLine();
+            bool down = ImGui::ArrowButton("Decrease z", ImGuiDir_Up);
+            if (up) {
                 DEBUG_Modify_Slice_Layer(1);
-            }
-            else if (ImGui::ArrowButton("Decrease z",ImGuiDir_Down)) {
+            } else if (down) {
                 DEBUG_Modify_Slice_Layer(-1);
             }
 
-            
+
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
             // // Update and Render additional Platform Windows
