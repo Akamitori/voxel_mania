@@ -420,7 +420,12 @@ int main() {
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
         DEBUG_SendPointDataToTheGPU(points, samples, total_sampling_points_2D);
         DEBUG_SendContourDataToTheGPU(lines, line_count);
-        DEBUG_SendGridDataToTheGPU(grid_points,grid_point_count);
+        DEBUG_SendGridDataToTheGPU(grid_points, grid_point_count);
+
+        auto display_properties = SDL_GetCurrentDisplayMode(1);
+
+        int width = display_properties->w;
+        int height = display_properties->h;
 
         const int whiteTextureId = Renderer_RegisterTextureFromPath("data/textures/white_texture.png",
                                                                     {.convert_from_srgb_to_linear_space = true});
@@ -646,6 +651,8 @@ int main() {
                 switch (event.type) {
                     case SDL_EVENT_WINDOW_RESIZED: {
                         Renderer_ResolutionChanged(event.window.data1, event.window.data2);
+                        width = event.window.data1;
+                        height = event.window.data2;
                         break;
                     }
                     case SDL_EVENT_WINDOW_CLOSE_REQUESTED: {
@@ -656,6 +663,16 @@ int main() {
                         KeyDown(event.key.scancode, *SceneCamera);
                         break;
                     }
+                    case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                        float x_pixel = event.button.x;
+                        float y_pixel = event.button.y;
+
+                        float x_ndc=x_pixel*(2.0f/width)-1.0f;
+                        float y_ndc=1.0f-y_pixel*2.0f/width;
+                        printf("the mouse clicked at (%f,%f)\n", x_pixel, y_pixel);
+                        break;
+                    }
+
                     default: {
                         break;
                     }

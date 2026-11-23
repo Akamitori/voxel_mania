@@ -209,13 +209,13 @@ Matrix4D MakeOrthoProjection(const float left, const float right, const float to
 Matrix4D PerspectiveProjectionMatrix(const float FOV, const float z_near, const float z_far, const float aspect) {
     Matrix4D perspectiveMatrix(0);
 
-    const float tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
+    const float g_tan_fov_2_invert = 1 / tan(DegreeToRadians(FOV) * 0.5f);
 
     const float z_diff = 1 / (z_near - z_far);
-    perspectiveMatrix[0].x = tan_fov_2_invert / aspect;
+    perspectiveMatrix[0].x = g_tan_fov_2_invert / aspect;
 
     // flip y since it takes the place of z, and we want bigger values to equal higher instead of lower points
-    perspectiveMatrix[1].y = -tan_fov_2_invert;
+    perspectiveMatrix[1].y = -g_tan_fov_2_invert;
 
     // map from [0,1] with 1 being the closest for better precision
     perspectiveMatrix[2].z = z_near * z_diff;
