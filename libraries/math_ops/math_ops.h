@@ -16,6 +16,9 @@ namespace math_ops {
     MATH_OPS_EXPORT uint8_t max(uint8_t a, uint8_t b);
     MATH_OPS_EXPORT float max(float a, float b);
     MATH_OPS_EXPORT float min(float a, float b);
+
+    MATH_OPS_EXPORT int max(int a, int b);
+    MATH_OPS_EXPORT int min(int a, int b);
     
     MATH_OPS_EXPORT float ceil(float a); 
     MATH_OPS_EXPORT int ceil_to_int(float a);

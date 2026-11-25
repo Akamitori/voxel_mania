@@ -39,5 +39,5 @@ void main() {
 
 
 
-    PointColor = vec3(r,g,0) * distance_factor;
+    PointColor = vec3(r,g,0);// * distance_factor;
 }

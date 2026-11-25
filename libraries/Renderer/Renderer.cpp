@@ -58,6 +58,12 @@ GLuint DEBUG_grid_vao=-1;
 GLuint DEBUG_grid_vbo=-1;
 size_t grid_count = 0;
 
+static unsigned int DEBUG_brush_cursor_program;
+GLuint DEBUG_brush_cursor_vao=-1;
+GLuint DEBUG_brush_cursor_vbo=-1;
+size_t cursor_point_count = 0;
+Vector3D cursor_translation_from_origin{};
+
 
 static void DEBUG_Draw_All_The_Stuff();
 
@@ -406,6 +412,7 @@ void OpenGLGlobalSetup() {
     world_geometry_program_skeletal_models = InitializeProgram("program_for_skeletal_models");
     DEBUG_contour_program= InitializeProgram("program_for_contours");
     DEBUG_point_program= InitializeProgram("program_for_points");
+    DEBUG_brush_cursor_program= InitializeProgram("brush_program");
 
     Screen_Texture.screen_texture_program = InitializeProgram("program_for_screen_texture");
     Screen_Texture.shadow_map_program = InitializeProgram("program_for_shadow_map");
@@ -577,7 +584,8 @@ void Renderer_Init(const int screen_width,
         world_unshaded_geometry_program,
         Screen_Texture.shadow_map_program,
         DEBUG_contour_program,
-        DEBUG_point_program
+        DEBUG_point_program,
+        DEBUG_brush_cursor_program
     };
 
 
@@ -1902,6 +1910,9 @@ void DEBUG_SendPointDataToTheGPU(const Vector3D *points, const float *densities,
 
         glBindBuffer(GL_ARRAY_BUFFER, DEBUG_point_vbo);
         glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, points, GL_STATIC_DRAW);
+
+        glBindBuffer(GL_ARRAY_BUFFER, DEBUG_density_vbo);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * count, densities, GL_DYNAMIC_DRAW);
         return;
     }
 
@@ -1953,6 +1964,39 @@ void DEBUG_SendGridDataToTheGPU(const Vector3D *grid_vertices, size_t count) {
 
     glBindVertexArray(0);
     glBindBuffer(GL_ARRAY_BUFFER, 0);
+}
+
+void DEBUG_SendCircleCursorDataToTheGPU(const Vector3D *grid_vertices, size_t count, Vector3D color) {
+    const int pos_location_attr = 0;
+
+    cursor_point_count=count;
+    if (DEBUG_brush_cursor_vao!=-1) {
+
+        // upload the trans!(or make a new method!)
+        // NO OP . play with the trans
+        return;
+    }
+
+    glGenVertexArrays(1, &DEBUG_brush_cursor_vao);
+    glBindVertexArray(DEBUG_brush_cursor_vao);
+
+    glGenBuffers(1, &DEBUG_brush_cursor_vbo);
+    glBindBuffer(GL_ARRAY_BUFFER, DEBUG_brush_cursor_vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(Vector3D) * count, grid_vertices, GL_STATIC_DRAW);
+
+    glEnableVertexAttribArray(pos_location_attr);
+    glVertexAttribPointer(pos_location_attr, 3, GL_FLOAT, GL_FALSE, sizeof(Vector3D), nullptr);
+
+    glBindVertexArray(0);
+    glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+    glUseProgram(DEBUG_brush_cursor_program);
+    const GLint point_color_id = glGetUniformLocation(DEBUG_brush_cursor_program, "color");
+    glUniform3fv(point_color_id, 1, &color.x);
+}
+
+void DEBUG_Update_Brush_Trans(Vector3D trans) {
+    cursor_translation_from_origin=trans;
 }
 
 void DEBUG_SendContourDataToTheGPU(const Line2D *lines, size_t count) {
@@ -2039,7 +2083,24 @@ void DEBUG_Draw_Points() {
     glUseProgram(0);
 }
 
+void Debug_Draw_Brush() {
+    glUseProgram(DEBUG_brush_cursor_program);
+
+    glBindVertexArray(DEBUG_brush_cursor_vao);
+
+    // move this to init!
+
+    const GLint translation_id = glGetUniformLocation(DEBUG_brush_cursor_program, "translation");
+    glUniform3fv(translation_id, 1, &cursor_translation_from_origin.x);
+
+    glDrawArrays(GL_LINE_LOOP, 0, cursor_point_count);
+
+    glBindVertexArray(0);
+    glUseProgram(0);
+}
+
 void DEBUG_Draw_All_The_Stuff() {
+    Debug_Draw_Brush();
     Debug_Draw_Grid();
     DEBUG_Draw_Contours();
     DEBUG_Draw_Points();

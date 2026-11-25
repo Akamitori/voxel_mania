@@ -94,6 +94,11 @@ RENDERER_EXPORT void DEBUG_SendPointDataToTheGPU(const Vector3D *points, const f
 
 RENDERER_EXPORT void DEBUG_SendGridDataToTheGPU(const Vector3D *grid_vertices, size_t count);
 
+RENDERER_EXPORT void DEBUG_SendCircleCursorDataToTheGPU(const Vector3D *circle_points, size_t point_count, Vector3D color);
+
+RENDERER_EXPORT void DEBUG_Update_Brush_Trans(Vector3D trans);
+
+
 RENDERER_EXPORT void DEBUG_Draw_Points();
 
 RENDERER_EXPORT void DEBUG_Modify_Slice_Layer(int value);

@@ -22,6 +22,7 @@
 #include "AssetLoader.h"
 #include "math_ops.h"
 #include "Matrix3D.h"
+#include "Transformations.h"
 
 // void calculate_frustum_planes_and_check_for_visibility(const Matrix4D &world_space_matrix, AppData &appData,
 //                                                        const Matrix4D &triangle_model_view_space,
@@ -58,8 +59,9 @@ static float sample_sphere_density(Vector3D &p, float radius) {
     return magnitude(p) - radius;
 }
 
-static float sample_cirlce_density(const Vector2D &p, const Vector2D &offset, float radius) {
-    Vector2D res{p.x - offset.x, p.y - offset.y};
+static float sample_cirlce_density(const Vector2D &p, const Vector2D &circle_center, float radius) {
+    // express the point in terms of the circles local space
+    const Vector2D res{p.x - circle_center.x, p.y - circle_center.y};
     double magnitude = sqrt(res.x * res.x + res.y * res.y);
     return magnitude - radius;
 }
@@ -68,6 +70,12 @@ static float sample_cirlce_density(const Vector2D &p, const Vector2D &offset, fl
 static float sample_plane_density(const Vector3D &p, const Vector3D &normal) {
     return dot(p, normal);
 }
+
+struct Ray3D {
+    Vector3D origin;
+    // normalized
+    Vector3D direction;
+};
 
 
 int RegisterCubeMesh3Part(int diffuse_texture_id, int specular_texture_id, int emission_texture_id = -1) {
@@ -242,74 +250,54 @@ bool get_line_point(size_t edge_corners[4][2],
     return true;
 }
 
-int main() {
-    float *samples = (float *) malloc(sizeof(float) * total_sampling_points_2D);
-    Vector3D *points = (Vector3D *) malloc(sizeof(Vector3D) * total_sampling_points_2D);
+Vector3D *Calc_Circle(size_t samples = 64, float y = 10, float radius = 1) {
+    //point(θ) = (cx + r·cos θ,   y,   cz + r·sin θ)
 
-    uint8_t case_index = 0;
-
-    constexpr int circle_count = 7;
-    Vector2D circle_positions[circle_count] = {
-        {0, 0},
-        {0.5, 0.5},
-        {5.5, 5.5},
-        {6, 6.1},
-        {10, 10},
-        {-6, 0},
-        {-4.2, 0}
-    };
-
-    for (size_t z = 0; z < samples_per_axis_2D; ++z) {
-        for (size_t x = 0; x < samples_per_axis_2D; ++x) {
-            size_t index = z * samples_per_axis_2D
-                           + x;
-
-            Vector3D world_pos = grid_origin_2D + Vector3D{x * step_2D, 0.01, z * step_2D};
-            points[index] = world_pos;
-
-            float united_dfs = FLT_MAX;
-
-            for (size_t i = 0; i < circle_count; ++i) {
-                const Vector2D &pos = circle_positions[i];
-                const float iteration_dfs = sample_cirlce_density(
-                    {world_pos.x, world_pos.z}, pos,
-                    circle_radius
-                );
-                united_dfs = math_ops::min(united_dfs, iteration_dfs);
-            }
-            samples[index] = united_dfs;
-        }
+    float step = TWOPI / samples;
+    Vector3D *points = (Vector3D *) malloc(sizeof(Vector3D) * samples);
+    for (size_t i = 0; i < samples; ++i) {
+        const float x = radius * cos(step * i);
+        const float z = radius * sin(step * i);
+        points[i] = Vector3D{x, y, z};
     }
 
-    Vector3D *grid_points = (Vector3D *) malloc(samples_per_axis_2D * 4 * sizeof(Vector3D));
-    size_t grid_point_count = 0;
-
-    const float x_start = grid_origin_2D.x;
-    const float x_end = x_start + step_2D * cells_per_axis_2D;
-
-    const float z_start = grid_origin_2D.z;
-    const float z_end = grid_origin_2D.z + step_2D * cells_per_axis_2D;
-
-    const float depth = far_plane_2d + 0.02;
-
-    for (size_t i = 0; i < samples_per_axis_2D; ++i) {
-        const float z_vertical = grid_origin_2D.z + step_2D * i;
-        Vector3D line_along_x_v1{x_start, depth, z_vertical};
-        Vector3D line_along_x_v2{x_end, depth, z_vertical};
-
-        grid_points[grid_point_count++] = line_along_x_v1;
-        grid_points[grid_point_count++] = line_along_x_v2;
-
-        //const float height
-        const float x_horizontal = grid_origin_2D.x + step_2D * i;
-        Vector3D line_along_z_v1 = {x_horizontal, depth, z_start};
-        Vector3D line_along_z_v2 = {x_horizontal, depth, z_end};
-
-        grid_points[grid_point_count++] = line_along_z_v1;
-        grid_points[grid_point_count++] = line_along_z_v2;
-    }
+    return points;
+}
 
 
+// get's a pixel. provides us with a point in front of the camera(at camera-space z = 1.)
+// that's part of the inf ray that goes through that particular pixel
+Ray3D pixel_to_ray_in_world_space(Camera *camera, int width, int height, float x_pixel, float y_pixel, float FOV) {
+    const float x_ndc = x_pixel * (2.0f / width) - 1.0f;
+    const float y_ndc = 1.0f - y_pixel * 2.0f / height;
+
+    const float g = 1 / tan(DegreeToRadians(FOV) * 0.5f);
+    const float a = width * 1.0 / height;
+
+    //we do some equation magic and pick z=1 since we dont care about depth for the ray
+    // it's a ray after all!
+    const Vector3D p_camera_space = Vector3D(x_ndc * a / g, -y_ndc / g, 1);
+
+    const Vector3D p_world_space = transform_point(camera->Camera_Matrix, p_camera_space);
+
+    const Vector3D ray_origin = camera->position;
+    const Vector3D ray_dir = normalize(p_world_space - ray_origin);
+
+    return Ray3D{ray_origin, ray_dir};
+}
+
+static Vector3D find_ray_and_plane_intersection(const Ray3D &ray, const Vector3D plane_normal,
+                                                const Vector3D plane_point) {
+    const float plane_h = dot(plane_point, plane_normal);
+    const float ray_t = (plane_h - dot(ray.origin, plane_normal)) / dot(
+                            ray.direction, plane_normal);
+
+    const Vector3D intersect_at = ray.origin + ray.direction * ray_t;
+    return intersect_at;
+}
+
+void sample_contours(float *samples, Line2D *lines, size_t &line_count) {
+    float cell_samples[4];
     // which edges provide a point
     size_t edge_cases[16][4]{
         {no_edge, no_edge, no_edge, no_edge},
@@ -345,11 +333,7 @@ int main() {
         {0, 3}
     };
 
-
-    float cell_samples[4];
-    Line2D *lines = (Line2D *) malloc(sizeof(Line2D) * max_line_no);
-    size_t line_count = 0;
-
+    uint8_t case_index;
     for (size_t z = 0; z < cells_per_axis_2D; ++z) {
         for (size_t x = 0; x < cells_per_axis_2D; ++x) {
             const size_t lower_left = z * samples_per_axis_2D + x;
@@ -410,8 +394,118 @@ int main() {
             }
         }
     }
+}
 
-    printf("sample count is %zu\n", line_count);
+Vector3D *Calculate_Grid_Outline(size_t &grid_point_count) {
+    Vector3D *grid_points = (Vector3D *) malloc(samples_per_axis_2D * 4 * sizeof(Vector3D));
+    grid_point_count = 0;
+
+    const float x_start = grid_origin_2D.x;
+    const float x_end = x_start + step_2D * cells_per_axis_2D;
+
+    const float z_start = grid_origin_2D.z;
+    const float z_end = grid_origin_2D.z + step_2D * cells_per_axis_2D;
+
+    const float depth = far_plane_2d + 0.02;
+
+    for (size_t i = 0; i < samples_per_axis_2D; ++i) {
+        const float z_vertical = grid_origin_2D.z + step_2D * i;
+        Vector3D line_along_x_v1{x_start, depth, z_vertical};
+        Vector3D line_along_x_v2{x_end, depth, z_vertical};
+
+        grid_points[grid_point_count++] = line_along_x_v1;
+        grid_points[grid_point_count++] = line_along_x_v2;
+
+        //const float height
+        const float x_horizontal = grid_origin_2D.x + step_2D * i;
+        Vector3D line_along_z_v1 = {x_horizontal, depth, z_start};
+        Vector3D line_along_z_v2 = {x_horizontal, depth, z_end};
+
+        grid_points[grid_point_count++] = line_along_z_v1;
+        grid_points[grid_point_count++] = line_along_z_v2;
+    }
+    return grid_points;
+}
+
+float union_sdf(float d1, float d2) {
+    return math_ops::min(d1, d2);
+}
+
+float subtraction_sdf(float d1, float d2) {
+    return math_ops::max(d1, -d2);
+}
+
+
+float smin(float a, float b, float k) {
+    float h = math_ops::max(k - abs(a - b), 0.0f) / k;
+    return math_ops::min(a, b) - h * h * k * (1.0f / 4.0f);
+}
+
+float smax(float a, float b, float k) {
+    return -smin(-a, -b, k);
+}
+
+float union_sdf_smooth(float d1, float d2,float k) {
+    return smin(d1, d2,k);
+}
+
+float subtraction_sdf_smooth(float d1, float d2, float k) {
+    return smax(d1, -d2,k);
+}
+
+
+typedef float (*sdf_operation)(float a, float v);
+typedef float (*sdf_operation_smooth)(float a, float v,float k);
+
+int main() {
+    float *samples = (float *) malloc(sizeof(float) * total_sampling_points_2D);
+    Vector3D *points = (Vector3D *) malloc(sizeof(Vector3D) * total_sampling_points_2D);
+
+    Vector3D *cirlce_points = Calc_Circle(64, -0.01f, 1);
+
+    constexpr int circle_count = 7;
+    Vector2D circle_positions[circle_count] = {
+        {0, 0},
+        {0.5, 0.5},
+        {5.5, 5.5},
+        {6, 6.1},
+        {10, 10},
+        {-6, 0},
+        {-4.2, 0}
+    };
+
+    for (size_t z = 0; z < samples_per_axis_2D; ++z) {
+        for (size_t x = 0; x < samples_per_axis_2D; ++x) {
+            size_t index = z * samples_per_axis_2D
+                           + x;
+
+            Vector3D world_pos = grid_origin_2D + Vector3D{x * step_2D, 0.01, z * step_2D};
+            points[index] = world_pos;
+
+            float united_dfs = FLT_MAX;
+
+            for (size_t i = 0; i < circle_count; ++i) {
+                const Vector2D &pos = circle_positions[i];
+                const float iteration_dfs = sample_cirlce_density(
+                    {world_pos.x, world_pos.z}, pos,
+                    circle_radius
+                );
+                united_dfs = math_ops::min(united_dfs, iteration_dfs);
+            }
+            samples[index] = united_dfs;
+        }
+    }
+
+    size_t grid_point_count;
+    Vector3D *grid_points = Calculate_Grid_Outline(grid_point_count);
+
+
+    Line2D *contour_lines = (Line2D *) malloc(sizeof(Line2D) * max_line_no);
+    size_t contour_line_count = 0;
+
+    sample_contours(samples, contour_lines, contour_line_count);
+
+    printf("sample count is %zu\n", contour_line_count);
 
     try {
         //parse_scene("data/models/boblampclean.md5mesh");
@@ -419,8 +513,9 @@ int main() {
         constexpr int game_resolution_width = 1920, game_resolution_height = 1080;
         Renderer_Init(game_resolution_width, game_resolution_height, 45, 0.1, 1024, 8);
         DEBUG_SendPointDataToTheGPU(points, samples, total_sampling_points_2D);
-        DEBUG_SendContourDataToTheGPU(lines, line_count);
+        DEBUG_SendContourDataToTheGPU(contour_lines, contour_line_count);
         DEBUG_SendGridDataToTheGPU(grid_points, grid_point_count);
+        DEBUG_SendCircleCursorDataToTheGPU(cirlce_points, 64, {1, 0, 0});
 
         auto display_properties = SDL_GetCurrentDisplayMode(1);
 
@@ -638,6 +733,13 @@ int main() {
 
         const double max_delta = 1000.0 / 30.0;
 
+
+        // TODO we can think later how to pick proper planes and what not
+        // we can always fix this later
+        // for now const will do
+        const Vector3D plane_normal = {0, 1, 0};
+        const Vector3D plane_point = grid_origin_2D;
+
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
@@ -645,6 +747,7 @@ int main() {
             lastTime = now;
             ms_per_frame = 0.1 * ms + 0.9 * ms_per_frame;
             objects = Vector_mesh_instance_Length(opaque_meshes);
+
 
             SDL_Event event;
             while (SDL_PollEvent(&event)) {
@@ -664,12 +767,91 @@ int main() {
                         break;
                     }
                     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                        bool left_pressed = event.button.button == SDL_BUTTON_LEFT;
+                        bool right_pressed = event.button.button == SDL_BUTTON_RIGHT;
+
+                        if (!left_pressed && !right_pressed) {
+                            break;
+                        }
+
+                        sdf_operation_smooth op = left_pressed ? union_sdf_smooth : subtraction_sdf_smooth;
+
                         float x_pixel = event.button.x;
                         float y_pixel = event.button.y;
 
-                        float x_ndc=x_pixel*(2.0f/width)-1.0f;
-                        float y_ndc=1.0f-y_pixel*2.0f/width;
-                        printf("the mouse clicked at (%f,%f)\n", x_pixel, y_pixel);
+
+                        const Ray3D mouse_ray = pixel_to_ray_in_world_space(
+                            SceneCamera,
+                            width,
+                            height,
+                            x_pixel,
+                            y_pixel, 45
+                        );
+
+
+                        const Vector3D intersect_at = find_ray_and_plane_intersection(
+                            mouse_ray,
+                            plane_normal,
+                            plane_point
+                        );
+
+                        const float brush_radius = 1.0;
+                        const float k_factor=step_2D;
+                        const float edge_offset=brush_radius+k_factor+step_2D;
+                        const float cx_max = intersect_at.x + edge_offset;
+                        const float cx_min = intersect_at.x - edge_offset;
+
+                        // world_x= grid_origin_x + i * step;
+                        // therefore i= (world_x-grid_origin_x)/step;
+
+                        // handle undershooting with max
+                        const int index_x_min = math_ops::max(
+                            math_ops::ceil_to_int((cx_min - grid_origin_2D.x) / step_2D),
+                            0
+                        );
+
+                        // handle overshooting with min
+                        const int index_x_max = math_ops::min(
+                            math_ops::floor_to_int((cx_max - grid_origin_2D.x) / step_2D),
+                            samples_per_axis_2D - 1
+                        );
+
+                        const float cz_max = intersect_at.z + edge_offset;
+                        const float cz_min = intersect_at.z - edge_offset;
+
+                        const int index_z_min = math_ops::max(
+                            math_ops::ceil_to_int((cz_min - grid_origin_2D.z) / step_2D),
+                            0
+                        );
+
+                        // handle overshooting with min
+                        const int index_z_max = math_ops::min(
+                            math_ops::floor_to_int((cz_max - grid_origin_2D.z) / step_2D),
+                            samples_per_axis_2D - 1
+                        );
+
+                        Vector2D circle_center{intersect_at.x, intersect_at.z};
+
+                        for (int z = index_z_min; z <= index_z_max; ++z) {
+                            for (int x = index_x_min; x <= index_x_max; ++x) {
+                                size_t index = z * samples_per_axis_2D + x;
+                                //
+                                Vector3D point_in_world_space = grid_origin_2D;
+                                point_in_world_space.x += x * step_2D;
+                                point_in_world_space.z += z * step_2D;
+                                const Vector2D v{point_in_world_space.x, point_in_world_space.z};
+                                float brush_sdf = sample_cirlce_density(v,circle_center, brush_radius);
+
+                                samples[index] = op(samples[index], brush_sdf,k_factor);
+                            }
+                        }
+
+                        contour_line_count = 0;
+                        sample_contours(samples, contour_lines, contour_line_count);
+                        DEBUG_SendContourDataToTheGPU(contour_lines, contour_line_count);
+                        DEBUG_SendPointDataToTheGPU(points, samples, total_sampling_points_2D);
+
+
                         break;
                     }
 
@@ -681,7 +863,27 @@ int main() {
                 ImGui_ImplSDL3_ProcessEvent(&event); // Forward your event to backend
             }
 
+            float x_pixel;
+            float y_pixel;
+            SDL_GetMouseState(&x_pixel, &y_pixel);
+
+            // we get the end of a ra
+            Ray3D mouse_ray =
+                    pixel_to_ray_in_world_space(SceneCamera, width, height, x_pixel, y_pixel, 45);
+
+
+            const Vector3D intersect_at = find_ray_and_plane_intersection(
+                mouse_ray,
+                plane_normal,
+                plane_point
+            );
+
+
+            DEBUG_Update_Brush_Trans(intersect_at);
+
+
             Renderer_FrameStart();
+
 
             // for (size_t i = 0; i < Vector_mesh_instance_Length(opaque_meshes); ++i) {
             //     const mesh_instance m = opaque_meshes->data[i];

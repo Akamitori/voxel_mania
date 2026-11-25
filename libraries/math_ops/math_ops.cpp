@@ -42,6 +42,15 @@ float math_ops::min(const float a, const float b) {
     return a < b ? a : b;
 }
 
+int math_ops::max(const int a, const int b) {
+    return a > b ? a : b;
+}
+
+int math_ops::min(const int a, const int b) {
+    return a < b ? a : b;
+}
+
+
 float math_ops::ceil(const float a) {
     return static_cast<float>(static_cast<int>(a) + 1);
 }
