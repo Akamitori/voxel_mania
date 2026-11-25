@@ -445,17 +445,18 @@ float smax(float a, float b, float k) {
     return -smin(-a, -b, k);
 }
 
-float union_sdf_smooth(float d1, float d2,float k) {
-    return smin(d1, d2,k);
+float union_sdf_smooth(float d1, float d2, float k) {
+    return smin(d1, d2, k);
 }
 
 float subtraction_sdf_smooth(float d1, float d2, float k) {
-    return smax(d1, -d2,k);
+    return smax(d1, -d2, k);
 }
 
 
 typedef float (*sdf_operation)(float a, float v);
-typedef float (*sdf_operation_smooth)(float a, float v,float k);
+
+typedef float (*sdf_operation_smooth)(float a, float v, float k);
 
 int main() {
     float *samples = (float *) malloc(sizeof(float) * total_sampling_points_2D);
@@ -740,6 +741,10 @@ int main() {
         const Vector3D plane_normal = {0, 1, 0};
         const Vector3D plane_point = grid_origin_2D;
 
+        int brush_mode = 2; // 0 = hard, 1 = sharp (min/max), 2 = smooth
+        float brush_radius = 1.0f;
+        float k_factor = step_2D;
+
         while (keepRunning) {
             Uint64 now = SDL_GetPerformanceCounter();
             double ms = (now - lastTime) * 1000.0 / freq;
@@ -767,6 +772,7 @@ int main() {
                         break;
                     }
                     case SDL_EVENT_MOUSE_BUTTON_DOWN: {
+                        if (io.WantCaptureMouse) { break; }
                         bool left_pressed = event.button.button == SDL_BUTTON_LEFT;
                         bool right_pressed = event.button.button == SDL_BUTTON_RIGHT;
 
@@ -795,9 +801,7 @@ int main() {
                             plane_point
                         );
 
-                        const float brush_radius = 1.0;
-                        const float k_factor=step_2D;
-                        const float edge_offset=brush_radius+k_factor+step_2D;
+                        const float edge_offset = brush_radius + k_factor + step_2D;
                         const float cx_max = intersect_at.x + edge_offset;
                         const float cx_min = intersect_at.x - edge_offset;
 
@@ -840,9 +844,22 @@ int main() {
                                 point_in_world_space.x += x * step_2D;
                                 point_in_world_space.z += z * step_2D;
                                 const Vector2D v{point_in_world_space.x, point_in_world_space.z};
-                                float brush_sdf = sample_cirlce_density(v,circle_center, brush_radius);
+                                float brush_sdf = sample_cirlce_density(v, circle_center, brush_radius);
 
-                                samples[index] = op(samples[index], brush_sdf,k_factor);
+                                // samples[index] = op(samples[index], brush_sdf, k_factor);
+
+                                const float old_value = samples[index];
+                                if (brush_mode == 0) {
+                                    // hard: only the sign survives
+                                    if (brush_sdf <= 0) {
+                                        samples[index] = left_pressed ? -1.0f : 1.0f;
+                                    }
+                                } else if (brush_mode == 1) {
+                                    samples[index] = left_pressed ? union_sdf(old_value, brush_sdf)
+                                                                  : subtraction_sdf(old_value, brush_sdf);
+                                } else {
+                                    samples[index] = op(old_value, brush_sdf, k_factor);
+                                }
                             }
                         }
 
@@ -898,6 +915,14 @@ int main() {
             ImGui_ImplOpenGL3_NewFrame();
             ImGui_ImplSDL3_NewFrame();
             ImGui::NewFrame();
+
+            ImGui::RadioButton("hard", &brush_mode, 0);
+            ImGui::SameLine();
+            ImGui::RadioButton("sharp", &brush_mode, 1);
+            ImGui::SameLine();
+            ImGui::RadioButton("smooth", &brush_mode, 2);
+            ImGui::SliderFloat("radius", &brush_radius, 0.25f, 3.0f);
+            ImGui::SliderFloat("k", &k_factor, 0.01f, 1.0f);
             // //
             IM_ASSERT(ImGui::GetCurrentContext() != nullptr && "Missing Dear ImGui context. Refer to examples app!");
             // //
